@@ -586,7 +586,9 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
 .sb-plus-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text-primary); background: var(--color-surface-hover); }
 .sb-dropdown {
   position: absolute; top: 100%; left: 0; margin-top: var(--s1);
-  min-width: 160px; background: var(--color-sidebar);
+  /* 宽度贴合菜单文字（原固定 min-width:160px，最长一项「重命名项目」实际只需约 113px，
+     右侧会空出 47px）。条目本身 nowrap，宽度由最宽那项决定 */
+  width: max-content; background: var(--color-sidebar);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-menu);
   padding: var(--s1); z-index: var(--z-index-dropdown); display: none; flex-direction: column;
