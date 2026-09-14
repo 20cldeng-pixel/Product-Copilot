@@ -79,9 +79,10 @@ export function SessionBar(props: SessionBarProps): JSX.Element {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       </button>
 
-      {/* 新建按钮:直接新建会话(无菜单) */}
+      {/* 新建按钮:直接新建会话(无菜单)。盒子与左侧归档按钮同为 24×24（w-6）：两者都是无边框图标按钮，
+          静止态只差悬停高亮块的大小，不一致会在鼠标左右移动时看出来 */}
       <button
-        className="flex items-center justify-center w-[26px] h-[26px] rounded-[var(--radius-lg)] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        className="flex items-center justify-center w-6 h-6 rounded-[var(--radius-lg)] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
        
         onClick={() => { onNewSession?.(); setShowArchive(false); }}
       >
