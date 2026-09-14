@@ -576,14 +576,15 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
 }
 .sb-project-switch:hover .sb-project-switch-icon { color: var(--color-text-primary); transform: translateY(1px); }
 .sb-plus-wrap { position: relative; -webkit-app-region: no-drag; }
+/* 项目菜单按钮：无边框图标按钮，与 SessionBar 的归档/新建同一套语言（静默 → hover 高亮） */
 .sb-plus-btn {
   width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-  border-radius: var(--radius-lg); border: 1px dashed var(--color-text-muted);
-  background: transparent; color: var(--color-text-muted); font-size: var(--text-lg); line-height: 1;
+  border-radius: var(--radius-lg); border: none;
+  background: transparent; color: var(--color-text-muted);
   transition: all 120ms var(--ease-smooth);
 }
 /* hover 统一中性色(与 SessionBar 归档/新建一致,非绿) */
-.sb-plus-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text-primary); background: var(--color-surface-hover); }
+.sb-plus-btn:hover { color: var(--color-text-primary); background: var(--color-surface-hover); }
 .sb-dropdown {
   position: absolute; top: 100%; left: 0; margin-top: var(--s1);
   /* 宽度贴合菜单文字（原固定 min-width:160px，最长一项「重命名项目」实际只需约 113px，
