@@ -7,16 +7,19 @@
  * - 安装只走**白名单**：渲染层只能传 EnvItemId，命令由 plan.ts 按发行版生成。
  */
 
-/** 环境条目标识。新增项必须同时更新 plan.ts 的 PACKAGE_OF（否则自动安装会拒绝） */
-export type EnvItemId = "bwrap" | "socat" | "rg" | "userns";
+/** 环境条目标识。新增项必须同时更新 plan.ts 的白名单（否则自动安装会拒绝） */
+export type EnvItemId = "bwrap" | "socat" | "rg" | "userns" | "winSandbox" | "gitBash";
 
-/** ok=可用；missing=确实没有；blocked=装了但系统策略不许用（如 Ubuntu 24.04 的 AppArmor）；
- *  unknown=探测失败（**绝不能显示成"未安装"**） */
 export type EnvItemStatus = "ok" | "missing" | "blocked" | "unknown";
 
+/** 自动安装的两种执行策略：包管理器（Linux）／srt 自带的 Windows 一次性装配（弹一次 UAC） */
+export type EnvAutoFix =
+  | { strategy: "pkg"; packages: string[] }
+  | { strategy: "winInstall" };
+
 export interface EnvFix {
-  /** auto：可由 EM 自己安装（这里只给**包名**，命令在 plan.ts 按发行版生成） */
-  auto?: { packages: string[] };
+  /** auto：可由 EM 自己安装。pkg 策略只给**包名**，命令在 plan.ts 按发行版生成 */
+  auto?: EnvAutoFix;
   /** manual：只能用户自己执行/下载 */
   manual?: { command?: string; url?: string };
   /** 只能靠关闭沙盒绕过 */

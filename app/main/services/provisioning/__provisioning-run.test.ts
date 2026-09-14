@@ -25,7 +25,7 @@ const run = (opts: {
   code?: number | null;
   before?: EnvItem["status"][];
   after?: EnvItem["status"][];
-  plan?: { argv: string[] | null; manualCommand?: string };
+  plan?: { strategy: "pkg"; argv: string[] | null; manualCommand?: string };
   signal?: AbortSignal;
 }) => {
   const events: InstallEvent[] = [];
@@ -40,7 +40,7 @@ const run = (opts: {
         spawn: spawnFn as never,
         probe: async () => report(opts.after ?? ["ok", "ok", "ok"], ["bwrap", "socat", "rg"]),
         logger: () => { /* 单测不写日志文件 */ },
-        plan: opts.plan ?? { argv: ["/usr/bin/pkexec", "/usr/bin/apt-get", "install", "-y", "bubblewrap"] },
+        plan: opts.plan ?? { strategy: "pkg", argv: ["/usr/bin/pkexec", "/usr/bin/apt-get", "install", "-y", "bubblewrap"] },
       },
       opts.signal,
     ),
@@ -56,7 +56,7 @@ describe("依赖安装执行层", () => {
   });
 
   it("命令失败：报退出码 + 给自助命令，并带上复核结果", async () => {
-    const { promise } = run({ code: 100, after: ["missing", "ok", "ok"], plan: { argv: ["/usr/bin/pkexec", "/x"], manualCommand: "sudo apt install bubblewrap" } });
+    const { promise } = run({ code: 100, after: ["missing", "ok", "ok"], plan: { strategy: "pkg", argv: ["/usr/bin/pkexec", "/x"], manualCommand: "sudo apt install bubblewrap" } });
     const res = await promise;
     expect(res.ok).toBe(false);
     expect(res.exitCode).toBe(100);
@@ -73,7 +73,7 @@ describe("依赖安装执行层", () => {
   });
 
   it("没有可用安装通道：不 spawn，直接给自助命令（不猜命令）", async () => {
-    const { promise, spawnFn } = run({ plan: { argv: null, manualCommand: "sudo pacman -S bubblewrap" } });
+    const { promise, spawnFn } = run({ plan: { strategy: "pkg", argv: null, manualCommand: "sudo pacman -S bubblewrap" } });
     const res = await promise;
     expect(spawnFn).not.toHaveBeenCalled();
     expect(res.ok).toBe(false);

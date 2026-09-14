@@ -113,6 +113,15 @@ export function formatCommand(argv: readonly string[]): string {
   return argv.map((a) => (/[\s"'$`\\]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a)).join(" ");
 }
 
+/**
+ * 某条目"能自动装"时的 fix.auto —— 包名以本文件白名单为**唯一来源**（probe 不重复维护包名）。
+ * 不在白名单里（如需改系统安全配置的 userns、或平台专属项）返回 undefined。
+ */
+export function autoFixFor(id: EnvItemId): { strategy: "pkg"; packages: string[] } | undefined {
+  const pkg = PACKAGE_OF[id];
+  return pkg ? { strategy: "pkg", packages: [pkg] } : undefined;
+}
+
 /** 无 polkit（无桌面/企业镜像）时的自助安装命令：去掉 pkexec，让用户自己 sudo */
 export function manualInstallCommand(ids: readonly string[], installer: Installer | null): string | null {
   const argv = buildInstallArgv(ids, installer, "sudo");

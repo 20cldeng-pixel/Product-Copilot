@@ -14,7 +14,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { readDistro, resolveInstaller, manualInstallCommand, distroHint } from "./plan";
+import { autoFixFor, readDistro, resolveInstaller, manualInstallCommand, distroHint } from "./plan";
+import { findBashOnWindows } from "../background-shell/registry";
 import type { EnvItem, EnvItemId, EnvItemStatus, EnvReport } from "./types";
 
 /** 传下去会让被测程序行为异常的变量（本项目实际见过外部注入 NODE_OPTIONS） */
@@ -176,7 +177,7 @@ export async function probeEnvironment(
           ? { detail: "已安装但无法启动——可能是权限问题或安装不完整（不是没装）" }
           : {}),
         fix: {
-          auto: { packages: [] },           // 包名由 plan 的白名单给出，这里只标记"可自动装"
+          ...(autoFixFor(spec.id) ? { auto: autoFixFor(spec.id)! } : {}), // 包名以 plan 白名单为唯一来源
           ...(status === "ok" ? {} : { manual: { command: manual([spec.id]) } }),
         },
       });
@@ -205,6 +206,55 @@ export async function probeEnvironment(
       const hint = distroHint(distro.id);
       for (const item of items) if (item.status !== "ok") item.detail = item.detail ? `${item.detail}；${hint}` : hint;
     }
+  }
+
+  if (process.platform === "win32") {
+    // Windows 的一次性装配（sandbox 账户 + WFP 网络过滤）由 srt 自己的接口负责，装配时弹一次 UAC。
+    // 探测也走 srt 的状态接口——不自己拼命令行判断，口径才不会漂。
+    try {
+      const srt = await import("@anthropic-ai/sandbox-runtime");
+      const st = await srt.checkWindowsSandboxStatusAsync();
+      const userOk = Boolean(st.user?.provisioned && st.user?.credPresent);
+      // WFP 三态：installed / absent / cannot-read。**cannot-read 不是"没装"**——BFE 枚举需要管理员，
+      // 非提权进程读不到；按 srt 的说明此时应以账户状态为准（同「探测失败 ≠ 未安装」这条铁律）。
+      const wfpState = st.wfp?.state;
+      const ok = userOk && wfpState !== "absent";
+      const missingPart = !userOk ? "隔离账户未就绪" : "网络过滤未生效";
+      items.push({
+        id: "winSandbox",
+        label: "系统保护（隔离账户 + 网络过滤）",
+        required: true,
+        status: ok ? "ok" : "missing",
+        ...(ok
+          ? { version: wfpState === "cannot-read" ? "网络过滤需管理员权限才能读取（不影响使用）" : undefined }
+          : { detail: `未安装：${missingPart}（安装时会弹一次系统授权窗口）` }),
+        fix: ok ? {} : {
+          auto: { strategy: "winInstall" },
+          // 手工指引直接用 srt 官方文案（含卸载与证书部分），不自己编
+          manual: { command: srt.windowsInstallInstructions(undefined) },
+        },
+      });
+    } catch {
+      items.push({
+        id: "winSandbox",
+        label: "系统保护（隔离账户 + 网络过滤）",
+        required: true,
+        status: "unknown",
+        detail: "检测失败（可能已安装）——不代表未安装，可点「重新检测」重试",
+        fix: { manual: { command: "npx --no-install @anthropic-ai/sandbox-runtime windows-install" } },
+      });
+    }
+
+    // Git Bash 是 bash 类工具的依赖；复用既有探测函数（避免两套候选路径各自漂移）
+    const bash = findBashOnWindows();
+    items.push({
+      id: "gitBash",
+      label: "Git Bash（bash 工具依赖）",
+      required: false,
+      status: bash ? "ok" : "missing",
+      ...(bash ? { version: bash } : { detail: "未找到 Git Bash——bash 类命令无法执行" }),
+      fix: bash ? {} : { manual: { url: "https://git-scm.com/download/win" } },
+    });
   }
 
   return { items, distro, probedAt: Date.now() };

@@ -1,11 +1,15 @@
 /**
- * 执行层：把 plan 产出的 argv 跑起来，按**阶段**回报进度，装完复核。
+ * 执行层：把「计划」跑起来，按**阶段**回报进度，装完复核。
+ *
+ * 两条执行策略：
+ * - `pkg`（Linux）：包管理器 + pkexec 单命令（系统弹授权框）
+ * - `winInstall`（Windows）：srt 自带的一次性装配（隔离账户 + WFP 网络过滤，自提权 → 一次 UAC）
  *
  * 为什么用阶段而非解析包管理器输出：apt/dnf/pacman/zypper 的输出格式、进度条、语言各不相同，
- * 解析必然脆弱且随时被上游改坏；阶段化（准备→安装→复核）在四家都成立，进度条用"不确定态"更诚实。
+ * 解析必然脆弱且随时被上游改坏；阶段化在两家策略上都成立，进度条用"不确定态"更诚实。
  *
- * 安全（方案 §8）：只执行 plan.buildInstallArgv() 的产物——本文件**不拼任何命令**；
- * 提权交给系统弹窗（pkexec → polkit），EM 不代持凭据；需要改系统安全配置的项不在这里（属 manual）。
+ * 安全（方案 §8）：命令只来自 plan 的白名单产物——本文件**不拼任何命令**；
+ * 提权交给系统弹窗（pkexec / UAC），EM 不代持凭据；需要改系统安全配置的项不在这里（属 manual）。
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -27,7 +31,7 @@ export interface InstallEvent {
 
 export interface InstallResult {
   ok: boolean;
-  /** 失败时的自助命令（复制到终端可执行）；undefined = 连命令都生成不出来（如未知发行版） */
+  /** 失败时的自助指引（可复制到终端）；undefined = 连指引都拿不到 */
   manualCommand?: string;
   /** 面向用户的原因 */
   reason?: string;
@@ -35,12 +39,18 @@ export interface InstallResult {
   exitCode?: number | null;
 }
 
+type Plan =
+  | { strategy: "pkg"; argv: string[] | null; manualCommand?: string }
+  | { strategy: "winInstall"; manualCommand?: string };
+
 export interface RunDeps {
   spawn: typeof spawn;
+  /** Windows 一次性装配（srt 自提权）；单测注入用 */
+  installWin: () => Promise<void>;
   probe: () => Promise<EnvReport>;
   logger: (line: string) => void;
   /** 覆盖计划层（单测注入用；生产不传） */
-  plan?: { argv: string[] | null; manualCommand?: string };
+  plan: Plan;
 }
 
 const LOG_DIR = path.join(os.homedir(), ".easymint", "logs");
@@ -59,10 +69,26 @@ export function outputTail(s: string, n = 400): string {
   return s.replace(/\u001b\[[0-9;]*m/g, "").trim().slice(-n);
 }
 
-function computePlan(ids: readonly string[]): { argv: string[] | null; manualCommand?: string } {
+async function defaultInstallWin(): Promise<void> {
+  const srt = await import("@anthropic-ai/sandbox-runtime");
+  await srt.installWindowsSandboxAsync();
+}
+
+/** 计划层：Linux 走包管理器白名单；Windows 走 srt 装配（手工指引取 srt 官方文案，不自己编） */
+async function computePlan(ids: readonly string[]): Promise<Plan> {
+  if (process.platform === "win32") {
+    if (!ids.includes("winSandbox")) return { strategy: "winInstall", manualCommand: undefined };
+    try {
+      const srt = await import("@anthropic-ai/sandbox-runtime");
+      return { strategy: "winInstall", manualCommand: srt.windowsInstallInstructions(undefined) };
+    } catch {
+      return { strategy: "winInstall", manualCommand: "npx --no-install @anthropic-ai/sandbox-runtime windows-install" };
+    }
+  }
   const distro = readDistro();
   const installer = resolveInstaller({ id: distro.id, idLike: [] });
   return {
+    strategy: "pkg",
     argv: buildInstallArgv(ids, installer),
     manualCommand: manualInstallCommand(ids, installer) ?? undefined,
   };
@@ -75,38 +101,53 @@ export async function installDependencies(
   signal?: AbortSignal,
 ): Promise<InstallResult> {
   const spawnFn = deps.spawn ?? spawn;
+  const installWin = deps.installWin ?? defaultInstallWin;
   const probe = deps.probe ?? ((): Promise<EnvReport> => probeEnvironment());
   const log = deps.logger ?? defaultLog;
-  const plan = deps.plan ?? computePlan(ids);
+  const plan = deps.plan ?? (await computePlan(ids));
   const total = ids.length;
 
   onEvent({ phase: "preparing", index: 0, total, message: "正在准备安装…" });
-  if (!plan.argv) {
-    return {
-      ok: false,
-      reason: "当前系统无法自动安装（未识别的发行版，或没有可用的包管理器）",
-      manualCommand: plan.manualCommand,
-    };
+
+  // ── 执行段：两种策略产出统一的 (exitCode | errorText)，后面共用复核逻辑 ──
+  let exitCode: number | null = null;
+  let errorText = "";
+  if (plan.strategy === "pkg") {
+    if (!plan.argv) {
+      return {
+        ok: false,
+        reason: "当前系统无法自动安装（未识别的发行版，或没有可用的包管理器）",
+        manualCommand: plan.manualCommand,
+      };
+    }
+    log(`[install] argv=${JSON.stringify(plan.argv)}`);
+    onEvent({ phase: "installing", index: 1, total, message: "正在安装系统组件（可能弹出系统授权窗口）…" });
+    const child = spawnFn(plan.argv[0]!, plan.argv.slice(1), {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: prependPathDirs(cleanEnv(), probePathDirs()),
+      windowsHide: true,
+    });
+    let out = "";
+    child.stdout?.on("data", (d) => { out += String(d); });
+    child.stderr?.on("data", (d) => { out += String(d); });
+    const kill = (): void => { try { child.kill("SIGTERM"); } catch { /* 已退出 */ } };
+    if (signal?.aborted) kill(); // 传入时已取消（addEventListener 不会再触发）
+    signal?.addEventListener("abort", kill, { once: true });
+    exitCode = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
+    signal?.removeEventListener("abort", kill);
+    errorText = outputTail(out, 200);
+    log(`[install] exit=${exitCode} tail=${errorText}`);
+  } else {
+    onEvent({ phase: "installing", index: 1, total, message: "正在安装系统保护组件（会弹出系统授权窗口）…" });
+    log("[install] windows installWindowsSandboxAsync");
+    try {
+      await installWin();
+    } catch (e) {
+      errorText = (e as Error).message;
+      exitCode = 1; // 没有退出码，统一按失败处理
+      log(`[install] windows failed: ${errorText}`);
+    }
   }
-
-  log(`[install] argv=${JSON.stringify(plan.argv)}`);
-  onEvent({ phase: "installing", index: 1, total, message: "正在安装系统组件（可能弹出系统授权窗口）…" });
-
-  const child = spawnFn(plan.argv[0]!, plan.argv.slice(1), {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: prependPathDirs(cleanEnv(), probePathDirs()),
-    windowsHide: true,
-  });
-  let out = "";
-  child.stdout?.on("data", (d) => { out += String(d); });
-  child.stderr?.on("data", (d) => { out += String(d); });
-
-  const kill = (): void => { try { child.kill("SIGTERM"); } catch { /* 已退出 */ } };
-  if (signal?.aborted) kill(); // 传入时已取消（addEventListener 不会再触发）
-  signal?.addEventListener("abort", kill, { once: true });
-  const exitCode = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
-  signal?.removeEventListener("abort", kill);
-  log(`[install] exit=${exitCode} tail=${outputTail(out, 200)}`);
 
   onEvent({ phase: "verifying", index: total, total, message: "正在复核…" });
   const report = await probe();
@@ -121,7 +162,8 @@ export async function installDependencies(
     ? "安装已取消"
     : exitCode === 0
       ? `组件已安装，但 ${remaining.join("、")} 仍不可用——多为系统策略拦截，请看下方说明`
-      : `安装未完成（退出码 ${exitCode}）——常见原因：取消了系统授权、当前环境弹不出授权窗口、网络或镜像源不可达`;
+      : `安装未完成（退出码 ${exitCode}）——常见原因：取消了系统授权、当前环境弹不出授权窗口、网络或镜像源不可达`
+        + (errorText ? `。错误信息：${outputTail(errorText, 160)}` : "");
   onEvent({ phase: "failed", index: total, total, message: reason });
   return { ok: false, report, manualCommand: plan.manualCommand, reason, exitCode };
 }
