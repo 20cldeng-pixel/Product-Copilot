@@ -539,12 +539,12 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   display: flex; align-items: center; gap: var(--s2);
   font-weight: 600; font-size: var(--text-base); color: var(--color-text-primary);
   padding: var(--s1) var(--s2); border-radius: var(--radius-lg);
-  /* flex 子项可收缩（默认 min-width:auto 按内容撑开，长名称会把 + 按钮顶出区域） */
+  /* flex 子项可收缩（默认 min-width:auto 按内容撑开，长名称会把右侧菜单按钮顶出区域） */
   min-width: 0;
 }
 /* 项目名称超长处理：自适应宽度（上限 170px）裁剪层 + 滚动层（参照 tab-marquee 模式）
    上限而非固定宽度——短名称时宽度贴内容，hover 高亮块不会被拖成一条长条；
-   上限取 170（而非原来的固定 180）是为左侧图标让位，保证高亮块与「+」按钮之间留出间距 */
+   上限取 170（而非原来的固定 180）是为左侧图标让位，保证高亮块与右侧菜单按钮之间留出间距 */
 .sb-project-name-clip { max-width: 170px; min-width: 0; overflow: hidden; }
 .sb-project-name-inner { display: inline-block; white-space: nowrap; }
 .sb-project-name:hover .sb-project-name-inner { animation: sb-marquee 4s linear infinite; }
@@ -575,17 +575,17 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   transition: color 120ms var(--ease-smooth), transform 120ms var(--ease-smooth);
 }
 .sb-project-switch:hover .sb-project-switch-icon { color: var(--color-text-primary); transform: translateY(1px); }
-.sb-plus-wrap { position: relative; -webkit-app-region: no-drag; }
+.sb-menu-wrap { position: relative; -webkit-app-region: no-drag; }
 /* 项目菜单按钮：无边框图标按钮，与 SessionBar 的归档/新建同一套语言（静默 → hover 高亮）。
    盒 30px（原 26）配 16px 图标，避免图标在盒内显得空 */
-.sb-plus-btn {
+.sb-menu-btn {
   width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
   border-radius: var(--radius-lg); border: none;
   background: transparent; color: var(--color-text-muted);
   transition: all 120ms var(--ease-smooth);
 }
 /* hover 统一中性色(与 SessionBar 归档/新建一致,非绿) */
-.sb-plus-btn:hover { color: var(--color-text-primary); background: var(--color-surface-hover); }
+.sb-menu-btn:hover { color: var(--color-text-primary); background: var(--color-surface-hover); }
 .sb-dropdown {
   position: absolute; top: 100%; left: 0; margin-top: var(--s1);
   /* 宽度贴合菜单文字（原固定 min-width:160px，最长一项「重命名项目」实际只需约 113px，

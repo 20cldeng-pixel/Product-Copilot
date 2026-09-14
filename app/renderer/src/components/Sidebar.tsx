@@ -42,12 +42,12 @@ export function Sidebar({
   const [activeTab, setActiveTab] = useState<SidebarTab>("sessions");
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("tasks");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [plusOpen, setPlusOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [toolboxOpen, setToolboxOpen] = useState(false);
   const [devicePanelOpen, setDevicePanelOpen] = useState(false);
   // 归档恢复后自增,触发 SessionHistory 主列表刷新(受控 sessionRefreshKey 无法直接改)
   const [archivedRefresh, setArchivedRefresh] = useState(0);
-  const plusWrapRef = useRef<HTMLDivElement>(null);
+  const menuWrapRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const segRef = useRef<HTMLDivElement>(null);
 
@@ -87,7 +87,7 @@ export function Sidebar({
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (plusWrapRef.current && !plusWrapRef.current.contains(t)) setPlusOpen(false);
+      if (menuWrapRef.current && !menuWrapRef.current.contains(t)) setMenuOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -173,29 +173,29 @@ export function Sidebar({
             <span className="sb-project-name-inner">{!projectId ? "无工作空间" : (projectDeleted ? projectName + "（已删除）" : projectName)}</span>
           </span>
         </button>
-        <div className="sb-plus-wrap" ref={plusWrapRef}>
-          <button className="sb-plus-btn" onClick={() => setPlusOpen(!plusOpen)}>
+        <div className="sb-menu-wrap" ref={menuWrapRef}>
+          <button className="sb-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>
             {/* 菜单图标（lucide menu）：口径随按钮一起放大到 16px / viewBox 24 / strokeWidth 2 */}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 5h16" /><path d="M4 12h16" /><path d="M4 19h16" />
             </svg>
           </button>
-          {plusOpen && (
+          {menuOpen && (
             <div className="sb-dropdown open">
-              <button className="sb-dropdown-item" onClick={() => { setPlusOpen(false); onNewProject?.(); }}>
+              <button className="sb-dropdown-item" onClick={() => { setMenuOpen(false); onNewProject?.(); }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>
                 新建项目
               </button>
-              <button className="sb-dropdown-item" onClick={() => { setPlusOpen(false); onOpenProject?.(); }}>
+              <button className="sb-dropdown-item" onClick={() => { setMenuOpen(false); onOpenProject?.(); }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                 打开项目
               </button>
-              <button className="sb-dropdown-item" onClick={() => { setPlusOpen(false); onRenameProject?.(); }}>
+              <button className="sb-dropdown-item" onClick={() => { setMenuOpen(false); onRenameProject?.(); }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 11.5V5a2 2 0 0 1 2-2h3.9c.7 0 1.3.3 1.7.9l.8 1.2c.4.6 1 .9 1.7.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9.5"/><path d="M11.378 13.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>
                 重命名项目
               </button>
               <div className="sb-dropdown-div" />
-              <button className="sb-dropdown-item" onClick={() => { setPlusOpen(false); window.electronAPI?.window?.newWindow?.(); }}>
+              <button className="sb-dropdown-item" onClick={() => { setMenuOpen(false); window.electronAPI?.window?.newWindow?.(); }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/></svg>
                 新建窗口
               </button>
