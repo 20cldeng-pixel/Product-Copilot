@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "./ui/Modal";
 
 /**
@@ -9,6 +9,12 @@ import { Modal } from "./ui/Modal";
  *
  * countdown(仅自动触发传入): 弹窗打开即倒计时并在选项①尾部展示剩余秒数,
  * 到 0 调 onExpire(父组件执行 compact + 置空弹窗)。手动触发不传,无倒计时。
+ *
+ * 倒计时为「用户输入让位」(方案②): 用户一旦在下方指令输入框敲入非空内容,即视为已介入,
+ * 立即冻结倒计时——不再走 0、不再触发 onExpire,弹窗保持打开等用户显式选择。
+ * 解决「用户正在写指令时被到点自动压缩抢跑」:onExpire 会直接关弹窗并开始压缩,
+ * 已输入的指令文本连同弹窗一起消失,用户来不及点「是,输入指令」。
+ * 冻结是单向的:清空输入也不恢复倒计时(避免「删空瞬间被自动压缩」);想继续自动压缩就重开弹窗。
  * 用户点任一选项/提交指令/关闭弹窗 → 弹窗卸载 → effect cleanup 清除定时器,不残留。
  */
 export function CompactionDialog({
@@ -33,20 +39,40 @@ export function CompactionDialog({
   // 直接依赖 prop 会把计时反复重置;弹窗每次打开都是全新挂载,卸载即清定时器。
   const [countdownConfig] = useState(countdown);
   const [remaining, setRemaining] = useState(() => (countdown ? countdown.total : 0));
+  // 倒计时是否已被用户输入冻结(方案②):冻结后不展示秒数、也不再触发 onExpire
+  const [frozen, setFrozen] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!countdownConfig) return;
     let left = countdownConfig.total;
-    const timer = window.setInterval(() => {
+    timerRef.current = window.setInterval(() => {
       left -= 1;
       setRemaining(left);
       if (left <= 0) {
-        window.clearInterval(timer);
+        stopTimer();
         countdownConfig.onExpire();
       }
     }, 1000);
-    return () => window.clearInterval(timer);
-  }, [countdownConfig]);
+    return stopTimer;
+  }, [countdownConfig, stopTimer]);
+
+  // 用户开始输入指令 → 立即冻结倒计时:有指令内容就不该被自动压缩抢跑(方案②)。
+  // 放在输入这一侧而非「到 0 时再判断」,是为了同时修掉界面上的假承诺——
+  // 否则打字期间数字仍在一路倒数「N 秒后自动压缩」,与「不会自动压缩」矛盾,反而催用户停手。
+  useEffect(() => {
+    if (!countdownConfig || frozen) return;
+    if (!instructions.trim()) return;
+    stopTimer();
+    setFrozen(true);
+  }, [instructions, countdownConfig, frozen, stopTimer]);
 
   return (
     <Modal tier="modal" overlayClassName="bg-black/40" onClose={onClose}>
@@ -66,8 +92,11 @@ export function CompactionDialog({
           >
             <span className="flex items-center justify-between gap-3">
               <span>是，立即压缩（系统自动总结）</span>
-              {countdownConfig && remaining > 0 && (
+              {countdownConfig && !frozen && remaining > 0 && (
                 <span className="text-text-secondary tabular-nums shrink-0">{remaining} 秒后自动压缩</span>
+              )}
+              {countdownConfig && frozen && (
+                <span className="text-text-muted shrink-0">已暂停自动压缩</span>
               )}
             </span>
           </button>
