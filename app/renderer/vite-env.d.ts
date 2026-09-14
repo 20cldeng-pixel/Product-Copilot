@@ -404,6 +404,10 @@ interface ElectronAPI {
   codegraph: {
     detect: () => Promise<{ found: boolean; version?: string; reason?: "not-found" | "probe-error" }>;
   };
+  sandbox: {
+    /** Linux 系统依赖检测（bwrap/socat/rg）；其余平台恒为 found */
+    detect: () => Promise<{ found: boolean; missing: string[]; blockedReason?: string; reason?: "probe-error" }>;
+  };
   conv: {
     list: (projectPath: string) => Promise<{ sessionId: string; title: string; createdAt: number; updatedAt: number; pinnedAt?: number }[]>;
 	    listDesign: (projectPath: string) => Promise<{ sessionId: string; title: string; createdAt: number; updatedAt: number; pinnedAt?: number }[]>;
@@ -455,6 +459,7 @@ interface ElectronAPI {
       availableModels?: string[]; contextThreshold?: number;
       chatThinkingLevel?: string;
       chatPermissionMode?: "standard" | "full";
+      sandboxDisabled?: boolean;
       chatFontLevel?: number;
       chatFontScale?: number;
       uiFontScale?: number;

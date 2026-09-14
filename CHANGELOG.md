@@ -11,6 +11,11 @@
 
 ## [Unreleased]
 
+### Changed（调整）
+
+- **Linux 装不上沙盒依赖也能用了**：系统保护（沙盒）纳入设置页「环境检测」——缺 `bubblewrap`/`socat`/`ripgrep` 时按发行版给安装命令（Debian/Ubuntu、Fedora/RHEL、Arch），装好点「重新检测」即生效、不用重启；实在装不了可在同一处关闭沙盒运行（仅 Linux；命令不再受系统层限制，EasyMint 自身的路径禁区检查仍生效）
+- **沙盒报错说清了怎么办**：失败提示按发行版给命令、指向设置页的「重新检测」，并点明 Ubuntu 24.04 起最常见的原因是默认禁止 bwrap 创建普通用户命名空间（需补 AppArmor profile）
+
 ## [v0.25.3] — 侧边栏项目区改造 & 权限提示完善
 
 ### Added（新增）

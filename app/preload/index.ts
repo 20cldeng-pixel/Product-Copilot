@@ -65,6 +65,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   codegraph: {
     detect: () => ipcRenderer.invoke("codegraph:detect"),
   },
+  sandbox: {
+    detect: () => ipcRenderer.invoke("sandbox:detect"),
+  },
   conv: {
     list: (projectPath: string) => ipcRenderer.invoke("conv:list", { projectPath }),
     listDesign: (projectPath: string) => ipcRenderer.invoke("conv:listDesign", { projectPath }) as Promise<Array<{ sessionId: string; title: string; createdAt: number; updatedAt: number; pinnedAt?: number; archivedAt?: number }>>,

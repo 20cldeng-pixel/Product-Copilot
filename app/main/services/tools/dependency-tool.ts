@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ToolDefinition } from "../pi-sdk";
 import { getDefineToolFn } from "../pi-sdk";
-import { ensureSandbox, wrapForSandbox } from "../sandbox/manager";
+import { ensureSandbox, wrapForSandbox, isSandboxBypassed } from "../sandbox/manager";
 import { executeForeground } from "../background-shell/tool";
 import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
@@ -69,9 +69,13 @@ export async function createDependencyTool(cwd: string): Promise<ToolDefinition>
       const packages = packageArgs(params.packages);
       const context = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined
         ?? createExecutionContext(cwd, "standard");
+      const command = installCommand(manager, packages, scope, params.dev === true, context.workspaceRealPath);
+      // Linux 兜底：设置里关掉沙盒运行时直接执行（EM 自身策略层仍生效，失去 OS 层纵深防御）
+      if (isSandboxBypassed()) {
+        return executeForeground(command, context.workspaceRealPath, signal, undefined, undefined, true, onUpdate);
+      }
       const initialized = await ensureSandbox(context.workspaceRealPath);
       if (!initialized.ok) throw new Error(`系统保护初始化失败：${initialized.reason}`);
-      const command = installCommand(manager, packages, scope, params.dev === true, context.workspaceRealPath);
       const wrapped = await wrapForSandbox(command, { context });
       const target = wrapped.kind === "argv"
         ? { argv: wrapped.argv, env: wrapped.env }

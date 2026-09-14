@@ -43,6 +43,11 @@ interface Settings {
   chatThinkingLevel?: string;
   /** 全局默认权限模式(仅作为新聊天会话的初始默认,可临时切回) */
   chatPermissionMode?: "standard" | "full";
+  /**
+   * Linux 兜底：关闭沙盒运行（系统依赖 bwrap/socat/rg 装不上时的逃生通道）。
+   * 政策：优先引导安装依赖，实在装不了才用它；仅 Linux 生效，见 sandbox/manager.isSandboxBypassed。
+   */
+  sandboxDisabled?: boolean;
   /** 旧版聊天字号级别(1-6,默认 3;仅兼容读取,新版本用 chatFontScale) */
   chatFontLevel?: number;
   /** 聊天字号缩放系数(0.9-1.3,默认 1):消息内容字号 */
@@ -137,6 +142,7 @@ const EM_DEFAULTS = {
   setupComplete: false,
   defaultProjectDir: "~/EasyMintProject",
   contextThreshold: 75,
+  sandboxDisabled: false,
 };
 
 export class Store {
@@ -208,6 +214,7 @@ export class Store {
       setupComplete: emData.setupComplete as boolean | undefined,
       lastProjectId: emData.lastProjectId as string | undefined,
       contextThreshold: (emData.contextThreshold as number) ?? EM_DEFAULTS.contextThreshold,
+      sandboxDisabled: Boolean(emData.sandboxDisabled),
       chatThinkingLevel: (emData.chatThinkingLevel as string) ?? "medium",
       chatPermissionMode: (emData.chatPermissionMode as "standard" | "full") ?? "standard",
       chatFontLevel: (emData.chatFontLevel as number) ?? 3,
@@ -277,6 +284,7 @@ export class Store {
       Object.assign(data, JSON.parse(fs.readFileSync(this.emSettingsPath, "utf-8")));
     }
     data.defaultProjectDir = settings.defaultProjectDir;
+    data.sandboxDisabled = Boolean(settings.sandboxDisabled);
     data.lastProjectId = settings.lastProjectId;
     data.setupComplete = settings.setupComplete;
     // 同步激活供应商的模型列表到旧字段（ChatPanel 下拉引用）

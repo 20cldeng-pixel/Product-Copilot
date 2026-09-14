@@ -93,6 +93,8 @@ interface SettingsState {
   chatThinkingLevel: string;
   /** 全局默认权限模式(新聊天会话初始默认;输入条可临时切换,切换即更新默认) */
   chatPermissionMode: "standard" | "full";
+  /** Linux 兜底：关闭沙盒运行（系统依赖装不上时的逃生通道，仅 Linux 生效） */
+  sandboxDisabled: boolean;
   /** 聊天字号缩放系数(0.9~1.3,默认 1):控制消息内容(正文/代码/思考/工具折叠)字号 */
   chatFontScale: number;
   /** 界面字号缩放系数(0.9~1.3,默认 1):统一控制 UI 骨架(文件列表/侧边栏/状态栏/设置页/会话列表等)文字 */
@@ -133,6 +135,7 @@ interface SettingsState {
   setContextThreshold: (pct: number) => void;
   setChatThinkingLevel: (level: string) => void;
   setChatPermissionMode: (mode: "standard" | "full") => void;
+  setSandboxDisabled: (disabled: boolean) => void;
   setChatFontScale: (scale: number) => void;
   setUiFontScale: (scale: number) => void;
   setGlowEffect: (v: "orbit" | "slide" | "breathe" | "off") => void;
@@ -166,6 +169,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   contextThreshold: 75,
   chatThinkingLevel: "medium",
   chatPermissionMode: "standard",
+  sandboxDisabled: false,
   chatFontScale: 1,
   uiFontScale: 1,
   glowEffect: "orbit",
@@ -203,6 +207,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setChatPermissionMode: (mode: "standard" | "full") => {
     set({ chatPermissionMode: mode });
     window.electronAPI?.settings?.set?.("chatPermissionMode", mode);
+  },
+  setSandboxDisabled: (disabled: boolean) => {
+    set({ sandboxDisabled: disabled });
+    window.electronAPI?.settings?.set?.("sandboxDisabled", disabled);
   },
   setChatFontScale: (scale: number) => {
     set({ chatFontScale: scale });
@@ -294,6 +302,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           contextThreshold: settings.contextThreshold ?? 75,
           chatThinkingLevel: settings.chatThinkingLevel ?? "medium",
           chatPermissionMode: (settings.chatPermissionMode as "standard" | "full") ?? "standard",
+          sandboxDisabled: Boolean(settings.sandboxDisabled),
           chatFontScale: settings.chatFontScale ?? LEGACY_CHAT_FONT_SCALE[settings.chatFontLevel ?? 3] ?? 1,
           uiFontScale: settings.uiFontScale ?? 1,
           glowEffect: (settings.glowEffect as "orbit" | "slide" | "breathe" | "off") ?? "orbit",

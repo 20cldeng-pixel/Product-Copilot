@@ -12,7 +12,7 @@ import { getCreateBashToolDefinition } from "../pi-sdk";
 import { backgroundShellRegistry, type BackgroundShell, resolveSpawn, findBashOnWindows } from "./registry";
 import { spawn } from "node:child_process";
 import { createCodingAwareDecoder, createAnsiStripper, stripAnsi } from "./encoding";
-import { ensureSandbox, wrapForSandbox, annotateSandboxFailures } from "../sandbox/manager";
+import { ensureSandbox, wrapForSandbox, annotateSandboxFailures, isSandboxBypassed } from "../sandbox/manager";
 import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { maskSecrets } from "../../utils/secret-mask";
@@ -224,7 +224,7 @@ export async function createEnhancedBashTool(
       // 显示/通知用原命令;实际 spawn 用包装命令(含代理 env 前缀)。wrap 失败 = 明确报错(fail-closed)。
       const executionPolicy = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined;
       const context = executionPolicy ?? createExecutionContext(cwd, "standard");
-      const sandboxed = true;
+      const sandboxed = !isSandboxBypassed();
       let execTarget: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> } = command;
       if (sandboxed) {
         const init = await ensureSandbox(cwd);

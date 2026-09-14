@@ -35,6 +35,55 @@ export function sandboxUnavailableReason(): string {
   return _failReason;
 }
 
+/** Linux 沙盒缺失的系统依赖（bwrap/socat/rg 缺任一，srt 都无法初始化） */
+export function missingLinuxSandboxDeps(): string[] {
+  if (process.platform !== "linux") return [];
+  return LINUX_SANDBOX_DEPS.filter((bin) => {
+    try {
+      return spawnSync("which", [bin], { stdio: "ignore" }).status !== 0;
+    } catch {
+      return true;
+    }
+  });
+}
+
+/**
+ * 设置页「环境检测」用：Linux 上系统依赖是否齐备（其余平台无外部依赖，恒为 found）。
+ * 依赖齐但初始化已失败过（典型：Ubuntu 24.04 的 userns/AppArmor 限制）时，
+ * 一并回传失败原因——否则界面会显示「可用」而命令实际跑不了。
+ */
+export function detectSandboxDeps(): { found: boolean; missing: string[]; blockedReason?: string; reason?: "probe-error" } {
+  if (process.platform !== "linux") return { found: true, missing: [] };
+  try {
+    const missing = missingLinuxSandboxDeps();
+    if (missing.length > 0) return { found: false, missing };
+    if (_state === "failed") return { found: false, missing: [], blockedReason: _failReason };
+    return { found: true, missing: [] };
+  } catch {
+    return { found: false, missing: [], reason: "probe-error" };
+  }
+}
+
+/**
+ * 「是否关闭了沙盒运行」的读取器——由主进程启动时接线（读设置文件）。
+ * 用注入的读取函数而不是缓存字段，避免设置改了、缓存没同步这类不一致。
+ */
+let _sandboxDisabledProvider: () => boolean = () => false;
+
+export function setSandboxDisabledProvider(fn: () => boolean): void {
+  _sandboxDisabledProvider = fn;
+}
+
+/**
+ * Linux 兜底通道：系统依赖装不上时允许关掉沙盒运行。
+ * 用户政策：**优先引导安装依赖**，实在装不了才走这里（见设置页「环境检测」）。
+ * 仅 Linux 生效——macOS 用系统 Seatbelt（无外部依赖），Windows 走 srt-sandbox 账户（另有一次性安装）。
+ * 关闭后 EM 自身的策略层（access-policy 路径禁区检查）仍然生效，失去的是 OS 层纵深防御。
+ */
+export function isSandboxBypassed(): boolean {
+  return process.platform === "linux" && _sandboxDisabledProvider();
+}
+
 /**
  * srt filesystem 规则（写 allow-only / 读 deny-then-allow）：
  * - 两模式都禁止直接读取高度敏感凭据、禁止修改系统核心与安全控制面；
@@ -63,17 +112,16 @@ export interface SandboxInitResult {
  */
 async function platformFailureReason(e: Error): Promise<string | null> {
   if (process.platform === "linux") {
-    const missing = LINUX_SANDBOX_DEPS.filter((bin) => {
-      try {
-        return spawnSync("which", [bin], { stdio: "ignore" }).status !== 0;
-      } catch {
-        return true;
-      }
-    });
+    const missing = missingLinuxSandboxDeps();
     if (missing.length > 0) {
-      return `系统保护组件缺失：${missing.join("、")}。请安装后重试（Debian/Ubuntu: sudo apt install bubblewrap socat ripgrep；安装后重启 EasyMint）`;
+      // 三发行版命令 + 指向设置页「重新检测」（不必重启）与兜底开关
+      return `系统保护组件缺失：${missing.join("、")}。装好后到「设置 → 环境检测」点「重新检测」即可生效——`
+        + `Debian/Ubuntu: sudo apt install bubblewrap socat ripgrep；`
+        + `Fedora/RHEL: sudo dnf install bubblewrap socat ripgrep；`
+        + `Arch: sudo pacman -S bubblewrap socat ripgrep。`
+        + `实在装不了可在同一处关闭沙盒运行（不推荐）`;
     }
-    return `沙盒初始化失败（可能是内核 userns 限制，Ubuntu 24.04+ 需允许 unprivileged userns）：${e.message}`;
+    return `沙盒初始化失败（Ubuntu 24.04 起默认禁止 bwrap 创建普通用户命名空间，需补 AppArmor profile，或临时执行 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0）：${e.message}`;
   }
   if (process.platform === "win32") {
     try {

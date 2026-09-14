@@ -8,6 +8,7 @@ import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-
 import { Store } from "./services/store";
 import { broadcast } from "./services/ipc-broadcast";
 import { resetModelRuntime } from "./services/pi-init";
+import { setSandboxDisabledProvider, detectSandboxDeps } from "./services/sandbox/manager";
 import { IMAGE_MIME, resolveHome, nearestExistingDir } from "./utils/paths";
 import { applyDockIcon } from "./utils/dock-icon";
 import { isImagePath } from "../shared/image-files";
@@ -117,6 +118,10 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
     }
     return null;
   };
+
+  // 沙盒「关闭运行」开关的读取器接线：用注入的读取函数而非缓存字段，设置一改即生效
+  // （Linux 兜底通道，见 sandbox/manager.isSandboxBypassed 的政策说明）
+  setSandboxDisabledProvider(() => Boolean(store.getSettings().sandboxDisabled));
 
   // dialog:*
   /**
@@ -527,6 +532,7 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("git:detect", () => detectGit());
   ipcMain.handle("node:detect", () => detectNode());
   ipcMain.handle("codegraph:detect", () => detectCodegraph());
+  ipcMain.handle("sandbox:detect", () => detectSandboxDeps());
 
   // appearance:* — 渲染层上报「当前生效主题」（单一真相源：theme-store 设置 data-theme 的同一处）
   // 主进程据此切换 macOS Dock 图标；其它平台在 applyDockIcon 内安全跳过
