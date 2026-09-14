@@ -196,3 +196,38 @@ describe("行为守卫：该落就落", () => {
     expect(r.read(LOG)).toContain("失败");
   });
 });
+
+describe("打包配置守卫：depends / recommends 不能丢默认项", () => {
+  // electron-builder 对 depends / recommends 都是**替换**语义：给了值就不再补默认。
+  // 本项目曾因此把 9 个 Electron 运行时库全丢掉（自 881e189 起，实测 control 只剩三个沙盒包）。
+  const scheme = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), "node_modules/app-builder-lib/scheme.json"), "utf-8"),
+  ) as { definitions: { DebOptions: { properties: Record<string, { default?: string[] }> } } };
+  const debDefaults = scheme.definitions.DebOptions.properties;
+  const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8")) as {
+    build: { deb: { depends: string[]; recommends: string[]; afterInstall: string } };
+  };
+
+  it("depends 必须包含 electron-builder 的默认 Electron 运行时库", () => {
+    const defaults = debDefaults.depends?.default ?? [];
+    expect(defaults.length).toBeGreaterThan(0); // 上游默认值变了要重新核对这条断言
+    expect(defaults.filter((d) => !pkg.build.deb.depends.includes(d))).toEqual([]);
+  });
+
+  it("recommends 必须包含默认的托盘依赖（本次写成替换语义时差点丢掉）", () => {
+    const defaults = debDefaults.recommends?.default ?? [];
+    expect(defaults.length).toBeGreaterThan(0);
+    expect(defaults.filter((d) => !pkg.build.deb.recommends.includes(d))).toEqual([]);
+  });
+
+  it("沙盒依赖与 AppArmor 模板来源包都在声明里", () => {
+    for (const p of ["bubblewrap", "socat", "ripgrep"]) expect(pkg.build.deb.depends).toContain(p);
+    // apparmor-profiles 提供 bwrap-userns-restrict 模板（Ubuntu 24.04），后置脚本靠它
+    expect(pkg.build.deb.recommends).toContain("apparmor-profiles");
+  });
+
+  it("afterInstall 指向本仓库里真实存在的脚本", () => {
+    expect(pkg.build.deb.afterInstall).toBe("build/linux-after-install.sh");
+    expect(fs.existsSync(path.join(process.cwd(), pkg.build.deb.afterInstall))).toBe(true);
+  });
+});
