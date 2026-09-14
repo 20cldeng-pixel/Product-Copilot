@@ -8,7 +8,7 @@ import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-
 import { Store } from "./services/store";
 import { broadcast } from "./services/ipc-broadcast";
 import { resetModelRuntime } from "./services/pi-init";
-import { IMAGE_MIME, resolveHome } from "./utils/paths";
+import { IMAGE_MIME, resolveHome, nearestExistingDir } from "./utils/paths";
 import { applyDockIcon } from "./utils/dock-icon";
 import { isImagePath } from "../shared/image-files";
 import { z } from "zod";
@@ -119,10 +119,24 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   };
 
   // dialog:*
+  /**
+   * 目录选择器（「打开项目」浏览文件夹 / 新建项目选目录 / 设备传输与迁移选目录共用）：
+   * 默认落在「项目目录」——设置项 defaultProjectDir，默认 ~/EasyMintProject。
+   *
+   * 平台差异（依据 Electron 官方 dialog 文档 + main 进程既有工具）：
+   * - defaultPath 必须是**绝对路径**，`~` 不会被解析 → 走 resolveHome（os.homedir() + path.join；
+   *   Windows 下 HOME 环境变量不可靠，且分隔符由 path.join 给成 `\`）
+   * - defaultPath 指向不存在的目录时官方未定义兜底行为 → 先上溯到最近真实存在的目录；
+   *   项目目录在用户还没建过项目时并不存在（首次创建项目时才 mkdir），不能直接传
+   * - `createDirectory` 仅 macOS 生效（官方标注 macOS 专属）；Windows/Linux 的原生目录选择器
+   *   本身就能新建文件夹，无需额外属性
+   * - Linux 若走 portal 文件选择器且后端版本 < 4，defaultPath 不生效（官方明示限制）
+   */
   ipcMain.handle("dialog:openDirectory", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ["openDirectory", "createDirectory"],
       title: "选择项目目录",
+      defaultPath: nearestExistingDir(store.getSettings().defaultProjectDir),
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
@@ -504,7 +518,7 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("session-cache:write", async (_e, { sessionId, data }) => {
     const previous = readCache(sessionId)?.permissionMode;
     writeCache(sessionId, data);
-    if (previous === "full" && data?.permissionMode === "standard") {
+    if ((previous === "full" || previous === "bypassPermissions") && data?.permissionMode === "standard") {
       await agentService.revokeElevatedExecution(sessionId);
     }
   });
