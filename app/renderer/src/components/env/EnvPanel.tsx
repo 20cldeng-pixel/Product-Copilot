@@ -11,6 +11,26 @@ import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from 
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { useSettingsStore } from "../../stores/settings-store";
 
+/**
+ * 引导步骤的副标题文案。**检查完就不能继续说"正在检查"**（用户明确要求：
+ * 无需依赖时提醒"检查完毕、继续下一步"）。抽成纯函数以便单测各状态。
+ */
+export function onboardingHint(s: {
+  probing: boolean;
+  probeFailed: boolean;
+  hasReport: boolean;
+  brokenCount: number;
+}): string {
+  if (s.probing || (!s.hasReport && !s.probeFailed)) {
+    return "Mint 需要几个系统组件才能安全地执行命令，正在为你检查…";
+  }
+  if (s.probeFailed) return "检查没能完成——可点「重新检测」重试";
+  if (s.brokenCount > 0) {
+    return `检查完毕——有 ${s.brokenCount} 项需要处理，按下面对应的提示装好后即可继续`;
+  }
+  return "检查完毕——运行环境已就绪，点下方「下一步」继续";
+}
+
 /** 面板对外的唯一能力：重新探测（含重置沙盒失败缓存，「装好点一下即生效」靠它）。
  *  宿主把它接到自己的「重新检测」按钮上（组件见 ./EnvRetestButton）。 */
 export interface EnvPanelHandle {
@@ -25,6 +45,7 @@ export function EnvPanel({ variant = "settings", ref }: {
 }): JSX.Element {
   const [report, setReport] = useState<EnvReportShape | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
+  const [probing, setProbing] = useState(false);
   const [progress, setProgress] = useState<EnvProgressShape | null>(null);
   const [installing, setInstalling] = useState(false);
   const [result, setResult] = useState<EnvInstallResultShape | null>(null);
@@ -35,11 +56,14 @@ export function EnvPanel({ variant = "settings", ref }: {
   const refresh = useCallback(async (reset = true): Promise<void> => {
     setResult(null);
     setProbeFailed(false);
+    setProbing(true); // 探测在飞时不要把上一次的结论当现状显示（尤其"正在检查"与"检查完毕"）
     try {
       const r = await (reset ? window.electronAPI.env.retest() : window.electronAPI.env.probe());
       setReport(r);
     } catch {
       setProbeFailed(true); // 探测失败 ≠ 没装（文案必须区分开）
+    } finally {
+      setProbing(false);
     }
   }, []);
 
@@ -153,7 +177,7 @@ export function EnvPanel({ variant = "settings", ref }: {
         <>
           <h1 className="text-xl font-semibold text-center mb-1">准备运行环境</h1>
           <p className="text-text-secondary text-center text-sm mb-6">
-            Mint 需要几个系统组件才能安全地执行命令，正在为你检查…
+            {onboardingHint({ probing, probeFailed, hasReport: report !== null, brokenCount: broken.length })}
           </p>
         </>
       )}

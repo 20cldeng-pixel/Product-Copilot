@@ -32,7 +32,7 @@ vi.mock("../../stores/settings-store", () => {
 vi.mock("../ui/ConfirmDialog", () => ({ confirmDialog: async (): Promise<boolean> => true }));
 
 const { GeneralTab } = await import("./GeneralTab");
-const { EnvPanel } = await import("../env/EnvPanel");
+const { EnvPanel, onboardingHint } = await import("../env/EnvPanel");
 const { EnvRetestButton } = await import("../env/EnvRetestButton");
 
 const countOf = (html: string, needle: string): number => html.split(needle).length - 1;
@@ -68,5 +68,35 @@ describe("「重新检测」全项目只有一处", () => {
     const el = EnvRetestButton({ panel: { current: { retest } } }) as unknown as { props: { onClick: () => void } };
     el.props.onClick();
     expect(retest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("引导步骤副标题：检查完就不再说「正在检查」", () => {
+  const hint = onboardingHint;
+
+  it("探测进行中（含首帧还没拿到结果）→ 说正在检查", () => {
+    expect(hint({ probing: true, probeFailed: false, hasReport: false, brokenCount: 0 })).toContain("正在为你检查");
+    expect(hint({ probing: false, probeFailed: false, hasReport: false, brokenCount: 0 })).toContain("正在为你检查");
+  });
+
+  it("无需依赖 → 提醒检查完毕 + 继续下一步，且**不再出现「正在为你检查」**", () => {
+    const t = hint({ probing: false, probeFailed: false, hasReport: true, brokenCount: 0 });
+    expect(t).toContain("检查完毕");
+    expect(t).toContain("下一步");
+    expect(t).not.toContain("正在为你检查");
+  });
+
+  it("有依赖要装 → 说清有几项需要处理，同样不再说「正在检查」", () => {
+    const t = hint({ probing: false, probeFailed: false, hasReport: true, brokenCount: 2 });
+    expect(t).toContain("检查完毕");
+    expect(t).toContain("2 项");
+    expect(t).not.toContain("正在为你检查");
+  });
+
+  it("探测失败 → 不谎报「检查完毕」（那是「检测失败」，不是「没问题」）", () => {
+    const t = hint({ probing: false, probeFailed: true, hasReport: false, brokenCount: 0 });
+    expect(t).toContain("检查没能完成");
+    expect(t).not.toContain("检查完毕");
+    expect(t).not.toContain("正在为你检查");
   });
 });
