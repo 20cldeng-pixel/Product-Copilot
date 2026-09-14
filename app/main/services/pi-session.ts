@@ -19,6 +19,7 @@ import {
   getCreateExtraBuiltinTools,
 } from "./pi-sdk";
 import { createEnhancedBashTool, createStopShellTool } from "./background-shell/tool";
+import { createEnhancedPowerShellTool } from "./background-shell/powershell-tool";
 import { createEnhancedEditTool } from "./enhanced-edit";
 import { createEnhancedReadTool } from "./enhanced-read";
 import type { BackgroundShell } from "./background-shell/registry";
@@ -96,8 +97,8 @@ async function buildSession(
     createGrepToolDefinition,
     createFindToolDefinition,
     createLsToolDefinition,
-    createPowerShellToolDefinition,
   } = await getCreateExtraBuiltinTools();
+  const enhancedPowerShell = process.platform === "win32" ? await createEnhancedPowerShellTool(opts.cwd) : undefined;
   // 统一权限包装：extraTools 与基础 coding 工具、额外内置工具全部生效
   const wrapAll = (tools: ToolDefinition[]): ToolDefinition[] =>
     opts.canUseTool ? tools.map((t) => wrapToolWithPermission(t, { canUseTool: opts.canUseTool })) : tools;
@@ -112,7 +113,7 @@ async function buildSession(
       createGrepToolDefinition(opts.cwd),
       createFindToolDefinition(opts.cwd),
       createLsToolDefinition(opts.cwd),
-      ...(process.platform === "win32" ? [createPowerShellToolDefinition(opts.cwd)] : []),
+      ...(enhancedPowerShell ? [enhancedPowerShell] : []),
     ]),
   ];
 

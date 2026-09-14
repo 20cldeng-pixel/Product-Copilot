@@ -22,17 +22,20 @@ import { createAgentTemplateTool } from "./task/tool";
 import { createSkillTool, createManageSkillTool } from "./tools/skill-tool";
 import { createLearnTool, createSearchExperiencesTool } from "./tools/learn-tool";
 import { createRetireExperiencesTool } from "./tools/experience-tool";
+import { createEnvironmentTool } from "./tools/environment-tool";
+import { createDependencyTool } from "./tools/dependency-tool";
 import { evaluateLearnGate, isFixTool } from "./learn-gate";
 import { searchExperiences, buildExperienceInjection, shortId } from "./experience-service";
 import { createImportTools } from "./import-tools";
-import { registerSessionIdMapping, abortTask, getRunningSummary, getRunningDelegations, resolveParentSessionId } from "./task/registry";
+import { registerSessionIdMapping, abortDelegations, abortTask, getRunningSummary, getRunningDelegations, resolveParentSessionId } from "./task/registry";
 import type { TaskStatus } from "./task/types";
 import { formatShellResult } from "./background-shell/tool";
 import { backgroundShellRegistry, type BackgroundShell } from "./background-shell/registry";
 import { systemMessage, SYSTEM_MESSAGE_LABELS, compactionCardFields, type SystemMessageKind, type SystemMessagePayload } from "../../shared/prompts";
 import { normalizeApiError } from "../../shared/api-errors";
 import { createProductTools } from "./builtin-mcp";
-import { loadMcpTools } from "./permission/mcp-adapter";
+import { closeMcpContexts, loadMcpTools } from "./permission/mcp-adapter";
+import { revokeWindowsExecutionOwners } from "./sandbox/windows-execution-manager";
 import { permissionService } from "./permission/agent-permission-service";
 import type { CanUseToolOptions, PermissionResult } from "./permission/agent-permission-service";
 import {
@@ -710,7 +713,13 @@ export class AgentService {
         onTaskCompleted: (sid, text) => this.injectSystemMessage(sid, text, "delegation"),
       });
       const productTools = await createProductTools(projectPath);
-      const mcpTools = await loadMcpTools(projectPath);
+      // 本地 MCP 长驻进程按「项目 + 当前权限模式」隔离；模式切换后的下一次调用会使用
+      // 对应的新连接，不能继续复用旧模式进程。
+      const mcpTools = await loadMcpTools(projectPath, () => {
+        const sid = resolveParentSessionId(sessionId);
+        const raw = readCache(sid)?.permissionMode;
+        return raw === "full" || raw === "bypassPermissions" ? "full" : "standard";
+      }, sessionId);
       const agentTemplateTool = await createAgentTemplateTool();
       const stopAgentTool = await createStopAgentTool(sessionId);
       const listAgentsTool = await createListAgentsTool(sessionId);
@@ -725,6 +734,8 @@ export class AgentService {
       }));
       // ask_user 仅主会话装——worker（runWorker，无前端卡片）调用挂起交互工具会永久挂起（无 UI 可响应）
       if (!opts?.worker) {
+        allTools.push(await createDependencyTool(projectPath));
+        allTools.push(await createEnvironmentTool(projectPath));
         allTools.push(await createAskUserTool(sessionId));
         // 待办（todo_write）：进度条在 ChatPanel，worker 无 UI 不装
         const { createTodoWriteTool } = await import("./tools/todo-tool");
@@ -781,7 +792,7 @@ export class AgentService {
     if (profile) parts.push(profile);
 
     // 权限边界（两模式 + 绝对禁区）——提前告知模型边界与「被拒后如何应对」，
-    // 减少无谓的越界尝试；工具被拒时错误消息会带具体原因（见 permission-rules）
+    // 减少无谓的越界尝试；工具被拒时错误消息会带统一策略的规则、目标和阶段
     parts.push(PERMISSION_RULES_PROMPT);
 
     // 历史经验注入（learn 开关开启 且**本会话真的装了经验工具**时）：项目级优先 + 使用次数排序，
@@ -1090,6 +1101,23 @@ export class AgentService {
     if (opts?.rewind) await this.rewindIfNoOutput(chat);
   }
 
+  /** 从完全访问降级时撤销所有仍在运行的旧权限执行上下文。 */
+  async revokeElevatedExecution(sessionId: string): Promise<void> {
+    const parentId = resolveParentSessionId(sessionId);
+    const chat = this.findActiveChat(sessionId);
+    const ids = [...new Set([
+      sessionId,
+      parentId,
+      chat?.sessionId,
+      chat?.tempSessionId,
+    ].filter((id): id is string => !!id))];
+    for (const id of ids) backgroundShellRegistry.stopBySession(id);
+    abortDelegations(parentId, "user");
+    await closeMcpContexts(ids);
+    if (chat && chat.status !== "idle") await this.abort(chat.chatId);
+    await revokeWindowsExecutionOwners(ids);
+  }
+
   /** 打断撤回：仅当本轮没有产出可见内容时，把会话分支退回本轮起点（那条消息退出上下文）。
    *  会话文件是 append-only 树：废弃分支留在文件里，但不再进上下文（历史读取按当前分支）。
    *  有产出 / 无起点 / 出错 → 不动会话（用户已看到内容，退回会丢掉它）。 */
@@ -1203,7 +1231,12 @@ export class AgentService {
     // 前端在发首条消息前切的模式写的是 __new_xxx 临时缓存，主进程的 sessionId 是 randomUUID，
     // 读不到 → 新会话首条消息前切的「完全访问」会被忽略（一直按标准跑）。随发送落盘修正。
     if (permissionMode) {
+      const cacheId = resumeSessionId ?? newSessionId;
+      const previousMode = readCache(cacheId)?.permissionMode;
       writeCache(resumeSessionId ?? newSessionId, { permissionMode });
+      if (previousMode === "full" && permissionMode !== "full" && permissionMode !== "bypassPermissions") {
+        await this.revokeElevatedExecution(cacheId);
+      }
     }
 
     // 新建与恢复会话统一注入工具（历史实现恢复分支留空 → 恢复会话无 task/产品工具、无权限控制）
@@ -2154,4 +2187,3 @@ let _mainWindow: BrowserWindow | null = null;
 export function setMainWindow(win?: BrowserWindow): void {
   if (win) _mainWindow = win;
 }
-

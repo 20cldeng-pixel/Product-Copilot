@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
 import { ProvidersManager } from "./ProviderSettings";
 import { Select } from "../Select";
+import { confirmFullAccess } from "../permission-confirmation";
 
 // ── Chat Thinking Level Section ───────────────────────────────────────────────
 
@@ -41,6 +42,11 @@ function ChatThinkingLevelSection(): JSX.Element {
 function ChatPermissionModeSection(): JSX.Element {
   const chatPermissionMode = useSettingsStore((s) => s.chatPermissionMode);
   const setChatPermissionMode = useSettingsStore((s) => s.setChatPermissionMode);
+  const handleChange = async (value: string): Promise<void> => {
+    const mode = value as "standard" | "full";
+    if (mode === "full" && chatPermissionMode !== "full" && !(await confirmFullAccess())) return;
+    setChatPermissionMode(mode);
+  };
 
   return (
     <section>
@@ -49,13 +55,13 @@ function ChatPermissionModeSection(): JSX.Element {
         <Select
           block
           value={chatPermissionMode}
-          onChange={(v) => setChatPermissionMode(v as "standard" | "full")}
+          onChange={(v) => { void handleChange(v); }}
           options={[
-            { value: "standard", label: "标准（仅项目内）" },
-            { value: "full", label: "完全访问（项目外可读写）" },
+            { value: "standard", label: "标准（工作区与专属开发环境）" },
+            { value: "full", label: "完全访问（普通文件无限制）" },
           ]}
         />
-        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">新聊天会话的初始权限模式；完全访问可读写项目外文件，但系统敏感位置始终禁止。输入条开关可随时切换并同步此默认。</p>
+        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">完全访问不限制普通文件读写；从标准模式切换时会先说明风险。系统核心、凭据和 EasyMint 安全配置始终受保护。</p>
       </div>
     </section>
   );

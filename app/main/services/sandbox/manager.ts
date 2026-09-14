@@ -1,20 +1,17 @@
 /**
- * sandbox-manager — srt（@anthropic-ai/sandbox-runtime）单例封装。
+ * system-protection manager — 基于 srt（@anthropic-ai/sandbox-runtime）的底层系统保护。
  *
  * - 懒加载：首次需要时 initialize（起代理 + 平台探测）；失败记不可用原因，
  *   权限层对「判不了」命令按 fail-closed 退回拒绝（沙盒不可用不静默放行）。
- * - 规则单一来源：filesystem denyRead 从 EM 凭据/用户目录禁区常量生成（见 buildSandboxConfig）。
+ * - 规则单一来源：两模式均由 access-policy 编译，每次执行传入工作区与模式。
  * - srt 是 ESM-only 包，Electron 主进程 CJS 用动态 import 加载（对齐 pi-sdk wrapper 模式）。
  */
 
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
-import { homedir } from "node:os";
-import path from "node:path";
 import { spawnSync } from "node:child_process";
-import {
-  SECRET_FORBIDDEN,
-  USER_FORBIDDEN_WRITE,
-} from "../permission/permission-rules";
+import { buildExecutionPolicy, type PermissionMode } from "../permission/access-policy";
+import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
+import { wrapWithWindowsWorker } from "./windows-execution-manager";
 
 /** Linux 沙盒系统依赖（EM 不代做系统安装——缺失时给安装指引，装好前自动降级） */
 const LINUX_SANDBOX_DEPS = ["bwrap", "socat", "rg"] as const;
@@ -38,44 +35,19 @@ export function sandboxUnavailableReason(): string {
   return _failReason;
 }
 
-/** 展开 ~ 前缀为绝对路径（srt 支持 ~，但展开后与 EM 常量语义一致、少一层解析） */
-function expandHome(p: string): string {
-  if (p === "~") return homedir();
-  if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
-  return p;
-}
-
 /**
  * srt filesystem 规则（写 allow-only / 读 deny-then-allow）：
- * - denyRead：凭据目录 + 用户文档目录（防沙盒内命令读私密文件外传）；
- *   系统目录不禁读（沙盒内进程需读系统库/可执行文件才能运行）
- * - allowRead：deny 区域内重放行工作区（cwd 建在用户目录内时开发不受阻）
- * - allowWrite：仅工作区
+ * - 两模式都禁止直接读取高度敏感凭据、禁止修改系统核心与安全控制面；
+ * - 标准模式可写工作区与正式开发资源，完全访问可写其余普通位置；
+ * - 工作区不能覆盖核心 deny。
  * 网络（实测修正 2026-09-06）：srt 的 allowedDomains 语义 = 域名限制档——mac/Windows 运行时模式
  *   下需宿主自带 HTTP/SOCKS 代理（Claude Code 集成层有，EM 无）才放行，配置即全 deny（出网也死）。
  *   用空对象 network:{} → 不触发限制档 → macOS seatbelt `allow network*` 出网放行；
  *   回环出站/bind 仍被隔离（allowLocalBinding=false 的 deny 规则独立生效，实测 curl/node 连 127.0.0.1 均 deny）。
  *   Linux 有 srt 内置 bridge（initializeLinuxNetworkBridge）保留 allowedDomains 档；Windows 待实测。
  */
-export function buildSandboxConfig(cwd: string): SandboxRuntimeConfig {
-  const denyRead = [
-    ...SECRET_FORBIDDEN,
-    ...USER_FORBIDDEN_WRITE.filter((p) => !p.includes("%")), // Windows 占位符形态 macOS/Linux 无效
-  ].map(expandHome);
-  // denyRead 内重放行工作区（如项目建在 ~/Documents 下）
-  const allowRead = [cwd];
-  return {
-    // darwin：allowedDomains 置 undefined 使 srt hasNetworkConfig=false（类型必填，运行时判 undefined）——见头注释
-    network: (process.platform === "darwin"
-      ? { allowedDomains: undefined, deniedDomains: [] }
-      : { allowedDomains: ["*"], deniedDomains: [] }) as unknown as SandboxRuntimeConfig["network"],
-    filesystem: {
-      denyRead,
-      allowRead,
-      allowWrite: [cwd],
-      denyWrite: [],
-    },
-  };
+export function buildSandboxConfig(cwd: string, mode: PermissionMode = "standard"): SandboxRuntimeConfig {
+  return buildExecutionPolicy(createExecutionContext(cwd, mode));
 }
 
 export interface SandboxInitResult {
@@ -99,7 +71,7 @@ async function platformFailureReason(e: Error): Promise<string | null> {
       }
     });
     if (missing.length > 0) {
-      return `沙盒依赖缺失：${missing.join("、")}。请安装后重试（Debian/Ubuntu: sudo apt install bubblewrap socat ripgrep；安装后重启 EasyMint；装好前网络类命令需切「完全访问」）`;
+      return `系统保护组件缺失：${missing.join("、")}。请安装后重试（Debian/Ubuntu: sudo apt install bubblewrap socat ripgrep；安装后重启 EasyMint）`;
     }
     return `沙盒初始化失败（可能是内核 userns 限制，Ubuntu 24.04+ 需允许 unprivileged userns）：${e.message}`;
   }
@@ -107,9 +79,9 @@ async function platformFailureReason(e: Error): Promise<string | null> {
     try {
       const srt = await getSrt();
       const st = await srt.checkWindowsSandboxStatusAsync();
-      const userOk = String(st?.user ?? "").includes("installed");
+      const userOk = Boolean(st?.user?.provisioned && st.user.credPresent);
       if (!userOk) {
-        return `Windows 沙盒组件未安装（需一次性管理员安装，将弹出 UAC 授权）——安装指引见文档；装好前网络类命令需切「完全访问」`;
+        return `Windows 系统保护组件未安装（需一次性管理员安装，将弹出 UAC 授权）——安装指引见文档`;
       }
     } catch { /* 状态探测失败按通用错误处理 */ }
     return `Windows 沙盒初始化失败（可能是 WFP 过滤未生效）：${e.message}`;
@@ -138,6 +110,16 @@ export async function ensureSandbox(cwd: string): Promise<SandboxInitResult> {
   if (_state === "failed") return { ok: false, reason: _failReason };
   try {
     const srt = await getSrt();
+    // srt-win 的文件允许项在 initialize 时写入 ACL。初始化必须在按会话隔离的
+    // worker 内完成，主进程这里只检查系统组件，绝不能初始化共享实例。
+    if (process.platform === "win32") {
+      const status = await srt.checkWindowsSandboxStatusAsync();
+      if (!status.user.provisioned || !status.user.credPresent) {
+        throw new Error("Windows 系统保护组件未安装");
+      }
+      _state = "ok";
+      return { ok: true };
+    }
     await srt.SandboxManager.initialize(await applyWindowsConfig(buildSandboxConfig(cwd)));
     _state = "ok";
     return { ok: true };
@@ -166,24 +148,59 @@ export async function ensureSandbox(cwd: string): Promise<SandboxInitResult> {
 /** 沙盒执行规格——执行层按 kind 选择 spawn 方式 */
 export type SandboxSpawnSpec =
   /** darwin/linux：wrapWithSandbox 返回 shell 字符串，走 resolveSpawn 原路径（shell:true / Git Bash -c） */
-  | { kind: "shell"; command: string }
+  | { kind: "shell"; command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> }
   /** win32：srt 不支持 shell 字符串包装（srt-win 两跳），必须 argv + shell:false + 注入 env */
-  | { kind: "argv"; argv: string[]; env: NodeJS.ProcessEnv };
+  | { kind: "argv"; argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> };
 
 /**
  * 包装命令为沙盒执行规格（调用前须 ensureSandbox ok；失败抛错由调用方转报错文本）。
  * Windows 分支：wrapWithSandboxArgv + Git Bash 绝对路径（EM Windows bash 统一走 Git Bash，
  * 与 resolveSpawn 的 findBashOnWindows 一致——gitBashPath 由调用方传入避免重复探测）。
  */
-export async function wrapForSandbox(command: string, opts?: { gitBashPath?: string }): Promise<SandboxSpawnSpec> {
+export async function wrapForSandbox(
+  command: string,
+  opts: { context: ExecutionContext; gitBashPath?: string; windowsShell?: "bash" | "powershell" },
+): Promise<SandboxSpawnSpec> {
   const srt = await getSrt();
+  const context = opts.context;
   if (process.platform === "win32") {
-    const exe = opts?.gitBashPath;
-    if (!exe) throw new Error("Windows 沙盒需要 Git Bash 绝对路径（gitBashPath）");
-    const wrapped = await srt.SandboxManager.wrapWithSandboxArgv(command, { exe, args: ["-c"] });
-    return { kind: "argv", argv: wrapped.argv, env: wrapped.env };
+    const wrapped = await wrapWithWindowsWorker(command, context, opts.gitBashPath, opts.windowsShell);
+    return { kind: "argv", ...wrapped };
   }
-  return { kind: "shell", command: await srt.SandboxManager.wrapWithSandbox(command) };
+  const policy = buildExecutionPolicy(context);
+  // srt 会在外层把 TMPDIR 设为自己的 scratch 目录。标准模式在最内层恢复运行区变量，
+  // 让遵循 HOME/TMP/XDG 约定的开发工具稳定写入项目运行区；真正边界仍由 policy 强制。
+  const effectiveCommand = context.mode === "standard"
+    ? `${runtimeEnvironmentPrefix(context.environment)} ${command}`
+    : command;
+  return {
+    kind: "shell",
+    command: await srt.SandboxManager.wrapWithSandbox(effectiveCommand, undefined, policy),
+    env: context.environment,
+  };
+}
+
+function runtimeEnvironmentPrefix(environment: NodeJS.ProcessEnv): string {
+  const names = [
+    "HOME", "USERPROFILE", "TMPDIR", "TMP", "TEMP",
+    "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME",
+    "NPM_CONFIG_PREFIX", "NPM_CONFIG_CACHE", "npm_config_cache", "COREPACK_HOME",
+    "npm_config_prefix", "npm_config_global_prefix", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig",
+    "npm_config_globalconfig", "PNPM_HOME", "YARN_CACHE_FOLDER", "BUN_INSTALL", "BUN_INSTALL_CACHE_DIR",
+    "PIP_CACHE_DIR", "UV_CACHE_DIR", "PYTHONUSERBASE", "GRADLE_USER_HOME", "MAVEN_OPTS",
+    "CARGO_HOME", "GOPATH", "GOMODCACHE", "GOBIN", "PUB_CACHE", "DENO_DIR", "DOTNET_CLI_HOME",
+    "NUGET_PACKAGES", "COMPOSER_HOME", "COMPOSER_CACHE_DIR", "CCACHE_DIR",
+    "PWD", "INIT_CWD", "EASYMINT_WORKSPACE", "EASYMINT_RUNTIME",
+  ];
+  const assignments = names.flatMap((name) => {
+    const value = environment[name];
+    return value === undefined ? [] : [`${name}=${shellLiteral(value)}`];
+  });
+  return assignments.length > 0 ? `export ${assignments.join(" ")};` : "";
+}
+
+function shellLiteral(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 /** 违规归因：把沙盒拦截事件注解进 stderr（Operation not permitted → 大白话违规说明） */
@@ -197,8 +214,9 @@ export function annotateSandboxFailures(wrappedCommand: string, stderr: string):
   }
 }
 
-/** 仅供测试/重置（会话切换 cwd 变化时沙盒规则理论上应重建——srt 单进程单配置，cwd 用首个工作区） */
-export function resetSandboxForTest(): void {
+/** 仅供测试：释放代理、监控器和全局状态。生产按每次 wrap 的策略隔离工作区。 */
+export async function resetSandboxForTest(): Promise<void> {
+  if (_srt) await _srt.SandboxManager.reset();
   _state = "untouched";
   _failReason = "";
 }

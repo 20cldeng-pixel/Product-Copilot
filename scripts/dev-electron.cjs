@@ -9,7 +9,7 @@
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 const esbuild = require("esbuild");
-const { mainOptions, preloadOptions } = require("./build.cjs");
+const { mainOptions, preloadOptions, windowsSandboxWorkerOptions } = require("./build.cjs");
 
 const root = path.join(__dirname, "..");
 const node = process.execPath;
@@ -20,6 +20,7 @@ async function main() {
   await Promise.all([
     esbuild.build(mainOptions({ logLevel: "info" })),
     esbuild.build(preloadOptions({ logLevel: "info" })),
+    esbuild.build(windowsSandboxWorkerOptions({ logLevel: "info" })),
   ]);
 
   // ── 3. 启动 electron(cli.js 内部解析真实二进制并 spawn) ──

@@ -5,8 +5,7 @@
  * ① override 纯替换：Mint 身份在、Pi 默认身份句不在——若有人改回「并存」或拼入 Pi 身份句即红
  * ② [系统消息] 前缀协议：systemMessage() 产物必须带前缀——Pi convertToLlm 按 user 透传 content，
  *    模型侧看不到 customType，识别全靠前缀（prompts.ts 注释自述的脆弱点）
- * ③ PERMISSION_RULES_PROMPT 与 permission-rules.ts 措辞同步：prompt 段列出的禁区项必须都在常量里、
- *    关键项双向一致——常量或 prompt 任一侧改动未同步即红（注释「需同步维护」的机械化）
+ * ③ PERMISSION_RULES_PROMPT 锚定两模式与运行时边界的产品语义。
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -18,11 +17,6 @@ import {
   buildFeatureRecommendPrompt,
 } from "../../shared/prompts";
 import { PERMISSION_RULES_PROMPT } from "./prompt-sections";
-import {
-  SECRET_FORBIDDEN,
-  SYSTEM_FORBIDDEN,
-  USER_FORBIDDEN_WRITE,
-} from "./permission/permission-rules";
 
 const ALL_KINDS: SystemMessageKind[] = [
   "delegation",
@@ -76,28 +70,19 @@ describe("[系统消息] 前缀协议", () => {
   });
 });
 
-describe("权限段与规则常量同步（双维护锚定）", () => {
-  it("凭据禁区：prompt 段列出的每项都在 SECRET_FORBIDDEN 常量中", () => {
-    for (const item of ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker", "~/.npmrc", "~/Library/Keychains"]) {
-      expect(PERMISSION_RULES_PROMPT).toContain(item);
-      expect(SECRET_FORBIDDEN).toContain(item);
+describe("权限段产品语义", () => {
+  it("两种模式、共同核心底线与运行时执行均有说明", () => {
+    for (const phrase of ["标准模式", "完全访问", "系统核心", "高度敏感凭据", "运行时安全边界", "不要尝试绕过"]) {
+      expect(PERMISSION_RULES_PROMPT).toContain(phrase);
     }
   });
-  it("系统核心目录：prompt 段 macOS 代表项 ⊆ SYSTEM_FORBIDDEN", () => {
-    for (const item of ["/etc", "/usr", "/System", "/var"]) {
-      expect(PERMISSION_RULES_PROMPT).toContain(item);
-      expect(SYSTEM_FORBIDDEN).toContain(item);
+  it("完全访问明确包含普通用户目录，标准模式明确包含开发资源", () => {
+    for (const phrase of ["桌面", "文档", "下载", "依赖缓存", "工具链", "SDK", "临时目录"]) {
+      expect(PERMISSION_RULES_PROMPT).toContain(phrase);
     }
   });
-  it("用户目录禁写：prompt 段代表项 ⊆ USER_FORBIDDEN_WRITE", () => {
-    for (const item of ["~/Desktop", "~/Documents", "~/Downloads", "~/Library"]) {
-      expect(PERMISSION_RULES_PROMPT).toContain(item);
-      expect(USER_FORBIDDEN_WRITE).toContain(item);
-    }
-  });
-  it("两模式关键措辞存在（Mint 依被拒错误文案应对）", () => {
-    expect(PERMISSION_RULES_PROMPT).toContain("标准模式");
-    expect(PERMISSION_RULES_PROMPT).toContain("完全访问");
-    expect(PERMISSION_RULES_PROMPT).toContain("不要尝试绕过");
+  it("不再把 /tmp 或普通用户目录描述为绝对禁区", () => {
+    expect(PERMISSION_RULES_PROMPT).not.toContain("/tmp");
+    expect(PERMISSION_RULES_PROMPT).not.toContain("用户目录写入");
   });
 });

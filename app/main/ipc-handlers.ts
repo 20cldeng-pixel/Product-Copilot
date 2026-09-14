@@ -14,6 +14,7 @@ import { isImagePath } from "../shared/image-files";
 import { z } from "zod";
 import { guard, expectPayload, pathString, nonEmptyString } from "./ipc-validation";
 import { execShell } from "./services/shell-service";
+import { pathHitsAny, protectedCredentialPaths } from "./services/permission/access-policy";
 import { backgroundShellRegistry } from "./services/background-shell/registry";
 import { getRunningSummary } from "./services/task/registry";
 import { closeProjectWindows } from "./services/window-manager";
@@ -500,7 +501,13 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("pin:get", (_e, { sessionId }) => getPins(sessionId));
   ipcMain.handle("pin:set", (_e, { sessionId, pins }) => { setPins(sessionId, pins); });
   ipcMain.handle("session-cache:read", (_e, { sessionId }) => readCache(sessionId));
-  ipcMain.handle("session-cache:write", (_e, { sessionId, data }) => { writeCache(sessionId, data); });
+  ipcMain.handle("session-cache:write", async (_e, { sessionId, data }) => {
+    const previous = readCache(sessionId)?.permissionMode;
+    writeCache(sessionId, data);
+    if (previous === "full" && data?.permissionMode === "standard") {
+      await agentService.revokeElevatedExecution(sessionId);
+    }
+  });
   ipcMain.handle("session-cache:delete", (_e, { sessionId }) => { deleteCache(sessionId); });
 
   ipcMain.handle("git:detect", () => detectGit());
@@ -674,6 +681,7 @@ const filePath = p.join(projectPath, "task.json");
     // 保底是另外三重校验——扩展名白名单、必须存在且是普通文件、体积上限。
     if (!isImagePath(data.filePath)) return null;
     const abs = p.resolve(resolveHome(data.filePath));
+    if (pathHitsAny(abs, protectedCredentialPaths(), process.cwd())) return null;
     // 一次 stat 同时排掉「不存在」与「目录误标成 .png」两种情况（readFileSync 读目录会直接抛）
     const stat = fs.statSync(abs, { throwIfNoEntry: false });
     if (!stat?.isFile() || stat.size > MAX_IMAGE_BYTES) return null;
@@ -683,7 +691,7 @@ const filePath = p.join(projectPath, "task.json");
   }));
 
   // shell:exec — run a shell command in project directory, stream output。
-  // 命令内容经 shell-service 禁区检查(1.6);参数这里做类型/空值校验(1.7)
+  // 命令由 shell-service 统一放入标准模式 OS 沙盒；参数这里做类型/空值校验。
   ipcMain.handle("shell:exec", async (event, payload: unknown) => {
     const { projectPath, command } = expectPayload(
       z.object({ projectPath: pathString, command: z.string().min(1) }).loose(),

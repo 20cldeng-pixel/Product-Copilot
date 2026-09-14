@@ -6,7 +6,7 @@
  * 各维护一份 external 清单：xlsx→exceljs 替换时只改了生产那份，dev 产物把
  * zod/exceljs 整包打进去（2.4MB vs 884KB）。清单只此一份、两处引用，杜绝漂移。
  *
- * 用法：node scripts/build.cjs <main|preload>
+ * 用法：node scripts/build.cjs <main|preload>；main 同时生成 Windows 沙盒 worker。
  */
 const path = require("node:path");
 const esbuild = require("esbuild");
@@ -60,13 +60,32 @@ function preloadOptions(overrides = {}) {
   };
 }
 
-module.exports = { EXTERNALS, mainOptions, preloadOptions };
+function windowsSandboxWorkerOptions(overrides = {}) {
+  return {
+    entryPoints: [path.join(ROOT, "app/main/services/sandbox/windows-sandbox-worker.ts")],
+    bundle: true, platform: "node", format: "cjs",
+    outfile: path.join(ROOT, "app/main/dist/windows-sandbox-worker.cjs"),
+    external: EXTERNALS,
+    ...overrides,
+  };
+}
+
+module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerOptions };
 
 // ── CLI：node scripts/build.cjs <main|preload> ──
 if (require.main === module) {
   const target = process.argv[2];
   let options = null;
-  if (target === "main") options = mainOptions({ logLevel: "info" });
+  if (target === "main") {
+    Promise.all([
+      esbuild.build(mainOptions({ logLevel: "info" })),
+      esbuild.build(windowsSandboxWorkerOptions({ logLevel: "info" })),
+    ]).catch((e) => {
+      console.error("[build] 构建失败:", e.message);
+      process.exit(1);
+    });
+    return;
+  }
   else if (target === "preload") options = preloadOptions({ logLevel: "info" });
 
   if (!options) {

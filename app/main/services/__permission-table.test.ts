@@ -1,41 +1,40 @@
 /**
- * 权限判定回归表（2026-09-08 放宽命令名单后）。
- * 边界：非破坏性操作放行；删除/移动/发布等不可逆操作与系统级变更拦截。
+ * 系统控制命令的提前诊断与旧脚本诊断函数回归。
+ * 文件系统安全不依赖这些文本扫描，由 execution-policy 集成测试覆盖。
  */
 import { describe, it, expect } from "vitest";
-import { isDangerousCommand } from "./permission/permission-rules";
 import { isSystemMutationCommand, scanScriptContent } from "./permission/agent-permission-service";
-
-describe("危险命令名单（放宽后）", () => {
-  it("网络/进程/权限类 → 不再拦截（非破坏性）", () => {
-    expect(isDangerousCommand("curl -sL https://example.com -o x.html")).toBe(false);
-    expect(isDangerousCommand("wget https://example.com/x.zip")).toBe(false);
-    expect(isDangerousCommand("ssh user@host ls")).toBe(false);
-    expect(isDangerousCommand("scp a.txt user@host:/tmp/")).toBe(false);
-    expect(isDangerousCommand("kill -9 1234")).toBe(false);
-    expect(isDangerousCommand("pkill -f node")).toBe(false);
-    expect(isDangerousCommand("chmod +x build.sh")).toBe(false);
-    expect(isDangerousCommand("chown -R me:me dist")).toBe(false);
-  });
-  it("删除/移动/发布类 → 仍拦截（不可逆）", () => {
-    expect(isDangerousCommand("rm -rf dist")).toBe(true);
-    expect(isDangerousCommand("rmdir empty")).toBe(true);
-    expect(isDangerousCommand("mv a b")).toBe(true);
-    expect(isDangerousCommand("npm publish")).toBe(true);
-  });
-});
 
 describe("系统级变更命令（任何模式拒绝）", () => {
   it("系统管理/提权/磁盘类 → 拦截", () => {
     expect(isSystemMutationCommand("sudo apt install x")).toBe(true);
-    expect(isSystemMutationCommand("launchctl list")).toBe(true);
+    expect(isSystemMutationCommand("launchctl unload ~/Library/LaunchAgents/x.plist")).toBe(true);
     expect(isSystemMutationCommand("mount /dev/disk2 /Volumes/x")).toBe(true);
     expect(isSystemMutationCommand("diskutil eraseDisk JHFS+ x /dev/disk2")).toBe(true);
+    expect(isSystemMutationCommand("/usr/bin/sudo apt install x")).toBe(true);
+    expect(isSystemMutationCommand("env LC_ALL=C /bin/launchctl unload x.plist")).toBe(true);
+    expect(isSystemMutationCommand("reg add HKLM\\Software\\Example /v Flag /t REG_DWORD /d 1")).toBe(true);
+    expect(isSystemMutationCommand("sc config Example start= auto")).toBe(true);
+    expect(isSystemMutationCommand("Set-ItemProperty HKLM:\\Software\\Example Flag 1")).toBe(true);
   });
   it("普通项目命令 → 放行", () => {
     expect(isSystemMutationCommand("npm run build")).toBe(false);
     expect(isSystemMutationCommand("git status")).toBe(false);
     expect(isSystemMutationCommand("node -e \"console.log(1)\"")).toBe(false);
+    expect(isSystemMutationCommand("launchctl list")).toBe(false);
+    expect(isSystemMutationCommand("systemctl status docker")).toBe(false);
+    expect(isSystemMutationCommand("diskutil info /")).toBe(false);
+    expect(isSystemMutationCommand("mount")).toBe(false);
+    expect(isSystemMutationCommand("git commit -m 'docs: launchctl unload / 说明'")).toBe(false);
+    expect(isSystemMutationCommand("cat <<'EOF'\nsudo reboot\nEOF")).toBe(false);
+    expect(isSystemMutationCommand("# $(sudo -n true)")).toBe(false);
+    expect(isSystemMutationCommand("cat <<'EOF'\n$(sudo -n true)\nEOF")).toBe(false);
+  });
+  it("命令替换、反引号与未引用换行中的系统命令 → 拦截", () => {
+    expect(isSystemMutationCommand('echo "$(sudo -n true)"')).toBe(true);
+    expect(isSystemMutationCommand("echo `sudo -n true`")).toBe(true);
+    expect(isSystemMutationCommand("echo ok\nsudo -n true")).toBe(true);
+    expect(isSystemMutationCommand("cat <<EOF\n$(sudo -n true)\nEOF")).toBe(true);
   });
 });
 

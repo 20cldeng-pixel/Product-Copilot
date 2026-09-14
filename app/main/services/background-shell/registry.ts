@@ -15,6 +15,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync
 import path from "node:path";
 import { broadcast } from "../ipc-broadcast";
 import { decodeSeg, finalDecode } from "./encoding";
+import { readManagedEnvironment } from "../tools/environment-tool";
 
 /** 保留输出尾部上限(内存,通知预览;超出截断,防止内存膨胀) */
 const MAX_OUTPUT_BYTES = 4096;
@@ -69,6 +70,8 @@ export interface BackgroundShell {
   flushTimer: ReturnType<typeof setTimeout> | null;
   /** 进程退出回调(自然结束或被停止),exitCode 已写入 */
   onExit?: (shell: BackgroundShell) => void;
+  /** Windows 沙盒 ACL worker 的命令租约；进程退出后才可安全撤销。 */
+  releaseSandboxLease?: () => Promise<void>;
 }
 
 /** 清理超过保留期的日志文件(启动命令时顺带执行,轻量防积累) */
@@ -115,7 +118,8 @@ export function findBashOnWindows(): string | null {
  *  Windows 无 Git Bash → 报错(错误信息进入工具结果,Mint 读到后自行调整策略);
  *  Unix 保持 shell:true(行为不变)。
  *  前台 bash(tool.ts)复用此配置。 */
-export function resolveSpawn(command: string, cwd: string): { file: string; args: string[]; opts: Parameters<typeof spawn>[2]; error?: string } {
+export function resolveSpawn(command: string, cwd: string, environment?: NodeJS.ProcessEnv): { file: string; args: string[]; opts: Parameters<typeof spawn>[2]; error?: string } {
+  const env = environment ?? { ...process.env, ...readManagedEnvironment() };
   if (process.platform === "win32") {
     const bash = findBashOnWindows();
     if (bash) {
@@ -124,7 +128,7 @@ export function resolveSpawn(command: string, cwd: string): { file: string; args
         args: ["-c", command],
         // Windows 不 detached(会导致 stdout/stderr 管道收不到数据);进程树清理走 taskkill /T
         // 注:LANG/LC_ALL 对 Windows 原生程序无效(编码由系统代码页决定),乱码由 encoding.ts 解码容错解决
-        opts: { cwd, windowsHide: true },
+        opts: { cwd, windowsHide: true, env },
       };
     }
     return {
@@ -138,7 +142,7 @@ export function resolveSpawn(command: string, cwd: string): { file: string; args
   return {
     file: command,
     args: [],
-    opts: { shell: true, cwd, detached: true },
+    opts: { shell: true, cwd, detached: true, env },
   };
 }
 
@@ -165,13 +169,13 @@ class BackgroundShellRegistry {
   /** 启动后台命令,立即返回 id + 输出文件路径;进程退出时自动注销并回调 onExit。
    *  command = 实际执行内容（shell 字符串，或沙盒 argv 规格）；displayCommand = 面板/通知展示用（缺省 = 原命令） */
   start(
-    command: string | { argv: string[]; env: NodeJS.ProcessEnv },
+    command: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> },
     cwd: string,
     onExit?: (shell: BackgroundShell) => void,
     sessionId?: string,
     displayCommand?: string,
   ): { id: string; logPath: string } {
-    const display = displayCommand ?? (typeof command === "string" ? command : "(沙盒命令)");
+    const display = displayCommand ?? (typeof command === "string" ? command : "command" in command ? command.command : "(沙盒命令)");
     const id = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // 完整输出落盘项目级 .easymint/shell-logs/(持久可回看);
     // 启动时顺带清理超过保留期的旧日志,防积累
@@ -195,7 +199,9 @@ class BackgroundShellRegistry {
     // argv 规格（Windows 沙盒 srt-win 两跳）不走 resolveSpawn——直接 spawn(argv[0], rest, { shell:false, env })
     const spawnPlan = typeof command === "string"
       ? resolveSpawn(command, cwd)
-      : { file: command.argv[0] ?? "", args: command.argv.slice(1), opts: { cwd, env: command.env }, error: undefined };
+      : "argv" in command
+        ? { file: command.argv[0] ?? "", args: command.argv.slice(1), opts: { cwd, env: command.env }, error: undefined }
+        : resolveSpawn(command.command, cwd, command.env);
     const { file, args, opts, error } = spawnPlan;
     if (error) {
       // 构造已失败 shell:输出=错误信息,立即走退出注销路径(结果注入主会话,Mint 读到后自行调整)
@@ -203,7 +209,7 @@ class BackgroundShellRegistry {
       const shell: BackgroundShell = {
         id, command: display, startedAt: Date.now(), child: null as unknown as ChildProcess, output: error, logPath,
         exitCode: -1, stopped: false, status: "running", streamBuf: "", flushTimer: null, onExit,
-        sessionId,
+        sessionId, releaseSandboxLease: typeof command === "string" ? undefined : command.release,
       };
       this.shells.set(id, shell);
       this.broadcastCount();
@@ -213,6 +219,7 @@ class BackgroundShellRegistry {
           shell.exitCode = -1;
           this.shells.delete(id);
           logStream?.end();
+          void shell.releaseSandboxLease?.();
           shell.onExit?.(shell);
           this.broadcastCount();
         }
@@ -223,7 +230,7 @@ class BackgroundShellRegistry {
     const shell: BackgroundShell = {
       id, command: display, startedAt: Date.now(), child, output: "", logPath,
       exitCode: null, stopped: false, status: "running", streamBuf: "", flushTimer: null, onExit,
-      sessionId,
+      sessionId, releaseSandboxLease: typeof command === "string" ? undefined : command.release,
     };
     this.shells.set(id, shell);
     this.broadcastCount();
@@ -276,6 +283,7 @@ class BackgroundShellRegistry {
       shell.exitCode = code;
       this.shells.delete(id);
       logStream?.end();
+      void shell.releaseSandboxLease?.();
       console.log(`[bg-shell] exit ${id}: code=${code} stopped=${shell.stopped}`);
       shell.onExit?.(shell);
       this.broadcastCount();
@@ -287,6 +295,7 @@ class BackgroundShellRegistry {
         shell.exitCode = -1;
         this.shells.delete(id);
         logStream?.end();
+        void shell.releaseSandboxLease?.();
         console.log(`[bg-shell] spawn error ${id}: ${err.message}`);
         shell.onExit?.(shell);
         this.broadcastCount();
@@ -333,6 +342,13 @@ class BackgroundShellRegistry {
   /** 停止并清空全部后台进程(会话关闭/应用退出时调用) */
   stopAll(): void {
     for (const id of [...this.shells.keys()]) this.stop(id);
+  }
+
+  /** 权限收紧时撤销该会话旧进程持有的执行能力。 */
+  stopBySession(sessionId: string): void {
+    for (const shell of this.shells.values()) {
+      if (shell.sessionId === sessionId) this.stop(shell.id, "user");
+    }
   }
 
   list(): BackgroundShell[] {

@@ -16,8 +16,20 @@ import { scanMcpServers, getMcpServerConfig, expandServerConfig } from "../mcp-s
 import type { McpServerConfig, McpServerStatus } from "../mcp-service";
 import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
 import { EmOAuthProvider } from "../mcp-oauth";
+import { ensureSandbox, wrapForSandbox } from "../sandbox/manager";
+import type { PermissionMode } from "./access-policy";
+import { createExecutionContext } from "./execution-context";
+import { bindExecutionOwner } from "./execution-context";
+import { findBashOnWindows } from "../background-shell/registry";
 
 const clients = new Map<string, Client>();
+/** stdio MCP 进程持有的 Windows ACL worker 租约；close 时与进程一起回收。 */
+const clientSandboxLeases = new WeakMap<Client, () => Promise<void>>();
+
+async function closeClient(client: Client): Promise<void> {
+  try { await client.close(); }
+  finally { await clientSandboxLeases.get(client)?.(); clientSandboxLeases.delete(client); }
+}
 /** 工具缓存按项目分键——多项目切换时项目级 MCP 不串台（原全局单缓存会在 B 项目看到 A 项目的工具） */
 const toolsCache = new Map<string, ToolDefinition[]>();
 /** 项目维度 + server 名 → 连接状态（不同项目的同名 server 状态不串扰） */
@@ -49,17 +61,17 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 /** 检查命令是否存在(Unix: which / command -v; Win: where)。不存在的命令不 spawn,
  *  避免 Windows 下子进程输出 GBK 报错导致日志乱码，避免 Linux 下 command 内建命令导致 ENOENT。 */
-function commandExists(command: string): boolean {
+function commandExists(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
   try {
     if (process.platform === "win32") {
-      const probe = spawnSync("where", [command], { stdio: "ignore", timeout: 3000 });
+      const probe = spawnSync("where", [command], { stdio: "ignore", timeout: 3000, env });
       return probe.status === 0;
     }
     // Unix: 优先用 which, 若未安装 which 则通过 sh -c "command -v ..." 探测内置/外部命令
-    const whichProbe = spawnSync("which", [command], { stdio: "ignore", timeout: 3000 });
+    const whichProbe = spawnSync("which", [command], { stdio: "ignore", timeout: 3000, env });
     if (whichProbe.status === 0) return true;
     if (whichProbe.error && (whichProbe.error as NodeJS.ErrnoException).code === "ENOENT") {
-      const shProbe = spawnSync("sh", ["-c", `command -v "$1"`, "_", command], { stdio: "ignore", timeout: 3000 });
+      const shProbe = spawnSync("sh", ["-c", `command -v "$1"`, "_", command], { stdio: "ignore", timeout: 3000, env });
       return shProbe.status === 0;
     }
     return false;
@@ -68,23 +80,53 @@ function commandExists(command: string): boolean {
   }
 }
 
-async function connect(name: string, cfg: McpServerConfig): Promise<Client> {
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function clientKey(name: string, projectPath?: string, mode?: PermissionMode, contextId = "shared"): string {
+  return `${cacheKey(projectPath)}::${contextId}::${mode ?? "standard"}::${name}`;
+}
+
+async function connect(
+  name: string,
+  cfg: McpServerConfig,
+  execution?: { projectPath: string; mode: PermissionMode; contextId?: string },
+): Promise<Client> {
   const client = new Client(
     { name: "easymint", version: "1.0.0" },
     { capabilities: {} as any },
   );
 
   if (cfg.type === "stdio") {
+    const projectPath = execution?.projectPath ?? process.cwd();
+    const mode = execution?.mode ?? "standard";
+    const context = bindExecutionOwner(
+      createExecutionContext(projectPath, mode, cfg.env as Record<string, string> | undefined),
+      execution?.contextId ?? "shared",
+    );
     // 命令不存在则不 spawn:避免 Windows 下子进程 GBK 报错 → 日志乱码
-    if (cfg.command && !commandExists(cfg.command)) {
+    if (cfg.command && !commandExists(cfg.command, context.environment)) {
       throw new Error(`未找到命令 "${cfg.command}"——请检查 MCP 配置,确认已安装`);
     }
-    const transport = new StdioClientTransport({
-      command: cfg.command!,
-      args: cfg.args,
-      env: cfg.env as Record<string, string> | undefined,
-    });
-    await client.connect(transport);
+    const initialized = await ensureSandbox(projectPath);
+    if (!initialized.ok) throw new Error(`MCP 安全执行后端不可用：${initialized.reason}`);
+    const rawCommand = [cfg.command!, ...(cfg.args ?? [])].map(shellQuote).join(" ");
+    const gitBashPath = process.platform === "win32" ? findBashOnWindows() : undefined;
+    if (process.platform === "win32" && !gitBashPath) {
+      throw new Error("Windows 受保护 MCP 需要 Git Bash。请安装 Git for Windows 后重试。");
+    }
+    const wrapped = await wrapForSandbox(rawCommand, { context, gitBashPath: gitBashPath ?? undefined });
+    const transport = wrapped.kind === "argv"
+      ? new StdioClientTransport({ command: wrapped.argv[0]!, args: wrapped.argv.slice(1), env: wrapped.env as Record<string, string>, cwd: projectPath })
+      : new StdioClientTransport({ command: "/bin/sh", args: ["-c", wrapped.command], env: wrapped.env as Record<string, string>, cwd: projectPath });
+    try {
+      await client.connect(transport);
+      if (wrapped.release) clientSandboxLeases.set(client, wrapped.release);
+    } catch (error) {
+      await wrapped.release?.();
+      throw error;
+    }
     return client;
   }
 
@@ -130,7 +172,6 @@ async function connect(name: string, cfg: McpServerConfig): Promise<Client> {
           ? new StreamableHTTPClientTransport(new URL(cfg.url as string), { requestInit, authProvider: authProvider as any })
           : new SSEClientTransport(new URL(cfg.url as string), { requestInit, authProvider: authProvider as any });
         await retryClient.connect(retry);
-        clients.set(name, retryClient);
         return retryClient;
       }
       throw e;
@@ -145,6 +186,8 @@ async function loadOneServer(
   s: { name: string; type: McpServerConfig["type"] },
   defineTool: Awaited<ReturnType<typeof getDefineToolFn>>,
   projectPath?: string,
+  getMode: () => PermissionMode = () => "standard",
+  contextId = "shared",
 ): Promise<ToolDefinition[]> {
   const raw = getMcpServerConfig(s.name);
   if (!raw) {
@@ -158,13 +201,15 @@ async function loadOneServer(
   }
   statusMap.set(statusKey(projectPath, s.name), { name: s.name, state: "connecting" });
 
-  let client = clients.get(s.name);
+  const initialMode = getMode();
+  const initialKey = clientKey(s.name, projectPath, initialMode, contextId);
+  let client = clients.get(initialKey);
   if (!client) {
     try {
       // 超时保护:冷启动首连挂起的 MCP 直接跳过,不让 loadMcpTools 阻塞发送链路
       const timeout = raw.timeout || MCP_CONNECT_TIMEOUT_MS;
-      client = await withTimeout(connect(s.name, cfg), timeout, `MCP ${s.name} 连接`);
-      clients.set(s.name, client);
+      client = await withTimeout(connect(s.name, cfg, { projectPath: projectPath ?? process.cwd(), mode: initialMode, contextId }), timeout, `MCP ${s.name} 连接`);
+      clients.set(initialKey, client);
     } catch (e) {
       const msg = redact((e as Error).message);
       console.warn(`[mcp] ${s.name} 连接失败/超时:`, msg);
@@ -178,7 +223,7 @@ async function loadOneServer(
     for (const t of response.tools) {
       // snippet 取描述首行(截断 80 字符),让 MCP 工具出现在提示词 Available tools 清单
       const desc = t.description || `MCP 工具: ${s.name}/${t.name}`;
-      const snippet = desc.split("\n")[0].slice(0, 80);
+      const snippet = (desc.split("\n")[0] ?? "").slice(0, 80);
       tools.push(defineTool({
         name: `mcp__${s.name}__${t.name}`,
         label: `MCP: ${s.name}/${t.name}`,
@@ -186,7 +231,25 @@ async function loadOneServer(
         promptSnippet: snippet,
         parameters: t.inputSchema || { type: "object" as const, properties: {} },
         async execute(_tid: any, params: any, _sig: any, _upd: any, _ctx: any) {
-          const result = await client!.callTool({ name: t.name, arguments: params as Record<string, unknown> });
+          const mode = getMode();
+          const key = clientKey(s.name, projectPath, mode, contextId);
+          let activeClient = clients.get(key);
+          if (!activeClient) {
+            // 权限模式切换后先关闭同一会话的旧模式进程，撤销它仍持有的 OS 权限。
+            const contextPrefix = `${cacheKey(projectPath)}::${contextId}::`;
+            for (const [oldKey, oldClient] of clients) {
+              if (!oldKey.startsWith(contextPrefix) || !oldKey.endsWith(`::${s.name}`)) continue;
+              clients.delete(oldKey);
+              try { await closeClient(oldClient); } catch { /* 已断开的旧连接无需阻塞新模式 */ }
+            }
+            activeClient = await withTimeout(
+              connect(s.name, cfg, { projectPath: projectPath ?? process.cwd(), mode, contextId }),
+              raw.timeout || MCP_CONNECT_TIMEOUT_MS,
+              `MCP ${s.name} ${mode} 模式连接`,
+            );
+            clients.set(key, activeClient);
+          }
+          const result = await activeClient.callTool({ name: t.name, arguments: params as Record<string, unknown> });
           const content = result.content as any;
           const text = Array.isArray(content) ? content.map((c: any) => c.text || "").join("\n") : String(content || "");
           return { content: [{ type: "text" as const, text: text || "(无输出)" }], details: {} };
@@ -203,10 +266,10 @@ async function loadOneServer(
   }
 }
 
-export async function loadMcpTools(projectPath?: string): Promise<ToolDefinition[]> {
+export async function loadMcpTools(projectPath?: string, getMode?: () => PermissionMode, contextId = "shared"): Promise<ToolDefinition[]> {
   // 工具列表不变，缓存避免重复扫描（按项目分键）
   const key = cacheKey(projectPath);
-  const cached = toolsCache.get(key);
+  const cached = getMode ? undefined : toolsCache.get(key);
   if (cached) return cached;
   // 注意:空结果不缓存(不入 map)——某次全部连接失败时若缓存了 [],
   // 后续所有会话都拿不到 MCP 工具直到重启;失败应下次重试
@@ -226,7 +289,7 @@ export async function loadMcpTools(projectPath?: string): Promise<ToolDefinition
       return [];
     }
     try {
-      return await loadOneServer(s, defineTool, projectPath);
+      return await loadOneServer(s, defineTool, projectPath, getMode, contextId);
     } catch (e) {
       const msg = redact((e as Error).message);
       statusMap.set(statusKey(projectPath, s.name), { name: s.name, state: "failed", error: msg });
@@ -239,7 +302,7 @@ export async function loadMcpTools(projectPath?: string): Promise<ToolDefinition
     if (r.status === "fulfilled") tools.push(...r.value);
   }
 
-  if (tools.length > 0) toolsCache.set(key, tools);
+  if (tools.length > 0 && !getMode) toolsCache.set(key, tools);
   return tools;
 }
 
@@ -287,27 +350,41 @@ export function reloadMcpTools(): void {
  *  必要性：clients 按名复用连接——改配置（如换/清 PAT）不丢弃会一直用旧连接，
  *  实测：删除 github 后不填令牌重加，状态仍显示「连接成功」。 */
 export async function dropMcpClient(name: string): Promise<void> {
-  const client = clients.get(name);
-  clients.delete(name);
+  const dropped: Client[] = [];
+  for (const [key, client] of clients) {
+    if (!key.endsWith(`::${name}`)) continue;
+    clients.delete(key);
+    dropped.push(client);
+  }
   for (const key of [...statusMap.keys()]) {
     if (key.endsWith("::" + name)) statusMap.delete(key);
   }
-  if (client) {
+  for (const client of dropped) {
     try {
-      await client.close();
+      await closeClient(client);
     } catch (e) {
       console.warn(`[mcp] ${name} 旧连接关闭失败（忽略）:`, redact((e as Error).message));
     }
   }
 }
 
+/** 权限降级时立即关闭会话持有的本地 MCP 进程，不能等到下一次工具调用才撤销旧权限。 */
+export async function closeMcpContexts(contextIds: readonly string[]): Promise<void> {
+  const ids = new Set(contextIds.filter(Boolean));
+  if (ids.size === 0) return;
+  const dropped: Client[] = [];
+  for (const [key, client] of clients) {
+    const parts = key.split("::");
+    if (!ids.has(parts[1] || "")) continue;
+    clients.delete(key);
+    dropped.push(client);
+  }
+  await Promise.allSettled(dropped.map((client) => closeClient(client)));
+}
+
 /** 单个 server 重试：断开旧连接并清缓存，立即重连一次（界面「重试连接」） */
 export async function retryMcpServer(name: string, projectPath?: string): Promise<{ ok: boolean; error?: string }> {
-  const old = clients.get(name);
-  if (old) {
-    clients.delete(name);
-    try { await old.close(); } catch { /* 关闭失败忽略——连接可能已断开 */ }
-  }
+  await dropMcpClient(name);
   const key = cacheKey(projectPath);
   const prev = toolsCache.get(key);
   toolsCache.delete(key);
@@ -338,6 +415,6 @@ export async function testMcpServer(cfg: McpServerConfig): Promise<{ ok: boolean
   } catch (e) {
     return { ok: false, error: redact((e as Error).message) };
   } finally {
-    if (client) { try { await client.close(); } catch { /* ignore */ } }
+    if (client) { try { await closeClient(client); } catch { /* ignore */ } }
   }
 }

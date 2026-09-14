@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { buildBlocks, ChatBlockView } from "./ChatBlocks";
 import { AttachItem, ChatMessage, piBlocksToEntries, mergeConsecutiveText, piEventToEntries, displayToolAction, mapSessionMessages, getMsgCopyText } from "./chat-utils";
 import { chatActions } from "../stores/chat-actions";
-import { confirmDialog } from "./ui/ConfirmDialog";
+import { confirmFullAccess } from "./permission-confirmation";
 import { resolveThinkingLevel } from "@shared/thinking-levels";
 import { useSettingsStore } from "../stores/settings-store";
 import { useTabStore } from "../stores/tab-store";
@@ -533,15 +533,10 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
     if (sid) { window.electronAPI.agent.setModel(sid, m, chatProvider || undefined).catch(() => {}); }
   }, [setStoreModel, chatProvider]);
 
-  /** 权限模式切换：标准 → 完全访问需警告确认（可访问项目外文件，但系统敏感位置仍禁止）；降级直接切。
-   *  切换即持久化为全局默认(chatPermissionMode)——新会话自动沿用,免每次重选 */
+  /** 标准 → 完全访问时说明风险并确认；切回标准直接生效。模式会持久化为全局默认。 */
   const handlePermissionModeChange = useCallback(async (mode: "standard" | "full") => {
     if (mode === "full" && permissionMode !== "full") {
-      const ok = await confirmDialog({
-        title: "切换【完全访问】？",
-        message: "切换【完全访问】之后，Mint可以访问当前项目之外的文件，但禁止访问系统敏感位置。\n\n确认切换？",
-        confirmText: "确认切换",
-      });
+      const ok = await confirmFullAccess();
       if (!ok) return;
     }
     setPermissionMode(mode);

@@ -6,6 +6,9 @@
 
 import type { PermissionResult } from "./agent-permission-service";
 
+/** 宿主内部执行策略。Symbol 不会出现在工具 schema，也不能由模型参数伪造。 */
+export const EXECUTION_POLICY = Symbol("easymint.executionPolicy");
+
 export interface ToolWrapOptions {
   canUseTool?: (
     toolName: string,
@@ -55,10 +58,16 @@ export function wrapToolWithPermission<T extends { name: string; label?: string;
       if (permission.behavior === "deny") {
         throw new Error(permission.message || "操作被拒绝");
       }
-      // allow 可携带 updatedInput（如沙盒执行标记 sandbox: true）——合并后传给工具 execute。
-      // EM 权限在自研 wrap 层（非 SDK 机制），此处是标记的唯一传递通道。
+      // updatedInput 只承载工具参数修订；运行策略用不可枚举 Symbol 单独传递，模型 schema 不可伪造。
       const updated = (permission as { updatedInput?: Record<string, unknown> }).updatedInput;
       const finalParams = updated ? { ...rawInput, ...updated } : params;
+      if (permission.behavior === "allow" && permission.executionPolicy) {
+        Object.defineProperty(finalParams, EXECUTION_POLICY, {
+          value: permission.executionPolicy,
+          enumerable: false,
+          configurable: false,
+        });
+      }
       return originalExecute.call(definition, toolCallId, finalParams, signal, onUpdate, ctx);
     },
   };

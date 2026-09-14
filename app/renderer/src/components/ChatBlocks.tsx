@@ -862,6 +862,20 @@ function truncateResult(text: string, maxLines = 30, keep = 20): string {
   return lines.slice(-keep).join("\n") + `\n\n[输出过长，仅显示尾部 ${keep} 行。完整输出见日志]`;
 }
 
+/** 共同底线拦截属于后台系统保护，不渲染成红色命令错误。
+ *  结果仍以 error 传回 Agent，保证它知道操作没有成功，也不会把拒绝当成执行成功。 */
+function isQuietSystemProtectionBlock(content: string | undefined, isError: boolean | undefined): boolean {
+  if (!isError || !content) return false;
+  return content.includes("操作被阻止：")
+    && /规则：core\.(?:protected_write|credential_read|privileged_operation)/.test(content);
+}
+
+function isFullAccessRequiredBlock(content: string | undefined, isError: boolean | undefined): boolean {
+  return !!isError && !!content
+    && content.includes("操作被阻止：")
+    && content.includes("规则：standard.write_scope");
+}
+
 /** 带行号格式化(等宽对齐):write 内容预览用,参照 cc 的显示方式 */
 function numberLines(text: string): string {
   return text.split("\n").map((l, i) => `${String(i + 1).padStart(4)}  ${l}`).join("\n");
@@ -965,6 +979,9 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
   };
 
   const contentErr = item.resultError;
+  const quietProtectionBlock = isQuietSystemProtectionBlock(item.result, contentErr);
+  const fullAccessRequired = isFullAccessRequiredBlock(item.result, contentErr);
+  const visualError = contentErr && !quietProtectionBlock && !fullAccessRequired;
   // 展开区有可显示内容:bash 命令来自 input(工具调用即带)——执行阶段/失败都可就展开看命令
   // (命令是输入,失败更需看到它排查;输出本来就不展示);其他工具(diff/write 内容等)内容来自 result,仍等结果到达
   const hasExpandable = item.name === "bash"
@@ -985,9 +1002,11 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
               <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
               <path d="M14 8a6 6 0 00-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-          ) : !item.pending && contentErr ? (
+          ) : !item.pending && visualError ? (
             <svg className="shrink-0 text-danger" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          ) : !item.pending && item.result !== undefined ? (
+          ) : !item.pending && fullAccessRequired ? (
+            <span className="text-text-muted normal-case font-normal" style={{ fontSize: "var(--text-caption)" }}>需要完全访问</span>
+          ) : !item.pending && item.result !== undefined && !contentErr ? (
             <svg className="shrink-0 state-ok" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
           ) : null}
         </span>
@@ -1032,9 +1051,11 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
             </svg>
           )}
           {/* 执行完状态:成功 ✓ / 报错 ✗——与转圈互斥(pending=false 即完成,立即显示,不等回合结束) */}
-          {!item.pending && contentErr ? (
+          {!item.pending && visualError ? (
             <svg className="shrink-0 text-danger" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          ) : !item.pending && item.result !== undefined ? (
+          ) : !item.pending && fullAccessRequired ? (
+            <span className="text-text-muted normal-case font-normal" style={{ fontSize: "var(--text-caption)" }}>· 需要完全访问</span>
+          ) : !item.pending && item.result !== undefined && !contentErr ? (
             <svg className="shrink-0 state-ok" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
           ) : null}
         </span>
@@ -1129,6 +1150,11 @@ export function ChatBlockView({ block, streaming, isStreamingTail }: { block: Bl
 /** 工具结果独立显示(工具调用隐藏时):edit 显示 diff;write 显示内容预览(参照 cc);
  *  read/bash 路径/命令显示在标题行;其他显示结果 */
 function ToolResultOnlyView({ block }: { block: ToolResultOnlyBlock }): JSX.Element | null {
+  // 工具调用本身被过滤时，共同底线拦截也保持安静；Agent 侧仍收到原始 error。
+  if (isQuietSystemProtectionBlock(block.content, block.isError)) return null;
+  if (isFullAccessRequiredBlock(block.content, block.isError)) {
+    return <div className="mt-1.5 mb-1 text-text-muted" style={{ fontSize: "var(--text-caption)" }}>需要完全访问</div>;
+  }
   const isDiff = block.content.includes("变更内容:");
   // 标签:工具原名(与工具卡片一致);缺省"工具结果"
   const label = block.name || "工具结果";

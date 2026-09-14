@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { resolveHome } from "../utils/paths";
-import { isSystemForbidden, isSecretForbidden } from "./permission/permission-rules";
+import { canonicalPolicyPath, isWithin, pathHitsAny, protectedCredentialPaths, protectedWriteRoots } from "./permission/access-policy";
 
 interface FileNode {
   name: string;
@@ -18,22 +18,16 @@ export class FileService {
   /**
    * 路径安全校验（强制 baseDir 包含关系——file:* 通道防任意路径读写）。
    *
-   * ① 原始字符串先查 `..` 段（path.normalize 会把 `..` 提前消掉，检查必须跑在 normalize 之前，
-   *    否则 `~/Documents/../.ssh/id_rsa` 归一化后变成明文合法路径直接放行）；
-   * ② 展开 ~ 后的绝对路径命中系统核心/凭据禁区 → 绝对拒绝（即使 baseDir 覆盖也不放行）；
-   * ③ resolve 后必须等于 baseDir 或落在 baseDir 之内（startsWith(baseDir + sep)）。
+   * 展开 home、折叠 `..` 并解析已存在祖先的真实路径，再校验系统核心/凭据保护及
+   * baseDir 包含关系。工作区内合法的 `a/../b` 不误拒，真正越界仍会被识别。
    */
   isPathSafe(filePath: string, baseDir?: string): boolean {
     if (!filePath) return false;
-    if (rawHasDotDotSegments(filePath)) return false;
-    const expanded = this.expand(filePath);
-    const resolved = path.resolve(expanded);
-    const normalized = path.normalize(resolved);
-    // 系统核心 / 凭据目录是绝对禁区（可豁免 baseDir 内豁免逻辑）
-    if (isSystemForbidden(normalized) || isSecretForbidden(normalized)) return false;
     if (!baseDir) return false;
-    const base = path.resolve(this.expand(baseDir));
-    return normalized === base || normalized.startsWith(base + path.sep);
+    const base = canonicalPolicyPath(this.expand(baseDir), process.cwd());
+    const target = canonicalPolicyPath(this.expand(filePath), base);
+    if (pathHitsAny(target, [...protectedWriteRoots(), ...protectedCredentialPaths()], base)) return false;
+    return isWithin(base, target);
   }
 
   readTree(baseDir: string, dirPath: string, maxDepth = 10): FileNode[] {
@@ -99,10 +93,4 @@ export class FileService {
     }
     fs.mkdirSync(expanded, { recursive: true });
   }
-}
-
-/** 原始路径是否含 `..` 路径段（穿越攻击标志；双反斜杠/正斜杠统一按分隔符拆分检查） */
-function rawHasDotDotSegments(p: string): boolean {
-  const segs = p.split(/[\\/]+/);
-  return segs.includes("..");
 }

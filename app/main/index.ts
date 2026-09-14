@@ -92,6 +92,7 @@ import { migrateExtraModels, migrateModelIdentity } from "./services/extra-model
 import { cleanupOrphanCaches, cleanupTempCaches } from "./services/session-cache";
 import { trackProjectWindow } from "./services/window-manager";
 import { applyDockIcon } from "./utils/dock-icon";
+import { shutdownWindowsExecutionWorkers } from "./services/sandbox/windows-execution-manager";
 
 const isDev = !app.isPackaged;
 
@@ -321,6 +322,7 @@ app.on("window-all-closed", () => { app.quit(); });
 
 app.on("before-quit", () => {
   if (sharedServices) sharedServices.agentService.shutdown();
+  void shutdownWindowsExecutionWorkers();
 });
 
 // 异常退出兜底:dev 模式 Ctrl+C(SIGINT)/进程被 SIGTERM 时不触发 before-quit,

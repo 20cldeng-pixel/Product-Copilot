@@ -24,7 +24,6 @@ import { mapWithConcurrencyLimit, type ParallelResult } from "./parallel";
 import { ResultCollector } from "./collector";
 import { finishDelegation } from "./registry";
 import { wrapToolWithPermission } from "../permission/wrap-tool";
-import { SAFE_TOOLS, isSafeBashCommand } from "../permission/permission-rules";
 import { bridgeSessionEvents } from "../event-bridge";
 import { broadcast } from "../ipc-broadcast";
 import type {
@@ -182,24 +181,14 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
         return base.map((t) => (t.name === "edit" ? enhanced : t));
       })();
 
-  // 子 Agent 权限：跟随主会话（DelegationRuntime.canUseTool 传入，绑定主会话模式 standard/full
-  // + 绝对禁区）；未传入（旧调用方）则不包装。原写死的 subCanUseTool（只读放行/写一律拒）退役——
-  // 它导致标准模式下子 Agent 连工作空间内写入都被拒，与主会话行为不一致。
+  // 子 Agent 权限跟随主会话。旧调用方没有策略时全部失败关闭，不能让原生 Bash 裸跑。
   const extraTools = opts.canUseTool
     ? tools
     : tools.map((t) => wrapToolWithPermission(t as any, {
-        canUseTool: (toolName: string, input: Record<string, unknown>) => {
-          if (SAFE_TOOLS.some((s) => s.toLowerCase() === toolName.toLowerCase())) {
-            return Promise.resolve({ behavior: "allow" as const, updatedInput: input });
-          }
-          if (toolName.toLowerCase() === "bash") {
-            const command = typeof input.command === "string" ? input.command : "";
-            if (isSafeBashCommand(command)) {
-              return Promise.resolve({ behavior: "allow" as const, updatedInput: input });
-            }
-          }
-          return Promise.resolve({ behavior: "deny" as const, message: `子 Agent 未授权执行 ${toolName}` });
-        },
+        canUseTool: (toolName: string) => Promise.resolve({
+          behavior: "deny" as const,
+          message: `子 Agent 缺少运行时权限策略，已拒绝执行 ${toolName}`,
+        }),
       }));
 
   // 结构化输出收集器（yield 工具写入，执行结束后统一返回）

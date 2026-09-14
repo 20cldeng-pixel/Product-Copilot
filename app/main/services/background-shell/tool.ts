@@ -13,13 +13,15 @@ import { backgroundShellRegistry, type BackgroundShell, resolveSpawn, findBashOn
 import { spawn } from "node:child_process";
 import { createCodingAwareDecoder, createAnsiStripper, stripAnsi } from "./encoding";
 import { ensureSandbox, wrapForSandbox, annotateSandboxFailures } from "../sandbox/manager";
+import { EXECUTION_POLICY } from "../permission/wrap-tool";
+import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { maskSecrets } from "../../utils/secret-mask";
 
 /** 前台 bash 执行(spawn + 编码容错解码,对齐 Pi 行为:同步 + 超时 + 截断提示 + PI_* 环境注入)
  *  command: shell 命令字符串（走 resolveSpawn）或沙盒 argv 规格（Windows srt-win 两跳, shell:false + env 注入）
  *  sandboxed: 命令已沙盒包装(权限层判不了域放行),退出时把违规拦截注解进 stderr(大白话违规说明) */
-async function executeForeground(
-  command: string | { argv: string[]; env: NodeJS.ProcessEnv },
+export async function executeForeground(
+  command: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> },
   cwd: string,
   signal: AbortSignal | undefined,
   timeoutSec?: number,
@@ -31,15 +33,18 @@ async function executeForeground(
   return new Promise((resolve, reject) => {
     const spawnPlan = typeof command === "string"
       ? resolveSpawn(command, cwd)
-      : { file: command.argv[0] ?? "", args: command.argv.slice(1), opts: { cwd, env: command.env }, error: undefined };
+      : "argv" in command
+        ? { file: command.argv[0] ?? "", args: command.argv.slice(1), opts: { cwd, env: command.env }, error: undefined }
+        : resolveSpawn(command.command, cwd, command.env);
     const { file, args, opts, error } = spawnPlan;
     if (error) {
+      if (typeof command !== "string") void command.release?.();
       resolve({ content: [{ type: "text", text: error }] });
       return;
     }
     // 注入 PI_* 环境变量(对齐 Pi resolveSpawnContext):脚本可读当前会话/模型信息
-    if (ctx && opts.env === undefined) {
-      const env: Record<string, string> = { ...process.env as Record<string, string> };
+    if (ctx) {
+      const env: Record<string, string> = { ...process.env as Record<string, string>, ...(opts.env as Record<string, string> | undefined) };
       try {
         if (ctx.sessionManager) {
           env.PI_SESSION_ID = ctx.sessionManager.getSessionId();
@@ -99,16 +104,19 @@ async function executeForeground(
     child.on("error", (err) => {
       if (timer) clearTimeout(timer);
       flushDelta();
+      if (typeof command !== "string") void command.release?.();
       reject(new Error(`bash 执行失败: ${err.message}`));
     });
     child.on("exit", (code) => {
       if (timer) clearTimeout(timer);
       flushDelta();
+      if (typeof command !== "string") void command.release?.();
       output += outAnsi.feed(outDec.finish()) + outAnsi.finish();
       errOutput += errAnsi.feed(errDec.finish()) + errAnsi.finish();
       // 沙盒违规注解：seatbelt/代理产生的拦截在此转成可读说明（仅沙盒执行时）。
       // argv 形态（Windows srt-win 两跳）的违规归因 key 形态不同——留待 Windows 实机验证
-      if (sandboxed && typeof command === "string") errOutput = annotateSandboxFailures(command, errOutput);
+      const wrappedCommand = typeof command === "string" ? command : "command" in command ? command.command : undefined;
+      if (sandboxed && wrappedCommand) errOutput = annotateSandboxFailures(wrappedCommand, errOutput);
       // 凭据脱敏：agent 若违规内联密码/连接串，明文不进模型可见的输出
       const text = maskSecrets([output, errOutput].filter(Boolean).join("\n") || "(无输出)");
       if (timedOut) {
@@ -214,26 +222,33 @@ export async function createEnhancedBashTool(
 
       // 沙盒标记(权限层「判不了域」放行时经 updatedInput 注入):wrapWithSandbox 后执行。
       // 显示/通知用原命令;实际 spawn 用包装命令(含代理 env 前缀)。wrap 失败 = 明确报错(fail-closed)。
-      const sandboxed = params.sandbox === true;
-      let execTarget: string | { argv: string[]; env: NodeJS.ProcessEnv } = command;
+      const executionPolicy = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined;
+      const context = executionPolicy ?? createExecutionContext(cwd, "standard");
+      const sandboxed = true;
+      let execTarget: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> } = command;
       if (sandboxed) {
         const init = await ensureSandbox(cwd);
         if (!init.ok) {
-          return { content: [{ type: "text" as const, text: `沙盒初始化失败：${init.reason}——请切换「完全访问」或检查沙盒依赖` }] };
+          return { content: [{ type: "text" as const, text: `系统保护初始化失败：${init.reason}` }] };
         }
         try {
           // Windows 沙盒需要 Git Bash 绝对路径（srt argv 两跳启动的 binShell）
-          const spec = await wrapForSandbox(command, process.platform === "win32" ? { gitBashPath: findBashOnWindows() ?? undefined } : undefined);
-          execTarget = spec.kind === "argv" ? { argv: spec.argv, env: spec.env } : spec.command;
+          const spec = await wrapForSandbox(command, {
+            context,
+            ...(process.platform === "win32" ? { gitBashPath: findBashOnWindows() ?? undefined } : {}),
+          });
+          execTarget = spec.kind === "argv"
+            ? { argv: spec.argv, env: spec.env, release: spec.release }
+            : { command: spec.command, env: spec.env, release: spec.release };
         } catch (e) {
-          return { content: [{ type: "text" as const, text: `沙盒包装失败：${(e as Error).message}` }] };
+          return { content: [{ type: "text" as const, text: `系统保护启动失败：${(e as Error).message}` }] };
         }
       }
 
       // 前台:EM 自己 spawn + 编码容错解码(Windows 下 Pi 的 OutputAccumulator 固定 UTF-8,
       // 解 GBK 字节必乱码;EM 侧按 UTF-8/GBK 自动判定)。行为对齐 Pi:同步 + 超时 + 截断 + PI_* 注入。
       if (params.background !== true) {
-        return executeForeground(execTarget, cwd, signal, typeof params.timeout === "number" ? params.timeout : undefined, ctx, sandboxed, onUpdate);
+        return executeForeground(execTarget, context.workspaceRealPath, signal, typeof params.timeout === "number" ? params.timeout : undefined, ctx, sandboxed, onUpdate);
       }
 
       // 后台:spawn + 注册,立即返回
@@ -241,7 +256,7 @@ export async function createEnhancedBashTool(
       // 去哪读输出,运行中可随时 read,不必等退出通知
       let shellSessionId: string | undefined;
       try { shellSessionId = ctx?.sessionManager?.getSessionId?.(); } catch { /* 会话信息不可用 */ }
-      const { id, logPath } = backgroundShellRegistry.start(execTarget, cwd, options?.onExit, shellSessionId, sandboxed ? command : undefined);
+      const { id, logPath } = backgroundShellRegistry.start(execTarget, context.workspaceRealPath, options?.onExit, shellSessionId, sandboxed ? command : undefined);
       return {
         content: [{
           type: "text" as const,
