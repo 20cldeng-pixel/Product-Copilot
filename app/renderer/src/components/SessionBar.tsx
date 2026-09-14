@@ -85,10 +85,12 @@ export function SessionBar(props: SessionBarProps): JSX.Element {
        
         onClick={() => { onNewSession?.(); setShowArchive(false); }}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          <path d="M9 10h6" />
-          <path d="M12 7v6" />
+        {/* 圆角气泡 + 加号。图形几乎填满 viewBox（墨迹占 90%，原方角气泡仅 82%），
+            同尺寸下会明显更大，故显示尺寸收一档到 14px：墨迹 12.60px，与旁边归档图标一致 */}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]">
+          <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" />
+          <path d="M8 12h8" />
+          <path d="M12 8v8" />
         </svg>
       </button>
 
