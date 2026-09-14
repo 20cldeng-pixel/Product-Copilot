@@ -7,7 +7,7 @@
  *   把后两者说成"未安装"会逼用户反复装——那是这个面板最不能犯的错。
  * - 实在装不了才提供「关闭沙盒运行」，且必须先说清失去什么、保留什么，并说明随时能开回来（安抚）。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { useSettingsStore } from "../../stores/settings-store";
 
@@ -40,9 +40,12 @@ export function EnvPanel({ variant = "settings", refreshKey }: {
   useEffect(() => { void refresh(false); }, [refresh]);
 
   // 外层「重新检测」：重探并**重置沙盒失败缓存**（reset=true）——装好依赖后不重置的话，
-  // 缓存的 fail-closed 会让用户以为白装了。首次挂载 refreshKey 为 undefined，不重复探测。
+  // 缓存的 fail-closed 会让用户以为白装了。
+  // 用 ref 记住上一次的值：挂载时（外层已传数字初值）不重探，避免与上面那次重复探测。
+  const lastRefreshKey = useRef(refreshKey);
   useEffect(() => {
-    if (refreshKey === undefined) return;
+    if (refreshKey === undefined || refreshKey === lastRefreshKey.current) return;
+    lastRefreshKey.current = refreshKey;
     void refresh(true);
   }, [refreshKey, refresh]);
 

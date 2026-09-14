@@ -105,8 +105,10 @@ function EnvCheckSection(): JSX.Element {
   const nodeRt = useDetect("nodeRuntime");
   const codegraph = useDetect("codegraph");
   /** 「重新检测」的统一入口：三个检测器 + 环境面板（面板就不必再自带一个同文案按钮）。
-   *  用累加值驱动，与 SessionBar 的 refreshKey 同一约定；undefined = 还没点过（不触发面板重探）。 */
-  const [panelRefreshKey, setPanelRefreshKey] = useState<number | undefined>(undefined);
+   *  用**累加数字**驱动，与 SessionBar 的 refreshKey 同一约定。
+   *  ⚠️ 初值必须是数字而不是 undefined：面板用 `refreshKey === undefined` 判定「外层是否接管」，
+   *  初值给 undefined 会让面板首帧又渲染出它自己的按钮（同屏两个「重新检测」）。0 = 还没点过。 */
+  const [panelRefreshKey, setPanelRefreshKey] = useState(0);
 
   return (
     <section>
@@ -118,7 +120,7 @@ function EnvCheckSection(): JSX.Element {
             git.refresh();
             nodeRt.refresh();
             codegraph.refresh();
-            setPanelRefreshKey((k) => (k ?? 0) + 1); // 面板同步重探（含重置沙盒失败缓存，装好即生效）
+            setPanelRefreshKey((k) => k + 1); // 面板同步重探（含重置沙盒失败缓存，装好即生效）
           }}
         >
           重新检测
