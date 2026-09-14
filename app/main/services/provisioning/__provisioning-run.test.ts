@@ -192,14 +192,40 @@ describe("userns 一键修复：执行层", () => {
     expect(res.manualCommand).toContain("sudo");
   });
 
-  it("授权被取消/弹不出（退出码非 0）→ 如实报码 + 给手工指引", async () => {
+  it("pkexec 退出码 126（用户关闭了授权框）→ 精确说成「取消」，并附手工指引", async () => {
+    // 依据 polkit 官方手册 pkexec(1) 的 RETURN VALUE 段：126 = 用户关闭了认证对话框
     const { promise } = fixRun({ existing: [...BINS, SRC], codes: [0, 126], after: "blocked" });
     const res = await promise;
     expect(res.ok).toBe(false);
     expect(res.exitCode).toBe(126);
     expect(res.reason).toContain("126");
+    // 断言必须用**只在专用分支里出现**的特征串：通用文案本身含"取消"二字，
+    // 用 toContain("取消") 区分不出两者（曾这样写，被负向验证抓出来）
+    expect(res.reason).toContain("命令没有执行");
+    expect(res.reason).not.toContain("常见原因");
     expect(res.reason).not.toContain("安装失败"); // 不说成"安装失败"——那是另一回事
     expect(res.manualCommand).toContain("apparmor_parser -r");
+  });
+
+  it("pkexec 退出码 127（未获授权 / 认证无法完成）→ 与 126 区分开，不提「取消」", async () => {
+    // 手册：未获授权、认证无法完成或发生错误 → 127。两位数字含义不同，不能混成一句话
+    const { promise } = fixRun({ existing: [...BINS, SRC], codes: [0, 127], after: "blocked" });
+    const res = await promise;
+    expect(res.exitCode).toBe(127);
+    expect(res.reason).toContain("127");
+    expect(res.reason).toContain("授权没成功");
+    expect(res.reason).not.toContain("取消");
+  });
+
+  it("其他退出码 → 不套用 pkexec 的专用解释，用通用说明", async () => {
+    const { promise } = fixRun({ existing: [...BINS, SRC], codes: [0, 3], after: "blocked" });
+    const res = await promise;
+    expect(res.exitCode).toBe(3);
+    expect(res.reason).toContain("3");
+    expect(res.reason).toContain("常见原因");
+    // 手册说「成功时原样返回 PROGRAM 的返回码」，即 PROGRAM 自己也可能返回 126/127；
+    // 因此 126 的文案写成「通常表示」而非断言——这条断言守住那个措辞
+    expect(res.reason).not.toContain("通常表示");
   });
 
   it("写配置就失败 → 停在那里，不继续盲跑加载命令", async () => {

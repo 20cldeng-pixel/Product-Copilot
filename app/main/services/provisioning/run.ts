@@ -124,7 +124,11 @@ async function runArgv(
   child.stdout?.on("data", (d) => { out += String(d); });
   child.stderr?.on("data", (d) => { out += String(d); });
   const kill = (): void => { try { child.kill("SIGTERM"); } catch { /* 已退出 */ } };
-  if (signal?.aborted) kill(); // 传入时已取消（addEventListener 不会再触发）
+  // 传入时已取消：abort 事件在取消那一刻就派发过了，事件不重放——之后注册的监听器收不到。
+  // MDN「Implementing an abortable API」给的示范也是这个双分支写法（先判 aborted、再挂监听）：
+  // 「the promise is rejected immediately **if the signal is already aborted**, or if the abort
+  //   event is detected」→ 所以这一行不能省，否则"点取消时命令已在跑"这个边界没人处理
+  if (signal?.aborted) kill();
   signal?.addEventListener("abort", kill, { once: true });
   const exitCode = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
   signal?.removeEventListener("abort", kill);
@@ -189,7 +193,7 @@ export async function installDependencies(
     ? "安装已取消"
     : exitCode === 0
       ? `组件已安装，但 ${remaining.join("、")} 仍不可用——多为系统策略拦截，请看下方说明`
-      : `安装未完成（退出码 ${exitCode}）——常见原因：取消了系统授权、当前环境弹不出授权窗口、网络或镜像源不可达`
+      : `安装未完成（退出码 ${exitCode}：${pkexecExitNote(exitCode)}）`
         + (errorText ? `。错误信息：${outputTail(errorText, 160)}` : "");
   onEvent({ phase: "failed", index: total, total, message: reason });
   return { ok: false, report, manualCommand: plan.manualCommand, reason, exitCode };
@@ -216,8 +220,23 @@ export interface FixUsernsDeps {
   platform: string;
 }
 
-/** 授权类失败的通用解释。**不硬编码 pkexec 的 126/127 含义**——本机（macOS）无法核实其准确语义，宁可如实报码 */
-const AUTH_HINT = "常见原因：取消了系统授权、当前环境弹不出授权窗口";
+/**
+ * pkexec 退出码的解释。依据 polkit 官方手册 `pkexec(1)` 的「RETURN VALUE」段：
+ * - 未经授权 / 认证无法完成 / 发生错误 → **127**
+ * - 因**用户关闭了认证对话框**而拿不到授权 → **126**
+ * - 成功时**原样返回 PROGRAM 的返回码**
+ * 所以这两位数字能给出比"常见原因…"精确得多的指引，不必只报数字。
+ *
+ * 但同一句话也意味着：**PROGRAM 自身返回 126/127 时无法区分**（我们执行的是 apt-get /
+ * install / apparmor_parser，概率极低但不为零）——故措辞用「通常表示」，
+ * 且不给 127 断言"命令没有执行"（那可能是 PROGRAM 自己的退出码）。
+ * 来源：https://manpages.ubuntu.com/manpages/noble/man1/pkexec.1.html
+ */
+function pkexecExitNote(exitCode: number | null): string {
+  if (exitCode === 126) return "通常表示你在系统授权窗口点了取消，命令没有执行";
+  if (exitCode === 127) return "通常表示系统授权没成功（当前环境弹不出授权窗口，或被系统策略拒绝）";
+  return "常见原因：取消了系统授权、当前环境弹不出授权窗口，或网络/镜像源不可达";
+}
 
 export async function fixUserns(
   onEvent: (e: InstallEvent) => void,
@@ -278,7 +297,7 @@ export async function fixUserns(
     if (r.exitCode !== 0) {
       return {
         ok: false,
-        reason: `安装 ${APPARMOR_PROFILES_PACKAGE} 未完成（退出码 ${r.exitCode}）——${AUTH_HINT}`,
+        reason: `安装 ${APPARMOR_PROFILES_PACKAGE} 未完成（退出码 ${r.exitCode}：${pkexecExitNote(r.exitCode)}）`,
         manualCommand,
         exitCode: r.exitCode,
       };
@@ -302,7 +321,7 @@ export async function fixUserns(
   if (rc.exitCode !== 0) {
     return {
       ok: false,
-      reason: signal?.aborted ? "已取消" : `写入系统配置未完成（退出码 ${rc.exitCode}）——${AUTH_HINT}`,
+      reason: signal?.aborted ? "已取消" : `写入系统配置未完成（退出码 ${rc.exitCode}：${pkexecExitNote(rc.exitCode)}）`,
       manualCommand,
       exitCode: rc.exitCode,
     };
@@ -320,7 +339,7 @@ export async function fixUserns(
       ? "已取消：配置已写入，重启后由系统服务加载"
       : rl.exitCode === 0
         ? undefined // 命令成功但仍被挡 → 用 verify 的默认文案
-        : `配置已写入，但加载没成功（退出码 ${rl.exitCode}）——重启后由系统服务加载；仍不行请按下面的命令手动执行`,
+        : `配置已写入，但加载没成功（退出码 ${rl.exitCode}：${pkexecExitNote(rl.exitCode)}）——重启后由系统服务加载；仍不行请按下面的命令手动执行`,
     rl.exitCode,
   );
 }

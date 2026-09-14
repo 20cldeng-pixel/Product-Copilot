@@ -10,6 +10,23 @@
  * 宿主额外要刷的范围用 `onBeforeRetest` 注入（设置页用它带上三个检测器）。
  * `EnvPanel` 自身不再渲染任何刷新按钮，所以"同屏两个"在结构上不可能再出现，
  * 也不再有"两个按钮刷的东西不一样"这种隐藏差异。
+ *
+ * ── 为什么用 ref 句柄，而不是一个计数 prop（如 refreshKey）？────────────────────
+ * React 官方 `useImperativeHandle` 文档确实有一条 Pitfall：
+ *   「If you can express something as a prop, you should not use a ref.」
+ * 并举例 `{ open, close }` 应改为 `isOpen` prop。
+ * 但同一页的「Exposing your own imperative methods」正例，形状与本组件完全一致：
+ *   父组件点按钮 → `postRef.current.scrollAndFocusAddComment()`。
+ * 我们选 ref 的关键理由**不是"ref 更高级"**，而是：计数 prop 把「一个动作」编码成
+ * 「一个数字的含义」，必然要额外约定"初值算不算触发/undefined 代表什么"——上一次的缺陷
+ * （面板用哨兵值判断是否由外层接管，与外层初值撞车 → 同屏两个按钮）正是这种隐式值域约定造成的。
+ * ref 直接表达"执行这个动作"，没有值域可撞。
+ *
+ * React 19 起 `ref` 就是普通 prop（不必再包 forwardRef），故 `EnvPanel` 用 `{ ref }` 解构 +
+ * `useImperativeHandle` 暴露单一方法。
+ *
+ * ⚠️ 调用处必须有可选链：SSR / 静态渲染（我们的组件测试）下 `useImperativeHandle` 不执行，
+ * `panel.current` 为 **null**。
  */
 import type { RefObject } from "react";
 import type { EnvPanelHandle } from "./EnvPanel";
