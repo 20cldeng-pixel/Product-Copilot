@@ -563,6 +563,10 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   /* 图标贴近文字（覆盖 .sb-project-name 的 --s2=8px）：折角图形左右各有 4px 内边距，
      5px 间距实际观感约 9px，与文字排在一起更紧凑 */
   gap: 5px;
+  /* 光学对齐：图标墨迹左右各带约 3.3px 空白（折角 path 占 x=6~18/24，描边再外扩 1 单位，
+     16px 显示即 (5/24)*16≈3.3px），若沿用 8px 左内边距，视觉左留白会明显大于右侧的 8px。
+     左内边距减掉这段空白，使「图标左留白」与「文字右留白」看起来一致（都约 8px） */
+  padding-left: 5px;
   transition: background-color 120ms var(--ease-smooth);
 }
 .sb-project-switch:hover { background: var(--color-surface-hover); }
