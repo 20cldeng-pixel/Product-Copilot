@@ -11,7 +11,12 @@ import { useCallback, useEffect, useState } from "react";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { useSettingsStore } from "../../stores/settings-store";
 
-export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "settings" }): JSX.Element {
+export function EnvPanel({ variant = "settings", refreshKey }: {
+  variant?: "onboarding" | "settings";
+  /** 由外层「环境检测」标题栏的「重新检测」驱动：值变化即重探（含重置沙盒失败缓存）。
+   *  undefined = 本面板自带「重新检测」按钮（引导流程没有外层标题栏）。 */
+  refreshKey?: number;
+}): JSX.Element {
   const [report, setReport] = useState<EnvReportShape | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
   const [progress, setProgress] = useState<EnvProgressShape | null>(null);
@@ -34,6 +39,13 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
 
   useEffect(() => { void refresh(false); }, [refresh]);
 
+  // 外层「重新检测」：重探并**重置沙盒失败缓存**（reset=true）——装好依赖后不重置的话，
+  // 缓存的 fail-closed 会让用户以为白装了。首次挂载 refreshKey 为 undefined，不重复探测。
+  useEffect(() => {
+    if (refreshKey === undefined) return;
+    void refresh(true);
+  }, [refreshKey, refresh]);
+
   // 安装进度：订阅主进程阶段事件（不看包管理器输出）
   useEffect(() => {
     const off = window.electronAPI.env.onProgress((ev) => setProgress(ev));
@@ -47,6 +59,11 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
   const installable = broken.filter((i) => i.status === "missing" && i.fix.auto && i.fix.auto.strategy !== "usernsProfile");
   /** 被系统策略拦住、但 main 侧给出了"一键修复"策略的（目前是 bwrap 的 userns 放行） */
   const fixable = broken.filter((i) => i.status === "blocked" && i.fix.auto?.strategy === "usernsProfile");
+  /** 兜底开关是否可用（关闭沙盒运行 / 重新开启） */
+  const sandboxOffAvailable = broken.length > 0 && items.some((i) => i.fix.sandboxOff);
+  /** 操作区是否有内容：设置页在"全部就绪"时不该留一行空白 */
+  const hasActions = installable.length > 0 || fixable.length > 0 || installing
+    || refreshKey === undefined || sandboxOffAvailable || sandboxDisabled;
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
@@ -206,60 +223,64 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
       )}
 
       {/* 操作区 */}
-      <div className="mt-4 flex items-center gap-2">
-        {/* 一键修复：被系统策略拦住时的主出路（会弹系统授权框），失败仍有下方手工命令兜底 */}
-        {fixable.length > 0 && (
-          <button
-            className="btn-accent px-4 py-2 rounded-[var(--radius-lg)] text-xs font-medium"
-            disabled={installing}
-            onClick={() => void fixUserns()}
-          >
-            {installing ? "正在修复…" : "一键修复（需系统授权）"}
-          </button>
-        )}
-        {installable.length > 0 && (
-          <button
-            className="btn-accent px-4 py-2 rounded-[var(--radius-lg)] text-xs font-medium"
-            disabled={installing}
-            onClick={() => void install()}
-          >
-            {installing ? "正在安装…" : `一键安装 ${installable.length} 项`}
-          </button>
-        )}
-        {installing && (
-          <button
-            className="em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
-            onClick={() => void window.electronAPI.env.cancel()}
-          >
-            取消
-          </button>
-        )}
-        {!installing && (
-          <button
-            className="em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
-            onClick={() => void refresh(true)}
-          >
-            重新检测
-          </button>
-        )}
-        {/* 兜底：只在真有问题时出现（Linux 专属），且先讲清风险与可回退 */}
-        {broken.length > 0 && items.some((i) => i.fix.sandboxOff) && !sandboxDisabled && (
-          <button
-            className="ml-auto em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-danger"
-            onClick={() => void turnOffSandbox()}
-          >
-            关闭沙盒运行
-          </button>
-        )}
-        {sandboxDisabled && (
-          <button
-            className="ml-auto em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
-            onClick={() => setSandboxDisabled(false)}
-          >
-            重新开启沙盒
-          </button>
-        )}
-      </div>
+      {hasActions && (
+        <div className="mt-4 flex items-center gap-2">
+          {/* 一键修复：被系统策略拦住时的主出路（会弹系统授权框），失败仍有下方手工命令兜底 */}
+          {fixable.length > 0 && (
+            <button
+              className="btn-accent px-4 py-2 rounded-[var(--radius-lg)] text-xs font-medium"
+              disabled={installing}
+              onClick={() => void fixUserns()}
+            >
+              {installing ? "正在修复…" : "一键修复（需系统授权）"}
+            </button>
+          )}
+          {installable.length > 0 && (
+            <button
+              className="btn-accent px-4 py-2 rounded-[var(--radius-lg)] text-xs font-medium"
+              disabled={installing}
+              onClick={() => void install()}
+            >
+              {installing ? "正在安装…" : `一键安装 ${installable.length} 项`}
+            </button>
+          )}
+          {installing && (
+            <button
+              className="em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
+              onClick={() => void window.electronAPI.env.cancel()}
+            >
+              取消
+            </button>
+          )}
+          {/* 「重新检测」只在本面板自己负责刷新时出现（引导流程）；设置页由外层标题栏那个按钮统一负责，
+              否则同一屏会出现两个同文案按钮（且两者刷新范围不同，用户无从分辨） */}
+          {refreshKey === undefined && !installing && (
+            <button
+              className="em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
+              onClick={() => void refresh(true)}
+            >
+              重新检测
+            </button>
+          )}
+          {/* 兜底：只在真有问题时出现（Linux 专属），且先讲清风险与可回退 */}
+          {sandboxOffAvailable && !sandboxDisabled && (
+            <button
+              className="ml-auto em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-danger"
+              onClick={() => void turnOffSandbox()}
+            >
+              关闭沙盒运行
+            </button>
+          )}
+          {sandboxDisabled && (
+            <button
+              className="ml-auto em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
+              onClick={() => setSandboxDisabled(false)}
+            >
+              重新开启沙盒
+            </button>
+          )}
+        </div>
+      )}
       {sandboxDisabled && (
         <p className="mt-1.5 text-[length:var(--text-2xs)] text-danger">
           沙盒已关闭：命令不受系统层限制（不推荐长期如此），EasyMint 自身的路径禁区检查仍在生效

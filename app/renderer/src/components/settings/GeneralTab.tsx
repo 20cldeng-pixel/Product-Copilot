@@ -104,6 +104,9 @@ function EnvCheckSection(): JSX.Element {
   const git = useDetect("git");
   const nodeRt = useDetect("nodeRuntime");
   const codegraph = useDetect("codegraph");
+  /** 「重新检测」的统一入口：三个检测器 + 环境面板（面板就不必再自带一个同文案按钮）。
+   *  用累加值驱动，与 SessionBar 的 refreshKey 同一约定；undefined = 还没点过（不触发面板重探）。 */
+  const [panelRefreshKey, setPanelRefreshKey] = useState<number | undefined>(undefined);
 
   return (
     <section>
@@ -111,7 +114,12 @@ function EnvCheckSection(): JSX.Element {
         <h3 className="text-sm font-medium text-text-secondary">环境检测</h3>
         <button
           className="px-3 py-1.5 rounded-[var(--radius-lg)] text-xs text-text-secondary em-hover-control transition-shadow"
-          onClick={() => { git.refresh(); nodeRt.refresh(); codegraph.refresh(); }}
+          onClick={() => {
+            git.refresh();
+            nodeRt.refresh();
+            codegraph.refresh();
+            setPanelRefreshKey((k) => (k ?? 0) + 1); // 面板同步重探（含重置沙盒失败缓存，装好即生效）
+          }}
         >
           重新检测
         </button>
@@ -120,7 +128,7 @@ function EnvCheckSection(): JSX.Element {
         <EnvRow label="Git" info={git.info} installUrl="https://git-scm.com/downloads" />
         <EnvRow label="Node.js" info={nodeRt.info} installUrl="https://nodejs.org/" />
         <CodegraphRow info={codegraph.info} />
-        <EnvPanel variant="settings" />
+        <EnvPanel variant="settings" refreshKey={panelRefreshKey} />
       </div>
     </section>
   );
