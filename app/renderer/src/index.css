@@ -560,8 +560,9 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   appearance: none; -webkit-appearance: none;
   background: transparent; border: 0; text-align: left;
   font-family: inherit; cursor: pointer; -webkit-app-region: no-drag;
-  /* 图标贴近文字（覆盖 .sb-project-name 的 --s2=8px）：折角图形左右各有 4px 内边距，
-     5px 间距实际观感约 9px，与文字排在一起更紧凑 */
+  /* 图标贴近文字（覆盖 .sb-project-name 的 --s2=8px）：折角图形墨迹左右各带约 3.3px 空白
+     （path 占 x=6~18/24，描边再外扩 1 单位），5px 间距实测墨迹到文字约 8.3px，
+     与左右内边距的视觉留白（8px）一致 */
   gap: 5px;
   /* 光学对齐：图标墨迹左右各带约 3.3px 空白（折角 path 占 x=6~18/24，描边再外扩 1 单位，
      16px 显示即 (5/24)*16≈3.3px），若沿用 8px 左内边距，视觉左留白会明显大于右侧的 8px。
