@@ -8,6 +8,8 @@
 import { ensureSandbox } from "../sandbox/manager";
 import { readCache } from "../session-cache";
 import { parse as parseShell } from "shell-quote";
+import fs from "node:fs";
+import path from "node:path";
 import {
   canonicalPolicyPath,
   isStandardWritableTarget,
@@ -136,6 +138,10 @@ export class AgentPermissionService {
         if (isSystemMutationCommand(command)) {
           return deny("core.privileged_operation", "execute", firstCommand(command), "执行提权或系统控制命令（完全访问也不允许）");
         }
+        const unsafeScript = findUnsafeExecutedScript(command, cwd);
+        if (unsafeScript) {
+          return deny("core.privileged_operation", "execute", unsafeScript, "执行包含提权或系统控制命令的本地脚本（完全访问也不允许）");
+        }
         const sandbox = await ensureSandbox(cwd);
         if (!sandbox.ok) {
           return deny("backend.sandbox_unavailable", "execute", firstCommand(command), `安全执行后端不可用：${sandbox.reason}`);
@@ -211,10 +217,10 @@ export function isSystemMutationCommand(command: string): boolean {
     "shutdown", "reboot", "halt", "poweroff",
     "csrutil", "nvram", "diskpart", "format", "bcdedit", "netsh",
     "set-executionpolicy", "format-volume", "clear-disk", "initialize-disk",
-    "set-service", "stop-service", "restart-service", "new-service", "remove-service",
+    "set-service", "start-service", "stop-service", "restart-service", "suspend-service", "resume-service", "new-service", "remove-service",
     "stop-computer", "restart-computer",
     // Windows PowerShell 直接暴露系统控制面，文件 ACL 不会覆盖注册表/服务管理。
-    "set-itemproperty", "new-itemproperty", "remove-itemproperty", "set-mppreference",
+    "set-itemproperty", "new-itemproperty", "remove-itemproperty", "set-mppreference", "regedit",
     "add-windowscapability", "remove-windowscapability", "enable-windowsoptionalfeature",
     "disable-windowsoptionalfeature", "install-windowsfeature", "uninstall-windowsfeature",
   ]);
@@ -223,7 +229,8 @@ export function isSystemMutationCommand(command: string): boolean {
     systemctl: new Set(["add-wants", "cancel", "daemon-reexec", "daemon-reload", "disable", "edit", "enable", "halt", "hibernate", "isolate", "kill", "link", "mask", "preset", "reboot", "reenable", "reload", "restart", "revert", "set-default", "start", "stop", "suspend", "switch-root", "unmask"]),
     service: new Set(["start", "stop", "restart", "reload", "force-reload"]),
     sc: new Set(["config", "create", "delete", "failure", "start", "stop", "pause", "continue"]),
-    reg: new Set(["add", "delete", "load", "unload", "restore", "copy"]),
+    reg: new Set(["add", "delete", "import", "load", "unload", "restore", "copy"]),
+    schtasks: new Set(["/change", "/create", "/delete", "/end", "/run"]),
     diskutil: new Set(["apfs", "corestorage", "eject", "eraseDisk", "eraseVolume", "mount", "mountDisk", "partitionDisk", "randomDisk", "rename", "repairDisk", "repairVolume", "resetFusion", "unmount", "unmountDisk", "zeroDisk"].map((v) => v.toLowerCase())),
   };
   // 命令替换会在普通命令的参数求值阶段执行。shell-quote 会把双引号中的 $(...) 当成
@@ -279,6 +286,20 @@ function inspectShellCommand(
       const commandIndex = words.findIndex((word, i) => i > index && word === "-c");
       const nestedCommand = commandIndex >= 0 ? words[commandIndex + 1] : undefined;
       if (nestedCommand) return isSystemMutationCommand(nestedCommand);
+    }
+    if (token === "cmd") {
+      const commandIndex = words.findIndex((word, i) => i > index && ["/c", "/k"].includes(word.toLowerCase()));
+      if (commandIndex >= 0 && words[commandIndex + 1]) {
+        return isSystemMutationCommand(words.slice(commandIndex + 1).join(" "));
+      }
+    }
+    if (["powershell", "pwsh"].includes(token)) {
+      const encoded = words.some((word, i) => i > index && ["-encodedcommand", "-enc", "-e"].includes(word.toLowerCase()));
+      if (encoded) return true; // 编码脚本无法可靠审查，系统控制保护按 fail-closed 处理。
+      const commandIndex = words.findIndex((word, i) => i > index && ["-command", "-c"].includes(word.toLowerCase()));
+      if (commandIndex >= 0 && words[commandIndex + 1]) {
+        return isSystemMutationCommand(words.slice(commandIndex + 1).join(" "));
+      }
     }
     if (token === "eval" && words[index + 1]) return isSystemMutationCommand(words.slice(index + 1).join(" "));
     return false;
@@ -441,7 +462,52 @@ function splitTopLevelShellLines(source: string): string[] {
 }
 
 function commandBasename(token: string): string {
-  return token.replace(/^['"]|['"]$/g, "").replace(/\\/g, "/").split("/").pop()?.toLowerCase() || "";
+  const basename = token.replace(/^['"]|['"]$/g, "").replace(/\\/g, "/").split("/").pop()?.toLowerCase() || "";
+  return basename.replace(/\.(?:exe|cmd|bat|com)$/i, "");
+}
+
+/** 只检查真实作为命令参数执行的本地脚本；引号中的 echo/提交信息不会成为命令首词。 */
+function findUnsafeExecutedScript(command: string, cwd: string): string | null {
+  let parsed: ReturnType<typeof parseShell>;
+  try { parsed = parseShell(command); } catch { return null; }
+  const separators = new Set(["&&", "||", ";", ";;", "|", "|&", "&"]);
+  let words: string[] = [];
+  const inspect = (): string | null => {
+    if (words.length === 0) return null;
+    let index = 0;
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] || "")) index++;
+    while (["command", "exec", "nohup", "env", "nice"].includes(commandBasename(words[index] || ""))) {
+      const wrapper = commandBasename(words[index++] || "");
+      while (words[index]?.startsWith("-")) index++;
+      if (wrapper === "env") while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] || "")) index++;
+    }
+    const token = commandBasename(words[index] || "");
+    let candidate: string | undefined;
+    if (["powershell", "pwsh"].includes(token)) {
+      const fileIndex = words.findIndex((word, i) => i > index && ["-file", "-f"].includes(word.toLowerCase()));
+      candidate = fileIndex >= 0 ? words[fileIndex + 1] : undefined;
+    } else if (["sh", "bash", "zsh", "dash", "ksh"].includes(token)) {
+      candidate = words.slice(index + 1).find((word) => !word.startsWith("-"));
+    } else if ((words[index] || "").startsWith("./") || (words[index] || "").startsWith(".\\")) {
+      candidate = words[index];
+    }
+    if (!candidate || /[\0\r\n]/.test(candidate)) return null;
+    const absolute = path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
+    try {
+      const stat = fs.lstatSync(absolute);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 200 * 1024) return null;
+      return isSystemMutationCommand(fs.readFileSync(absolute, "utf8")) ? candidate : null;
+    } catch { return null; }
+  };
+  for (const entry of parsed) {
+    if (typeof entry === "string") { words.push(entry); continue; }
+    if ("comment" in entry) break;
+    if (!("op" in entry) || !separators.has(entry.op)) continue;
+    const hit = inspect();
+    if (hit) return hit;
+    words = [];
+  }
+  return inspect();
 }
 
 /** 保留给诊断测试；执行安全不再依赖脚本文本扫描。 */

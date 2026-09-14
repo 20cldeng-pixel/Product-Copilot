@@ -1,10 +1,11 @@
 import path from "node:path";
 import type { ToolDefinition } from "../pi-sdk";
 import { getDefineToolFn } from "../pi-sdk";
-import { ensureSandbox, wrapForSandbox, isSandboxBypassed } from "../sandbox/manager";
+import { ensureSandbox, wrapForSandbox, isSandboxBypassed, type SandboxSpawnSpec } from "../sandbox/manager";
 import { executeForeground } from "../background-shell/tool";
 import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
+import { sandboxGitBashPath } from "../background-shell/registry";
 
 type Manager = "npm" | "pnpm" | "yarn" | "bun" | "pip" | "uv" | "cargo" | "go" | "dart" | "flutter" | "mise";
 
@@ -44,6 +45,12 @@ function installCommand(manager: Manager, packages: string[], scope: "project" |
   }
 }
 
+function executionTarget(wrapped: SandboxSpawnSpec) {
+  return wrapped.kind === "argv"
+    ? { argv: wrapped.argv, env: wrapped.env, release: wrapped.release }
+    : { command: wrapped.command, env: wrapped.env, release: wrapped.release };
+}
+
 export async function createDependencyTool(cwd: string): Promise<ToolDefinition> {
   const defineTool = await getDefineToolFn();
   return defineTool({
@@ -76,13 +83,14 @@ export async function createDependencyTool(cwd: string): Promise<ToolDefinition>
       }
       const initialized = await ensureSandbox(context.workspaceRealPath);
       if (!initialized.ok) throw new Error(`系统保护初始化失败：${initialized.reason}`);
-      const wrapped = await wrapForSandbox(command, { context });
-      const target = wrapped.kind === "argv"
-        ? { argv: wrapped.argv, env: wrapped.env }
-        : { command: wrapped.command, env: wrapped.env };
+      const wrapped = await wrapForSandbox(command, {
+        context,
+        gitBashPath: sandboxGitBashPath(),
+      });
+      const target = executionTarget(wrapped);
       return executeForeground(target, context.workspaceRealPath, signal, undefined, undefined, true, onUpdate);
     },
   } as any) as ToolDefinition;
 }
 
-export const dependencyToolInternals = { installCommand, packageArgs };
+export const dependencyToolInternals = { installCommand, packageArgs, executionTarget };

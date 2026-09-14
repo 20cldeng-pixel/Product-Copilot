@@ -3,8 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("electron", () => ({ app: { isPackaged: false } }));
 
 import { createEnhancedBashTool } from "./tool";
+import { sandboxGitBashPath } from "./registry";
 
 describe("前台 bash 增量输出", () => {
+  it("Windows 受保护调用使用探测到的 Git Bash", () => {
+    expect(sandboxGitBashPath("win32", () => "C:\\Program Files\\Git\\bin\\bash.exe"))
+      .toBe("C:\\Program Files\\Git\\bin\\bash.exe");
+    expect(sandboxGitBashPath("darwin", () => "unused")).toBeUndefined();
+  });
+
   it("执行中经 onUpdate 推送 stdout", async () => {
     const tool = await createEnhancedBashTool(process.cwd());
     const updates: string[] = [];

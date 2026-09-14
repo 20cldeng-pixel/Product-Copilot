@@ -114,6 +114,14 @@ export function findBashOnWindows(): string | null {
   return null;
 }
 
+/** 统一生成受保护 bash 的平台参数，避免 Windows 调用方忘记传入已探测的 Git Bash。 */
+export function sandboxGitBashPath(
+  platform: NodeJS.Platform = process.platform,
+  finder: () => string | null = findBashOnWindows,
+): string | undefined {
+  return platform === "win32" ? finder() ?? undefined : undefined;
+}
+
 /** 后台命令的 spawn 配置:Windows 用 Git Bash -c(对齐 Pi 工具,支持 cd /c/... 和管道 tail);
  *  Windows 无 Git Bash → 报错(错误信息进入工具结果,Mint 读到后自行调整策略);
  *  Unix 保持 shell:true(行为不变)。

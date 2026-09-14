@@ -18,4 +18,15 @@ describe("受管理依赖安装", () => {
     expect(() => dependencyToolInternals.packageArgs([])).toThrow("至少提供");
     expect(() => dependencyToolInternals.packageArgs(["ok\nevil"])).toThrow("格式无效");
   });
+
+  it("把 Windows 沙盒租约传递给执行层", () => {
+    const release = async (): Promise<void> => {};
+    const target = dependencyToolInternals.executionTarget({
+      kind: "argv",
+      argv: ["srt-win.exe", "run"],
+      env: {},
+      release,
+    });
+    expect(target.release).toBe(release);
+  });
 });

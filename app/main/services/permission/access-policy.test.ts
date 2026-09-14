@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildExecutionPolicy,
+  accessPolicyInternals,
   canonicalPolicyPath,
   isWithin,
   isStandardWritableTarget,
@@ -42,6 +43,13 @@ describe("统一资源策略", () => {
     expect(full.denyRead).toEqual(protectedCredentialPaths());
   });
 
+  it("Windows 完全访问始终包含当前工作区所在卷", () => {
+    expect(accessPolicyInternals.filesystemRoots("D:\\work\\demo", "win32")).toContain("D:\\");
+    expect(accessPolicyInternals.filesystemRoots("D:\\work\\demo", "win32", ["E:\\"])).toContain("E:\\");
+    expect(accessPolicyInternals.windowsVolumeMetadataPaths(["D:\\", "E:\\"], "win32"))
+      .toEqual(expect.arrayContaining(["D:\\System Volume Information", "D:\\$Recycle.Bin", "E:\\System Volume Information"]));
+  });
+
   it("/tmp 和用户文档不属于核心写保护", () => {
     const protectedRoots = protectedWriteRoots();
     expect(protectedRoots).not.toContain("/tmp");
@@ -55,6 +63,8 @@ describe("统一资源策略", () => {
     expect(credentials).toContain(path.join(os.homedir(), ".easymint", "em-settings.json"));
     expect(credentials).toContain(path.join(os.homedir(), ".easymint", ".control-tmp"));
     expect(credentials).toContain(path.join(os.homedir(), ".zshrc"));
+    expect(credentials).toContain(path.join(os.homedir(), ".curlrc"));
+    expect(credentials).toContain(path.join(os.homedir(), ".wgetrc"));
   });
 
   it("EasyMint 权限状态与可执行配置属于写保护控制面", () => {
@@ -63,6 +73,10 @@ describe("统一资源策略", () => {
     expect(controls).toContain(path.join(cwd, ".easymint", "mcp.json"));
     expect(controls).toContain(path.join(cwd, ".mcp.json"));
     expect(controls).not.toContain(path.join(os.homedir(), ".easymint", "skills"));
+    expect(protectedControlPaths(cwd, "win32")).toContain(path.win32.join(
+      process.env.APPDATA || path.win32.join(os.homedir(), "AppData", "Roaming"),
+      "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
+    ));
   });
 
   it("路径包含关系在折叠 .. 后判定", () => {

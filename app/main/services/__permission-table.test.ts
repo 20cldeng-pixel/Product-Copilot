@@ -16,6 +16,13 @@ describe("系统级变更命令（任何模式拒绝）", () => {
     expect(isSystemMutationCommand("reg add HKLM\\Software\\Example /v Flag /t REG_DWORD /d 1")).toBe(true);
     expect(isSystemMutationCommand("sc config Example start= auto")).toBe(true);
     expect(isSystemMutationCommand("Set-ItemProperty HKLM:\\Software\\Example Flag 1")).toBe(true);
+    expect(isSystemMutationCommand("sc.exe stop Spooler")).toBe(true);
+    expect(isSystemMutationCommand("reg.exe add HKCU\\Software\\Example /v Flag /d 1")).toBe(true);
+    expect(isSystemMutationCommand("cmd.exe /c sc stop Spooler")).toBe(true);
+    expect(isSystemMutationCommand("powershell.exe -Command Set-Service Spooler -Status Stopped")).toBe(true);
+    expect(isSystemMutationCommand("pwsh -EncodedCommand AAAA")).toBe(true);
+    expect(isSystemMutationCommand("schtasks.exe /Create /TN Demo /TR calc.exe")).toBe(true);
+    expect(isSystemMutationCommand("Start-Service Spooler")).toBe(true);
   });
   it("普通项目命令 → 放行", () => {
     expect(isSystemMutationCommand("npm run build")).toBe(false);
@@ -38,7 +45,7 @@ describe("系统级变更命令（任何模式拒绝）", () => {
   });
 });
 
-describe("脚本内容扫描（防「写脚本再执行」绕过）", () => {
+describe("旧脚本内容诊断函数", () => {
   it("真正的系统级操作 → 命中", () => {
     expect(scanScriptContent("#!/bin/bash\nsudo rm -rf dist")).toBe("sudo/su 提权");
     expect(scanScriptContent("posix_spawn('reg add HKLM\\Software')")).toBe("Windows 系统级命令");

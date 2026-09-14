@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { AgentPermissionService } from "./permission/agent-permission-service";
 import type { CanUseToolOptions } from "./permission/agent-permission-service";
 
@@ -14,6 +15,8 @@ const opts = { signal: new AbortController().signal, toolUseID: "test" } as CanU
 const bash = (command: string) => check("bash", { command }, opts);
 const write = (file_path: string) => check("Write", { file_path, content: "x" }, opts);
 const read = (file_path: string) => check("Read", { file_path }, opts);
+const scriptDir = fs.mkdtempSync(path.join(os.tmpdir(), "easymint-permission-"));
+afterAll(() => fs.rmSync(scriptDir, { recursive: true, force: true }));
 
 describe("标准模式权限契约", () => {
   it("所有 Bash 命令都携带标准模式运行时策略", async () => {
@@ -80,5 +83,14 @@ describe("标准模式权限契约", () => {
   it("PowerShell 不再被旧的 Windows worker 占位规则提前拒绝", async () => {
     const result = await check("powershell", { command: "Get-ChildItem ." }, opts);
     expect(result.behavior).toBe("allow");
+  });
+
+  it("执行本地脚本时检查其中真实的系统控制命令", async () => {
+    const script = path.join(scriptDir, "unsafe.ps1");
+    fs.writeFileSync(script, "Write-Output 'starting'\nSet-Service Spooler -Status Stopped\n");
+    const result = await bash(`powershell -File ${JSON.stringify(script)}`);
+    expect(result.behavior).toBe("deny");
+    if (result.behavior === "deny") expect(result.message).toContain("core.privileged_operation");
+    expect((await bash(`echo ${JSON.stringify(`powershell -File ${script}`)}`)).behavior).toBe("allow");
   });
 });

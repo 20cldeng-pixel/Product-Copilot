@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import { developmentRuntimeFor, developmentRuntimesRoot } from "./development-runtime";
 import type { ExecutionContext } from "./execution-context";
@@ -14,11 +15,16 @@ export type { PermissionMode } from "./execution-context";
 export function protectedWriteRoots(platform: NodeJS.Platform = process.platform): string[] {
   if (platform === "win32") {
     const systemRoot = process.env.SystemRoot || "C:\\Windows";
+    const systemDrive = path.win32.parse(systemRoot).root || `${process.env.SystemDrive || "C:"}\\`;
     return [
       systemRoot,
-      "C:\\Recovery",
-      "C:\\System Volume Information",
-      "C:\\$Recycle.Bin",
+      path.win32.join(systemDrive, "ProgramData"),
+      path.win32.join(systemDrive, "Recovery"),
+      path.win32.join(systemDrive, "PerfLogs"),
+      ...windowsDriveRoots(platform).flatMap((root) => [
+        path.win32.join(root, "System Volume Information"),
+        path.win32.join(root, "$Recycle.Bin"),
+      ]),
     ];
   }
   if (platform === "darwin") {
@@ -59,7 +65,7 @@ export function protectedCredentialPaths(platform: NodeJS.Platform = process.pla
   const common = [
     ".ssh", ".aws", ".gnupg", ".gnupg2", ".kube", ".docker",
     path.join(".config", "gcloud"), path.join(".config", "gh"),
-    ".netrc", ".npmrc", ".pypirc", ".git-credentials",
+    ".netrc", ".npmrc", ".pypirc", ".git-credentials", ".curlrc", ".wgetrc",
     ".zshrc", ".zprofile", ".bashrc", ".bash_profile", ".profile",
     path.join(".easymint", "em-settings.json"),
     path.join(".easymint", "mcp-oauth.json"),
@@ -79,9 +85,9 @@ export function protectedCredentialPaths(platform: NodeJS.Platform = process.pla
  * EasyMint 与 shell 的持久控制面。它们不一定含凭据，所以仍可由只读工具检查，
  * 但普通文件工具和沙盒进程不能改写；修改应走宿主提供的专用、结构化能力。
  */
-export function protectedControlPaths(cwd: string): string[] {
+export function protectedControlPaths(cwd: string, platform: NodeJS.Platform = process.platform): string[] {
   const home = os.homedir();
-  return [
+  const controls = [
     path.join(home, ".easymint", "mcp.json"),
     path.join(home, ".easymint", "session-cache"),
     path.join(home, ".easymint", "system-prompts.json"),
@@ -99,12 +105,18 @@ export function protectedControlPaths(cwd: string): string[] {
     // 可以启动哪些本地进程，因此不能由 Agent 通过普通文件工具持久化修改。
     path.join(cwd, ".mcp.json"),
   ];
+  if (platform === "win32") {
+    const appData = process.env.APPDATA || path.win32.join(home, "AppData", "Roaming");
+    controls.push(path.win32.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup"));
+  }
+  return controls;
 }
 
 export function buildExecutionPolicy(context: Pick<ExecutionContext, "mode" | "workspaceRealPath" | "runtimeRoot">): SandboxRuntimeConfig {
   const { mode, workspaceRealPath, runtimeRoot } = context;
   const credentials = protectedCredentialPaths();
   const runtimesRoot = developmentRuntimesRoot();
+  const allowWrite = mode === "full" ? filesystemRoots(workspaceRealPath) : [workspaceRealPath, runtimeRoot];
   return {
     // 不启用域名过滤；文件与进程边界仍始终启用。开发服务器需要本机监听。
     network: process.platform === "darwin"
@@ -115,9 +127,10 @@ export function buildExecutionPolicy(context: Pick<ExecutionContext, "mode" | "w
       allowGitConfig: true,
       denyRead: mode === "standard" ? [...credentials, runtimesRoot] : credentials,
       allowRead: mode === "standard" ? [runtimeRoot] : [],
-      allowWrite: mode === "full" ? filesystemRoots() : [workspaceRealPath, runtimeRoot],
+      allowWrite,
       denyWrite: [
         ...protectedWriteRoots(),
+        ...windowsVolumeMetadataPaths(allowWrite),
         ...protectedDevicePaths(),
         ...credentials,
         ...protectedControlPaths(workspaceRealPath),
@@ -138,13 +151,52 @@ function sandboxRuntimeDefaultWriteLeaks(): string[] {
   ];
 }
 
-function filesystemRoots(): string[] {
-  if (process.platform !== "win32") return ["/"];
+function filesystemRoots(
+  workspaceRealPath: string,
+  platform: NodeJS.Platform = process.platform,
+  discoveredDriveRoots: readonly string[] = windowsDriveRoots(platform),
+): string[] {
+  if (platform !== "win32") return ["/"];
   const roots = new Set<string>();
-  for (const value of [process.env.SystemDrive, path.parse(os.homedir()).root]) {
+  // Windows 可以把项目放在与系统盘、用户目录不同的卷上。完全访问至少必须覆盖
+  // 当前工作区所在卷，否则从 standard 切到 full 反而会失去项目写权限。
+  for (const value of [
+    process.env.SystemDrive,
+    path.win32.parse(os.homedir()).root,
+    path.win32.parse(workspaceRealPath).root,
+    ...discoveredDriveRoots,
+  ]) {
     if (value) roots.add(value.endsWith("\\") ? value : `${value}\\`);
   }
   return [...roots];
+}
+
+/** 查询当前可用的 Windows 文件系统卷；失败时仍由系统盘、HOME 与工作区卷兜底。 */
+function windowsDriveRoots(platform: NodeJS.Platform = process.platform): string[] {
+  if (platform !== "win32") return [];
+  if (cachedWindowsDriveRoots) return [...cachedWindowsDriveRoots];
+  try {
+    const probe = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; [IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | ForEach-Object { $_.RootDirectory.FullName }"],
+      { encoding: "utf8", timeout: 3000, windowsHide: true },
+    );
+    if (probe.status !== 0) return [];
+    cachedWindowsDriveRoots = [...new Set(probe.stdout.split(/\r?\n/).map((value) => value.trim()).filter((value) => /^[A-Za-z]:\\$/.test(value)))];
+    return [...cachedWindowsDriveRoots];
+  } catch {
+    return [];
+  }
+}
+
+let cachedWindowsDriveRoots: string[] | undefined;
+
+function windowsVolumeMetadataPaths(roots: readonly string[], platform: NodeJS.Platform = process.platform): string[] {
+  if (platform !== "win32") return [];
+  return roots.flatMap((root) => /^[A-Za-z]:\\$/.test(root) ? [
+    path.win32.join(root, "System Volume Information"),
+    path.win32.join(root, "$Recycle.Bin"),
+  ] : []);
 }
 
 /** 规范化用于策略提前判定；真实强制边界仍由 OS 沙盒负责。 */
@@ -186,3 +238,5 @@ export function isStandardWritableTarget(cwd: string, candidate: string): boolea
   const runtime = canonicalPolicyPath(developmentRuntimeFor(workspace).root, workspace);
   return isWithin(workspace, target) || isWithin(runtime, target);
 }
+
+export const accessPolicyInternals = { filesystemRoots, windowsDriveRoots, windowsVolumeMetadataPaths };

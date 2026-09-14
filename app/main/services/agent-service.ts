@@ -1234,7 +1234,8 @@ export class AgentService {
       const cacheId = resumeSessionId ?? newSessionId;
       const previousMode = readCache(cacheId)?.permissionMode;
       writeCache(resumeSessionId ?? newSessionId, { permissionMode });
-      if (previousMode === "full" && permissionMode !== "full" && permissionMode !== "bypassPermissions") {
+      if ((previousMode === "full" || previousMode === "bypassPermissions")
+        && permissionMode !== "full" && permissionMode !== "bypassPermissions") {
         await this.revokeElevatedExecution(cacheId);
       }
     }

@@ -4,6 +4,7 @@ import { createCodingAwareDecoder } from "./background-shell/encoding";
 import { isSystemMutationCommand } from "./permission/agent-permission-service";
 import { ensureSandbox, wrapForSandbox } from "./sandbox/manager";
 import { createExecutionContext } from "./permission/execution-context";
+import { sandboxGitBashPath } from "./background-shell/registry";
 
 export interface ShellExecResult {
   code: number | null;
@@ -42,7 +43,10 @@ export async function execShell(
   if (!sandbox.ok) return { code: -1, stdout: "", stderr: `安全执行后端不可用：${sandbox.reason}` };
   let spec;
   try {
-    spec = await wrapForSandbox(command, { context: createExecutionContext(cwd, "standard") });
+    spec = await wrapForSandbox(command, {
+      context: createExecutionContext(cwd, "standard"),
+      gitBashPath: sandboxGitBashPath(),
+    });
   } catch (e) {
     return { code: -1, stdout: "", stderr: `安全执行包装失败：${(e as Error).message}` };
   }
