@@ -5,7 +5,11 @@ import { Modal } from "./Modal";
  * 通用确认对话框（替换 window.confirm）。
  * promise-based：`confirmDialog({...})` 返回 Promise<boolean>，确认/取消后 resolve。
  * 样式复用项目弹窗 token（对齐 CompactionDialog / PermissionPrompt 的遮罩与卡片）。
- * 危险操作确认按钮用 danger 色（text-danger + border-danger），普通操作用 btn-accent。
+ * 确认按钮三种观感：
+ *  - 危险操作（删除/关闭应用等）→ `danger`，危险色线框（低强调，避免误点）
+ *  - 放开权限（进入「完全访问」）→ `permissionConfirm`，权限色实心（与输入卡权限盾形图标同色，
+ *    颜色/图标都在表达「危险」，故用实心强调；刻意不用危险红——那是删除类语义）
+ *  - 其余 → `btn-accent`
  */
 
 interface ConfirmOptions {
@@ -15,6 +19,8 @@ interface ConfirmOptions {
   cancelText?: string;
   /** 危险操作（删除/关闭应用等）→ 确认按钮显示危险色 */
   danger?: boolean;
+  /** 放开权限类确认（进入完全访问）→ 确认按钮用实心权限色（--color-permission-on），与输入卡权限图标一致 */
+  permissionConfirm?: boolean;
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -75,10 +81,15 @@ export function ConfirmHost(): JSX.Element | null {
           </button>
           <button
             type="button"
-            className={`px-4 py-1.5 text-xs rounded-[var(--radius-lg)] transition-colors ${
-              pending.danger
-                ? "bg-danger-soft border border-danger-border text-danger hover:bg-danger hover:text-text-inverse"
-                : "btn-accent"
+            className={`px-4 py-1.5 text-xs rounded-[var(--radius-lg)] ${
+              pending.permissionConfirm
+                ? // 实心权限色(与输入卡权限图标同色)。填充色 --color-permission-on 在明暗两主题同值
+                  // (#ed7482)，故文字固定用深墨 #3f1017（约 5.7:1）而非 --color-text-inverse
+                  // ——后者亮色是白、暗色是深，与固定填充不匹配，且白字落在玫红上仅 2.8:1 读不清
+                  "bg-[var(--color-permission-on)] text-[#3f1017] font-medium hover:opacity-90 transition-opacity"
+                : pending.danger
+                  ? "bg-danger-soft border border-danger-border text-danger hover:bg-danger hover:text-text-inverse transition-colors"
+                  : "btn-accent transition-colors"
             }`}
             onClick={() => close(true)}
           >
