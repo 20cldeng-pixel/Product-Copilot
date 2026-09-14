@@ -175,8 +175,8 @@ export function Sidebar({
         </button>
         <div className="sb-plus-wrap" ref={plusWrapRef}>
           <button className="sb-plus-btn" onClick={() => setPlusOpen(!plusOpen)}>
-            {/* 菜单图标（lucide menu）：与项目名左侧折号同口径 14px / viewBox 24 / strokeWidth 2 */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {/* 菜单图标（lucide menu）：口径随按钮一起放大到 16px / viewBox 24 / strokeWidth 2 */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 5h16" /><path d="M4 12h16" /><path d="M4 19h16" />
             </svg>
           </button>
