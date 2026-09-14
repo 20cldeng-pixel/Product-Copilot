@@ -1,23 +1,23 @@
 /**
- * 设置页「环境检测」的按钮唯一性守卫。
+ * 「重新检测」的口径守卫（用户拍板：与其限制按钮出现，不如统一）。
  *
- * 背景（真实缺陷，2026-09-15 用户报「重新检测按钮还是两个」）：
- * `EnvPanel` 用 `refreshKey === undefined` 判定「外层是否接管刷新」，而外层 `GeneralTab` 传给它的
- * 初值恰好也是 `undefined` → **面板首帧又渲染出它自己的「重新检测」**，同屏两个（点过标题栏那个
- * 之后才消失，所以现象是"一进来就是两个"）。这是"两个真相源共用一个哨兵值"的典型坑。
+ * 背景（两个真实缺陷，2026-09-15）：
+ * 1. 设置页同屏出现过两个同文案按钮，且刷新范围不同——标题栏那个只刷 Git/Node/CodeGraph，
+ *    面板那个刷系统组件并重置沙盒失败缓存，用户无从分辨。
+ * 2. 我一度用"面板判断 `refreshKey === undefined` 决定是否渲染自己的按钮"来消除重复，
+ *    而外层传入的初值恰好也是 `undefined` → 首帧又冒出第二个按钮（哨兵值与初值撞车）。
  *
- * 这个测试用**整页静态渲染**（react-dom/server，不需要 jsdom）数按钮个数：
- * 计数为 1 才算对，为 2 就是上面那个缺陷复活了。
+ * 现在的口径：**按钮只有一处定义（EnvRetestButton），动作只有一个（EnvPanelHandle.retest）**，
+ * 面板自身永不渲染刷新按钮，"同屏两个"在结构上不可能再出现。下面把这条不变量钉住。
  */
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-// GeneralTab 的 CodegraphRow 在**渲染期**就读 window.electronAPI.platform（CodegraphRow.tsx 那行），
-// node 环境没有 window，补个最小桩即可（渲染期只用得到 platform；其余 API 都在 effect/事件里）
+// GeneralTab 的 CodegraphRow 在**渲染期**就读 window.electronAPI.platform（node 环境没有 window）
 globalThis.window = { electronAPI: { platform: "darwin" } } as never;
 
-// 只 mock 这两个：settings-store（否则要连 zustand 与 @shared 别名一起拖进来）与确认弹窗
+// 只 mock 这两个：settings-store（否则要把 zustand 与 @shared 别名一起拖进来）与确认弹窗
 vi.mock("../../stores/settings-store", () => {
   const state = {
     sandboxDisabled: false,
@@ -33,24 +33,40 @@ vi.mock("../ui/ConfirmDialog", () => ({ confirmDialog: async (): Promise<boolean
 
 const { GeneralTab } = await import("./GeneralTab");
 const { EnvPanel } = await import("../env/EnvPanel");
+const { EnvRetestButton } = await import("../env/EnvRetestButton");
 
 const countOf = (html: string, needle: string): number => html.split(needle).length - 1;
 
-describe("设置页「环境检测」：同屏只有一个「重新检测」", () => {
-  it("整页渲染后按钮计数恰好为 1（2 = 面板与标题栏各渲染了一个）", () => {
+describe("「重新检测」全项目只有一处", () => {
+  it("设置页整页渲染后按钮计数恰好为 1", () => {
     const html = renderToStaticMarkup(createElement(GeneralTab));
     expect(countOf(html, "重新检测"), "设置页出现了两个「重新检测」按钮").toBe(1);
-    // 顺带确认面板确实渲染出来了（不是"因为面板没渲染才只剩一个"）
-    expect(html).toContain("环境检测");
+    expect(html).toContain("环境检测"); // 确认面板/区块确实渲染了，不是"因为没有面板才只剩一个"
   });
 
-  it("面板被外层驱动（refreshKey 为数字）时不再自带按钮", () => {
-    const html = renderToStaticMarkup(createElement(EnvPanel, { variant: "settings", refreshKey: 0 }));
-    expect(countOf(html, "重新检测")).toBe(0);
+  it("面板自身永不渲染刷新按钮（两种形态都不渲染）——这条不变量挡住整类重复", () => {
+    expect(countOf(renderToStaticMarkup(createElement(EnvPanel, { variant: "settings" })), "重新检测")).toBe(0);
+    expect(countOf(renderToStaticMarkup(createElement(EnvPanel, { variant: "onboarding" })), "重新检测")).toBe(0);
   });
 
-  it("引导流程没有外层标题栏，面板仍自带「重新检测」", () => {
-    const html = renderToStaticMarkup(createElement(EnvPanel, { variant: "onboarding" }));
-    expect(countOf(html, "重新检测")).toBe(1);
+  it("共用按钮：点下去 = 宿主自己的范围 + 面板重探（顺序固定）", () => {
+    const retest = vi.fn();
+    const before = vi.fn();
+    const el = EnvRetestButton({
+      panel: { current: { retest } },
+      onBeforeRetest: before,
+    }) as unknown as { props: { onClick: () => void } };
+
+    el.props.onClick();
+    expect(before).toHaveBeenCalledTimes(1);
+    expect(retest).toHaveBeenCalledTimes(1);
+    expect(before.mock.invocationCallOrder[0]!).toBeLessThan(retest.mock.invocationCallOrder[0]!);
+  });
+
+  it("宿主没给额外范围时（引导流程）也能单独用", () => {
+    const retest = vi.fn();
+    const el = EnvRetestButton({ panel: { current: { retest } } }) as unknown as { props: { onClick: () => void } };
+    el.props.onClick();
+    expect(retest).toHaveBeenCalledTimes(1);
   });
 });

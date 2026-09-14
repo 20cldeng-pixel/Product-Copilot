@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useSettingsStore } from "../stores/settings-store";
 import { useThemeStore } from "../stores/theme-store";
 import { ProviderForm } from "../components/settings/ProviderSettings";
-import { EnvPanel } from "../components/env/EnvPanel";
+import { EnvPanel, type EnvPanelHandle } from "../components/env/EnvPanel";
+import { EnvRetestButton } from "../components/env/EnvRetestButton";
 import { WindowControls } from "../components/WindowControls";
 import type { ProviderConfig, ApiProvidersData } from "@shared/platform-presets";
 
@@ -22,6 +23,9 @@ export function OnboardingPage(): JSX.Element {
 
   // 记录本次已保存的供应商 ID，避免重复保存
   const [savedCfg, setSavedCfg] = useState<ProviderConfig | null>(null);
+
+  // Step 2 的「重新检测」：按钮由本页提供，动作来自面板句柄（与设置页同一份实现）
+  const envPanel = useRef<EnvPanelHandle>(null);
 
   // 重新运行引导时预填已配置的供应商（设置 store 异步加载，故订阅而非读一次快照）：
   // 否则「重看一遍引导」会被迫重填 API Key——配置本身不丢，只是多一道无谓操作
@@ -129,8 +133,14 @@ export function OnboardingPage(): JSX.Element {
             </div>
           </div>
         ) : currentStep === 1 ? (
-          /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）── */
-          <EnvPanel variant="onboarding" />
+          /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）──
+             刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现 */
+          <>
+            <EnvPanel ref={envPanel} variant="onboarding" />
+            <div className="mt-3">
+              <EnvRetestButton panel={envPanel} />
+            </div>
+          </>
         ) : (
           /* ── Step 3: Provider Setup ── */
           <div className="w-full max-w-[540px]">

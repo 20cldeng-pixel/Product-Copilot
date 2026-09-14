@@ -7,15 +7,21 @@
  *   把后两者说成"未安装"会逼用户反复装——那是这个面板最不能犯的错。
  * - 实在装不了才提供「关闭沙盒运行」，且必须先说清失去什么、保留什么，并说明随时能开回来（安抚）。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from "react";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { useSettingsStore } from "../../stores/settings-store";
 
-export function EnvPanel({ variant = "settings", refreshKey }: {
+/** 面板对外的唯一能力：重新探测（含重置沙盒失败缓存，「装好点一下即生效」靠它）。
+ *  宿主把它接到自己的「重新检测」按钮上（组件见 ./EnvRetestButton）。 */
+export interface EnvPanelHandle {
+  retest: () => void;
+}
+
+export function EnvPanel({ variant = "settings", ref }: {
   variant?: "onboarding" | "settings";
-  /** 由外层「环境检测」标题栏的「重新检测」驱动：值变化即重探（含重置沙盒失败缓存）。
-   *  undefined = 本面板自带「重新检测」按钮（引导流程没有外层标题栏）。 */
-  refreshKey?: number;
+  /** 宿主用它驱动重探。**面板自身不再渲染任何「重新检测」按钮**——
+   *  按钮由宿主提供，全项目只有一处定义（EnvRetestButton），避免同屏两个、刷一半的两套逻辑 */
+  ref?: Ref<EnvPanelHandle>;
 }): JSX.Element {
   const [report, setReport] = useState<EnvReportShape | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
@@ -39,15 +45,9 @@ export function EnvPanel({ variant = "settings", refreshKey }: {
 
   useEffect(() => { void refresh(false); }, [refresh]);
 
-  // 外层「重新检测」：重探并**重置沙盒失败缓存**（reset=true）——装好依赖后不重置的话，
+  // 宿主「重新检测」的入口：重探并**重置沙盒失败缓存**（reset=true）——装好依赖后不重置的话，
   // 缓存的 fail-closed 会让用户以为白装了。
-  // 用 ref 记住上一次的值：挂载时（外层已传数字初值）不重探，避免与上面那次重复探测。
-  const lastRefreshKey = useRef(refreshKey);
-  useEffect(() => {
-    if (refreshKey === undefined || refreshKey === lastRefreshKey.current) return;
-    lastRefreshKey.current = refreshKey;
-    void refresh(true);
-  }, [refreshKey, refresh]);
+  useImperativeHandle(ref, () => ({ retest: (): void => { void refresh(true); } }), [refresh]);
 
   // 安装进度：订阅主进程阶段事件（不看包管理器输出）
   useEffect(() => {
@@ -66,7 +66,7 @@ export function EnvPanel({ variant = "settings", refreshKey }: {
   const sandboxOffAvailable = broken.length > 0 && items.some((i) => i.fix.sandboxOff);
   /** 操作区是否有内容：设置页在"全部就绪"时不该留一行空白 */
   const hasActions = installable.length > 0 || fixable.length > 0 || installing
-    || refreshKey === undefined || sandboxOffAvailable || sandboxDisabled;
+    || sandboxOffAvailable || sandboxDisabled;
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
@@ -253,16 +253,6 @@ export function EnvPanel({ variant = "settings", refreshKey }: {
               onClick={() => void window.electronAPI.env.cancel()}
             >
               取消
-            </button>
-          )}
-          {/* 「重新检测」只在本面板自己负责刷新时出现（引导流程）；设置页由外层标题栏那个按钮统一负责，
-              否则同一屏会出现两个同文案按钮（且两者刷新范围不同，用户无从分辨） */}
-          {refreshKey === undefined && !installing && (
-            <button
-              className="em-hover-control px-3 py-2 rounded-[var(--radius-lg)] text-xs text-text-secondary"
-              onClick={() => void refresh(true)}
-            >
-              重新检测
             </button>
           )}
           {/* 兜底：只在真有问题时出现（Linux 专属），且先讲清风险与可回退 */}

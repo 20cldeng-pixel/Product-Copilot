@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
-import { EnvPanel } from "../env/EnvPanel";
+import { EnvPanel, type EnvPanelHandle } from "../env/EnvPanel";
+import { EnvRetestButton } from "../env/EnvRetestButton";
 
 // ── Git Check ─────────────────────────────────────────────────────────────────
 
@@ -104,33 +105,24 @@ function EnvCheckSection(): JSX.Element {
   const git = useDetect("git");
   const nodeRt = useDetect("nodeRuntime");
   const codegraph = useDetect("codegraph");
-  /** 「重新检测」的统一入口：三个检测器 + 环境面板（面板就不必再自带一个同文案按钮）。
-   *  用**累加数字**驱动，与 SessionBar 的 refreshKey 同一约定。
-   *  ⚠️ 初值必须是数字而不是 undefined：面板用 `refreshKey === undefined` 判定「外层是否接管」，
-   *  初值给 undefined 会让面板首帧又渲染出它自己的按钮（同屏两个「重新检测」）。0 = 还没点过。 */
-  const [panelRefreshKey, setPanelRefreshKey] = useState(0);
+  // 「重新检测」= 三个检测器 + 环境面板重探。按钮与动作都是共用的那一份
+  // （EnvRetestButton + EnvPanelHandle.retest），本页不自己拼一套
+  const envPanel = useRef<EnvPanelHandle>(null);
 
   return (
     <section>
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium text-text-secondary">环境检测</h3>
-        <button
-          className="px-3 py-1.5 rounded-[var(--radius-lg)] text-xs text-text-secondary em-hover-control transition-shadow"
-          onClick={() => {
-            git.refresh();
-            nodeRt.refresh();
-            codegraph.refresh();
-            setPanelRefreshKey((k) => k + 1); // 面板同步重探（含重置沙盒失败缓存，装好即生效）
-          }}
-        >
-          重新检测
-        </button>
+        <EnvRetestButton
+          panel={envPanel}
+          onBeforeRetest={() => { git.refresh(); nodeRt.refresh(); codegraph.refresh(); }}
+        />
       </div>
       <div className="bg-surface-alt rounded-[var(--radius-lg)] overflow-hidden">
         <EnvRow label="Git" info={git.info} installUrl="https://git-scm.com/downloads" />
         <EnvRow label="Node.js" info={nodeRt.info} installUrl="https://nodejs.org/" />
         <CodegraphRow info={codegraph.info} />
-        <EnvPanel variant="settings" refreshKey={panelRefreshKey} />
+        <EnvPanel ref={envPanel} variant="settings" />
       </div>
     </section>
   );
