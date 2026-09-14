@@ -10,7 +10,7 @@ import { broadcast } from "./services/ipc-broadcast";
 import { resetModelRuntime } from "./services/pi-init";
 import { setSandboxDisabledProvider, resetSandboxState } from "./services/sandbox/manager";
 import { probeEnvironment } from "./services/provisioning/probe";
-import { installDependencies } from "./services/provisioning/run";
+import { installDependencies, fixUserns } from "./services/provisioning/run";
 import { IMAGE_MIME, resolveHome, nearestExistingDir } from "./utils/paths";
 import { applyDockIcon } from "./utils/dock-icon";
 import { isImagePath } from "../shared/image-files";
@@ -551,6 +551,7 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
     const raw = (payload as { ids?: unknown } | undefined)?.ids;
     const ids = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
     if (ids.length === 0) return { ok: false, reason: "没有需要安装的条目" };
+    if (envInstallAbort) return { ok: false, reason: "已有安装或修复正在进行，请稍候" }; // 避免同时弹两个授权框
     envInstallAbort = new AbortController();
     try {
       const result = await installDependencies(
@@ -560,6 +561,24 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
         envInstallAbort.signal,
       );
       if (result.ok) await resetSandboxState(); // 装完即生效（不必重启）
+      return result;
+    } finally {
+      envInstallAbort = null;
+    }
+  });
+  // 「一键修复」bwrap 的 userns 放行（Ubuntu 24.04+；AppImage / tar.gz / 源码运行没有安装钩子，只有这条路）。
+  // **不收任何参数**：三条 pkexec 命令全部来自 provisioning/plan 的常量表，渲染层无法影响执行内容。
+  // 改的是系统安全配置，所以每一步都由系统弹授权框（不是静默执行）。
+  ipcMain.handle("env:fixUserns", async (e) => {
+    if (envInstallAbort) return { ok: false, reason: "已有安装或修复正在进行，请稍候" };
+    envInstallAbort = new AbortController();
+    try {
+      const result = await fixUserns(
+        (ev) => { try { e.sender.send("env:progress", ev); } catch { /* 窗口已关闭 */ } },
+        {},
+        envInstallAbort.signal,
+      );
+      if (result.ok) await resetSandboxState(); // 修好即生效，否则缓存的 fail-closed 会让用户以为白修了
       return result;
     } finally {
       envInstallAbort = null;

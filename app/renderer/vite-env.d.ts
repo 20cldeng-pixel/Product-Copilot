@@ -18,8 +18,9 @@ declare namespace JSX {
 // ── 环境自检与依赖安装（env:*）────────────────────────────────────────────────
 /** 与 main 的 provisioning/types.ts 对齐（渲染层不 import main，故在此镜像声明） */
 interface EnvFixShape {
-  /** pkg=包管理器（Linux，命令在 main 侧按发行版生成）；winInstall=srt 的 Windows 一次性装配 */
-  auto?: { strategy: "pkg"; packages: string[] } | { strategy: "winInstall" };
+  /** pkg=包管理器（Linux，命令在 main 侧按发行版生成）；usernsProfile=加载 AppArmor profile；
+   *  winInstall=srt 的 Windows 一次性装配 */
+  auto?: { strategy: "pkg"; packages: string[] } | { strategy: "usernsProfile" } | { strategy: "winInstall" };
   /** command 可以是多行（\n 分隔的步骤），界面按多行展示、整体复制 */
   manual?: { command?: string; url?: string };
   sandboxOff?: boolean;
@@ -449,6 +450,8 @@ interface ElectronAPI {
     retest: () => Promise<EnvReportShape>;
     /** 安装缺失项（id 白名单在 main 侧；进度走 onProgress） */
     install: (ids: string[]) => Promise<EnvInstallResultShape>;
+    /** 「一键修复」bwrap 的 userns 放行（不带参数；命令全在 main 侧常量表里） */
+    fixUserns: () => Promise<EnvInstallResultShape>;
     cancel: () => Promise<void>;
     onProgress: (cb: (ev: EnvProgressShape) => void) => () => void;
     /** 启动自检结果（侧边栏红点） */

@@ -42,8 +42,11 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
 
   const items = report?.items ?? [];
   const broken = items.filter((i) => i.status !== "ok");
-  /** 能自动装的（fix.auto 且有包名由 main 侧白名单决定）；blocked/unknown 不在一键安装范围 */
-  const installable = broken.filter((i) => i.status === "missing" && i.fix.auto);
+  /** 能自动装的（fix.auto 且有包名由 main 侧白名单决定）；blocked/unknown 不在一键安装范围。
+   *  usernsProfile 走单独的「一键修复」按钮——它不吃 id 列表，混进来会被 main 侧整批拒绝 */
+  const installable = broken.filter((i) => i.status === "missing" && i.fix.auto && i.fix.auto.strategy !== "usernsProfile");
+  /** 被系统策略拦住、但 main 侧给出了"一键修复"策略的（目前是 bwrap 的 userns 放行） */
+  const fixable = broken.filter((i) => i.status === "blocked" && i.fix.auto?.strategy === "usernsProfile");
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
@@ -52,6 +55,23 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
     setProgress(null);
     try {
       const res = await window.electronAPI.env.install(installable.map((i) => i.id));
+      setResult(res);
+      if (res.report) setReport(res.report);
+    } catch (e) {
+      setResult({ ok: false, reason: (e as Error).message });
+    } finally {
+      setInstalling(false);
+      setProgress(null);
+    }
+  };
+
+  /** 一键修复 userns 放行：会弹系统授权框（改的是系统安全配置，必须由用户在系统弹窗里确认） */
+  const fixUserns = async (): Promise<void> => {
+    setInstalling(true);
+    setResult(null);
+    setProgress(null);
+    try {
+      const res = await window.electronAPI.env.fixUserns();
       setResult(res);
       if (res.report) setReport(res.report);
     } catch (e) {
@@ -81,13 +101,17 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
     if (okToOff) setSandboxDisabled(true);
   };
 
-  // 阶段 → 进度百分比（不确定态用脉冲条，不假装知道百分比）
+  // 阶段 → 进度百分比（不确定态用脉冲条，不假装知道百分比）。
+  // 有 index/total 时按步数推进——一键修复是多步（写配置 + 加载），一直停在同一个值会显得卡住。
   const pct = ((): number => {
     if (result?.ok) return 100;
     if (!progress) return 0;
     switch (progress.phase) {
       case "preparing": return 8;
-      case "installing": return 30;
+      case "installing": {
+        const step = progress.total > 0 ? progress.index / progress.total : 1;
+        return Math.min(85, 8 + Math.round(step * 70));
+      }
       case "verifying": return 90;
       case "done": return 100;
       default: return 100;
@@ -170,7 +194,10 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
         <div className="mt-3 px-3 py-2 rounded-[var(--radius-lg)] bg-surface text-[length:var(--text-2xs)] text-text-secondary leading-relaxed">
           <p>{result.reason}</p>
           {result.manualCommand && (
-            <p className="mt-1">可复制到终端自己执行：<code className="select-all">{result.manualCommand}</code></p>
+            <p className="mt-1">
+              可复制到终端自己执行：
+              <code className="select-all whitespace-pre-wrap break-all">{result.manualCommand}</code>
+            </p>
           )}
         </div>
       )}
@@ -180,6 +207,16 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
 
       {/* 操作区 */}
       <div className="mt-4 flex items-center gap-2">
+        {/* 一键修复：被系统策略拦住时的主出路（会弹系统授权框），失败仍有下方手工命令兜底 */}
+        {fixable.length > 0 && (
+          <button
+            className="btn-accent px-4 py-2 rounded-[var(--radius-lg)] text-xs font-medium"
+            disabled={installing}
+            onClick={() => void fixUserns()}
+          >
+            {installing ? "正在修复…" : "一键修复（需系统授权）"}
+          </button>
+        )}
         {installable.length > 0 && (
           <button
             className="btn-accent px-4 py-2 rounded-[var(--radius-lg)] text-xs font-medium"

@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     probe: () => ipcRenderer.invoke("env:probe"),
     retest: () => ipcRenderer.invoke("env:retest"),
     install: (ids: string[]) => ipcRenderer.invoke("env:install", { ids }),
+    /** 「一键修复」bwrap 的 userns 放行（AppImage / tar.gz 没有安装钩子时用）。**不带参数**：命令全在 main 侧 */
+    fixUserns: () => ipcRenderer.invoke("env:fixUserns"),
     cancel: () => ipcRenderer.invoke("env:cancel"),
     /** 订阅安装进度；返回取消订阅函数（与 todos:changed 同一形态） */
     onProgress: (cb: (ev: { phase: string; index: number; total: number; message?: string }) => void) => {

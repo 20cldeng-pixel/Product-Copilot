@@ -12,9 +12,13 @@ export type EnvItemId = "bwrap" | "socat" | "rg" | "userns" | "winSandbox" | "gi
 
 export type EnvItemStatus = "ok" | "missing" | "blocked" | "unknown";
 
-/** 自动安装的两种执行策略：包管理器（Linux）／srt 自带的 Windows 一次性装配（弹一次 UAC） */
+/** 自动安装的执行策略：
+ *  - pkg：包管理器 + pkexec（Linux）
+ *  - usernsProfile：加载 AppArmor profile 放行 bwrap 建 userns（Ubuntu 24.04+；pkexec，只给 bwrap 放行）
+ *  - winInstall：srt 自带的 Windows 一次性装配（隔离账户 + WFP，弹一次 UAC） */
 export type EnvAutoFix =
   | { strategy: "pkg"; packages: string[] }
+  | { strategy: "usernsProfile" }
   | { strategy: "winInstall" };
 
 export interface EnvFix {

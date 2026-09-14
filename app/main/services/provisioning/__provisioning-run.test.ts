@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { installDependencies, outputTail, type InstallEvent } from "./run";
+import { fixUserns, installDependencies, outputTail, type InstallEvent } from "./run";
 import type { EnvItem, EnvReport } from "./types";
 
 /** 假子进程：close 在下一个微任务里触发，模拟 spawn→退出 */
@@ -97,5 +97,167 @@ describe("输出尾部处理", () => {
     const t = outputTail(raw, 10);
     expect(t).not.toContain("\u001b");
     expect(t).toHaveLength(10);
+  });
+});
+
+// ── userns 放行的一键修复（执行层） ─────────────────────────────────────────────
+// 本机是 macOS，故显式注入 platform: "linux" 与 exists（否则会走平台短路 / 真实文件系统）。
+
+const USERNS_ITEM: EnvItem = {
+  id: "userns", label: "隔离能力（用户命名空间）", required: true, status: "blocked", fix: {},
+};
+const USERNS_REPORT = (status: EnvItem["status"]): EnvReport => ({
+  items: [{ ...USERNS_ITEM, status }],
+  distro: { id: "ubuntu", autoInstallable: true },
+  probedAt: 0,
+});
+
+const DEST = "/etc/apparmor.d/bwrap-userns-restrict";
+const SRC = "/usr/share/apparmor/extra-profiles/bwrap-userns-restrict";
+
+const aptInstaller = { kind: "apt", path: "/usr/bin/apt-get", args: ["install", "-y", "--no-install-recommends"] } as never;
+
+/** 假文件系统：初始有一组路径；spawn 回调可以往里加（模拟"包装上了模板"） */
+function fixRun(opts: {
+  existing: string[];
+  codes?: (number | null)[];
+  after: EnvItem["status"];
+  installer?: unknown;
+  onSpawn?: (argv: string[], fs: Set<string>) => void;
+  signal?: AbortSignal;
+}) {
+  const fs = new Set(opts.existing);
+  const events: InstallEvent[] = [];
+  const codes = opts.codes ?? [];
+  let call = 0;
+  const spawnFn = vi.fn((argv0: string, argvRest: string[]) => {
+    const argv = [argv0, ...argvRest];
+    const code = codes[call] === undefined ? 0 : codes[call]!; // 显式 null 要保留（= 无退出码），不能用 ?? 0 吞掉
+    call += 1;
+    opts.onSpawn?.(argv, fs);
+    return fakeChild(code);
+  });
+  return {
+    events,
+    spawnFn,
+    argvOf: (i: number) => (spawnFn.mock.calls[i] ? [spawnFn.mock.calls[i]![0], ...spawnFn.mock.calls[i]![1]] : []),
+    promise: fixUserns(
+      (e) => events.push(e),
+      {
+        platform: "linux",
+        spawn: spawnFn as never,
+        exists: (p) => fs.has(p),
+        probe: async () => USERNS_REPORT(opts.after),
+        logger: () => { /* 单测不写日志文件 */ },
+        installer: (opts.installer === undefined ? aptInstaller : opts.installer) as never,
+      },
+      opts.signal,
+    ),
+  };
+}
+
+const BINS = ["/usr/bin/install", "/usr/sbin/apparmor_parser"];
+
+describe("userns 一键修复：执行层", () => {
+  it("模板已在：只跑 复制 + 加载 两条 pkexec 命令（都是绝对路径单命令）", async () => {
+    const { promise, spawnFn, argvOf } = fixRun({ existing: [...BINS, SRC], after: "ok" });
+    const res = await promise;
+    expect(res.ok).toBe(true);
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    expect(argvOf(0)).toEqual(["/usr/bin/pkexec", "/usr/bin/install", "-m", "0644", SRC, DEST]);
+    expect(argvOf(1)).toEqual(["/usr/bin/pkexec", "/usr/sbin/apparmor_parser", "-r", DEST]);
+    // 命令里不能出现 shell（否则等于把命令拼成字符串）
+    expect(JSON.stringify([argvOf(0), argvOf(1)])).not.toMatch(/\/(ba)?sh\b/);
+  });
+
+  it("模板缺失：先装 apparmor-profiles，再复制与加载（装完要重新确认模板真的出现了）", async () => {
+    const { promise, spawnFn, argvOf } = fixRun({
+      existing: [...BINS], after: "ok",
+      onSpawn: (_argv, fs) => fs.add(SRC),   // 第一次命令之后模板到位
+    });
+    const res = await promise;
+    expect(res.ok).toBe(true);
+    expect(spawnFn).toHaveBeenCalledTimes(3);
+    expect(argvOf(0)).toEqual([
+      "/usr/bin/pkexec", "/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "apparmor-profiles",
+    ]);
+  });
+
+  it("装包成功但模板仍没出现 → 不当成功，给手工指引", async () => {
+    const { promise, spawnFn } = fixRun({ existing: [...BINS], after: "blocked" });
+    const res = await promise;
+    expect(spawnFn).toHaveBeenCalledTimes(1); // 没继续往下盲跑
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain("apparmor-profiles");
+    expect(res.manualCommand).toContain("sudo");
+  });
+
+  it("授权被取消/弹不出（退出码非 0）→ 如实报码 + 给手工指引", async () => {
+    const { promise } = fixRun({ existing: [...BINS, SRC], codes: [0, 126], after: "blocked" });
+    const res = await promise;
+    expect(res.ok).toBe(false);
+    expect(res.exitCode).toBe(126);
+    expect(res.reason).toContain("126");
+    expect(res.reason).not.toContain("安装失败"); // 不说成"安装失败"——那是另一回事
+    expect(res.manualCommand).toContain("apparmor_parser -r");
+  });
+
+  it("写配置就失败 → 停在那里，不继续盲跑加载命令", async () => {
+    const { promise, spawnFn } = fixRun({ existing: [...BINS, SRC], codes: [1], after: "blocked" });
+    const res = await promise;
+    expect(spawnFn).toHaveBeenCalledTimes(1);
+    expect(res.reason).toContain("写入系统配置未完成");
+  });
+
+  it("命令成功但仍被挡 → 说清「未放行 + 重启」，不谎报成功", async () => {
+    const { promise } = fixRun({ existing: [...BINS, SRC], after: "blocked" });
+    const res = await promise;
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain("仍未放行");
+    expect(res.report?.items[0]?.status).toBe("blocked");
+  });
+
+  it("加载失败：文件已就位，说明重启后由系统服务加载", async () => {
+    const { promise } = fixRun({ existing: [...BINS, SRC], codes: [0, 1], after: "blocked" });
+    const res = await promise;
+    expect(res.ok).toBe(false);
+    expect(res.exitCode).toBe(1);
+    expect(res.reason).toContain("重启");
+  });
+
+  it("profile 已在：什么都不做（幂等，不覆盖系统自带或用户改过的）", async () => {
+    const { promise, spawnFn } = fixRun({ existing: [...BINS, SRC, DEST], after: "ok" });
+    const res = await promise;
+    expect(spawnFn).not.toHaveBeenCalled();
+    expect(res.ok).toBe(true);
+  });
+
+  it("没有包管理器且模板缺失 → 不 spawn，直接给自助命令", async () => {
+    const { promise, spawnFn } = fixRun({ existing: [...BINS], installer: null, after: "blocked" });
+    const res = await promise;
+    expect(spawnFn).not.toHaveBeenCalled();
+    expect(res.reason).toContain("包管理器");
+    expect(res.manualCommand).toBeTruthy();
+  });
+
+  it("取消：终止子进程，并说明配置已写入", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const { promise, spawnFn } = fixRun({ existing: [...BINS, SRC], codes: [null], after: "blocked", signal: ac.signal });
+    const res = await promise;
+    const child = spawnFn.mock.results[0]!.value as { kill: ReturnType<typeof vi.fn> };
+    expect(child.kill).toHaveBeenCalled();
+    expect(res.reason).toBe("已取消");
+  });
+
+  it("非 Linux：直接拒绝，不做任何事", async () => {
+    const events: InstallEvent[] = [];
+    const spawnFn = vi.fn(() => fakeChild(0));
+    const res = await fixUserns((e) => events.push(e), {
+      platform: "win32", spawn: spawnFn as never, logger: () => { /* noop */ },
+    });
+    expect(res.ok).toBe(false);
+    expect(spawnFn).not.toHaveBeenCalled();
+    expect(events).toHaveLength(0);
   });
 });

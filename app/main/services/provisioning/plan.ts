@@ -104,8 +104,109 @@ export function buildInstallArgv(
     if (!pkg) return null; // 白名单外 / 不可自动安装 → 整批拒绝，不做部分猜测
     if (!packages.includes(pkg)) packages.push(pkg);
   }
-  if (!installer) return null;
+  return buildPackageArgv(packages, installer, pkexecPath);
+}
+
+/**
+ * 由**包名常量**直接构造安装 argv（供白名单常量之外的固定包使用，如 AppArmor profile 来源包）。
+ * 与 buildInstallArgv 共用同一条执行路径：包名只能是本文件里的常量，调用方无法传任意包名。
+ */
+export function buildPackageArgv(
+  packages: readonly string[],
+  installer: Installer | null,
+  pkexecPath = "/usr/bin/pkexec",
+): string[] | null {
+  if (packages.length === 0 || !installer) return null;
   return [pkexecPath, installer.path, ...installer.args, ...packages];
+}
+
+// ── userns 放行（AppArmor profile）：应用内一键修复用 ────────────────────────────
+//
+// 背景：Ubuntu 24.04+ 的 AppArmor 默认禁止非特权进程创建 user namespace。官方做法是加载
+// `bwrap-userns-restrict` 这份 profile（只给 /usr/bin/bwrap 放行），**而不是**把限制全局关掉。
+// deb 安装期由 build/linux-after-install.sh 自动落；AppImage / tar.gz / 源码运行拿不到那一步，
+// 所以应用内再给一条"一键修复"通道——每条都是**绝对路径单命令**，经 pkexec 由系统弹授权框。
+//
+// 为什么不把这几步写成脚本 / 不调用应用自带文件：pkexec 是以 root 执行你给的第一个参数，
+// 若该文件位于用户可写目录（AppImage、解包目录），等于让 root 执行用户可改的代码。
+
+const USERNS_PROFILE_DEST = "/etc/apparmor.d/bwrap-userns-restrict";
+
+/** profile 模板的候选来源（按顺序取第一个存在的）。都是发行版包提供的内容——EM 不自带、不自己编策略 */
+const USERNS_PROFILE_SRC_CANDIDATES = [
+  "/usr/share/apparmor/extra-profiles/bwrap-userns-restrict",
+  "/usr/share/doc/apparmor-profiles/extras/bwrap-userns-restrict",
+];
+
+/** 提供 profile 模板的包（Ubuntu 24.04 的 apparmor-profiles；25.04+ 由 apparmor 包自带该 profile） */
+export const APPARMOR_PROFILES_PACKAGE = "apparmor-profiles";
+
+const INSTALL_BIN_CANDIDATES = ["/usr/bin/install", "/bin/install"];
+const APPARMOR_PARSER_CANDIDATES = ["/usr/sbin/apparmor_parser", "/sbin/apparmor_parser", "/usr/bin/apparmor_parser"];
+
+const firstExisting = (cands: readonly string[], exists: (p: string) => boolean): string | null =>
+  cands.find((p) => exists(p)) ?? null;
+
+/** 本地是否已有 profile 模板（决定要不要先装 apparmor-profiles） */
+export function resolveUsernsProfileSource(exists: (p: string) => boolean = fs.existsSync): string | null {
+  return firstExisting(USERNS_PROFILE_SRC_CANDIDATES, exists);
+}
+
+/** 目标 profile 是否已存在（已存在就整条跳过——可能是系统自带，也可能用户改过，不覆盖） */
+export function usernsProfileInstalled(exists: (p: string) => boolean = fs.existsSync): boolean {
+  return exists(USERNS_PROFILE_DEST);
+}
+
+/** `pkexec apt-get install -y apparmor-profiles`（拿 profile 模板；无包管理器时返回 null） */
+export function usernsInstallSourceArgv(
+  installer: Installer | null,
+  pkexecPath = "/usr/bin/pkexec",
+): string[] | null {
+  return buildPackageArgv([APPARMOR_PROFILES_PACKAGE], installer, pkexecPath);
+}
+
+/** `pkexec /usr/bin/install -m 0644 <src> /etc/apparmor.d/bwrap-userns-restrict`（不用 shell 重定向） */
+export function usernsCopyArgv(
+  src: string,
+  exists: (p: string) => boolean = fs.existsSync,
+  pkexecPath = "/usr/bin/pkexec",
+): string[] | null {
+  const installBin = firstExisting(INSTALL_BIN_CANDIDATES, exists);
+  if (!installBin) return null;
+  return [pkexecPath, installBin, "-m", "0644", src, USERNS_PROFILE_DEST];
+}
+
+/** `pkexec /usr/sbin/apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict`（-r 未加载时会新建） */
+export function usernsLoadArgv(
+  exists: (p: string) => boolean = fs.existsSync,
+  pkexecPath = "/usr/bin/pkexec",
+): string[] | null {
+  const parser = firstExisting(APPARMOR_PARSER_CANDIDATES, exists);
+  if (!parser) return null;
+  return [pkexecPath, parser, "-r", USERNS_PROFILE_DEST];
+}
+
+/**
+ * 应用内能否自助修复 userns 放行：需要 `install` 与 `apparmor_parser` 都在，
+ * 且要么本地已有 profile 模板、要么能装到模板（有可用包管理器）。
+ * false → 界面只展示官方三步命令（见 probe 的 manual）。探测用纯函数，便于单测。
+ */
+export function usernsFixAvailable(
+  installer: Installer | null,
+  exists: (p: string) => boolean = fs.existsSync,
+): boolean {
+  if (usernsProfileInstalled(exists)) return false; // 已装好还报 blocked → 不是这一层的问题
+  if (!usernsCopyArgv("/x", exists) || !usernsLoadArgv(exists)) return false;
+  return resolveUsernsProfileSource(exists) !== null || usernsInstallSourceArgv(installer) !== null;
+}
+
+/** 官方三步命令（应用内一键修复不可用/失败时的自助指引）。与 build/linux-after-install.sh 同源 */
+export function usernsManualCommand(): string {
+  return [
+    `sudo apt-get install -y ${APPARMOR_PROFILES_PACKAGE}`,
+    `sudo install -m 0644 ${USERNS_PROFILE_SRC_CANDIDATES[0]} ${USERNS_PROFILE_DEST}`,
+    `sudo apparmor_parser -r ${USERNS_PROFILE_DEST}`,
+  ].join("\n");
 }
 
 /** 界面展示用（复制到终端可执行的字符串）。只用引号包裹，不引入任何 shell 语法 */

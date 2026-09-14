@@ -1,9 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildInstallArgv, formatCommand, manualInstallCommand, parseOsRelease, readDistro, resolveInstaller,
+  APPARMOR_PROFILES_PACKAGE, buildInstallArgv, buildPackageArgv, formatCommand, manualInstallCommand,
+  parseOsRelease, readDistro, resolveInstaller, resolveUsernsProfileSource, usernsCopyArgv,
+  usernsFixAvailable, usernsLoadArgv, usernsManualCommand, usernsProfileInstalled,
   type Installer,
 } from "./plan";
 import { prependPathDirs, probeBinary, type ProbeDeps } from "./probe";
+
+/** 与 plan.ts 的常量同源的钉子：命令与指引必须指向同一处 */
+const USERNS_DEST = "/etc/apparmor.d/bwrap-userns-restrict";
+const USERNS_SRC = "/usr/share/apparmor/extra-profiles/bwrap-userns-restrict";
+const INSTALL_BIN = "/usr/bin/install";
+const PARSER = "/usr/sbin/apparmor_parser";
+const aSet = (...paths: string[]) => (p: string): boolean => paths.includes(p);
 
 const aptInstaller = (exists = () => true): Installer | null =>
   resolveInstaller({ id: "ubuntu", idLike: [] }, exists);
@@ -108,5 +117,65 @@ describe("探测环境", () => {
   it("PATH 前置去重（GUI 进程快照里缺的目录补在最前）", () => {
     const env = prependPathDirs({ PATH: "/usr/bin:/opt/extra" }, ["/opt/extra", "/snap/bin"]);
     expect(env.PATH).toBe("/opt/extra:/snap/bin:/usr/bin");
+  });
+});
+
+describe("userns 放行的一键修复：计划层（纯函数）", () => {
+  const apt = resolveInstaller({ id: "ubuntu", idLike: [] }, () => true);
+
+  it("profile 模板来源：按候选顺序取第一个存在的", () => {
+    expect(resolveUsernsProfileSource(aSet(USERNS_SRC))).toBe(USERNS_SRC);
+    expect(resolveUsernsProfileSource(aSet("/usr/share/doc/apparmor-profiles/extras/bwrap-userns-restrict")))
+      .toBe("/usr/share/doc/apparmor-profiles/extras/bwrap-userns-restrict");
+    expect(resolveUsernsProfileSource(aSet())).toBeNull();
+  });
+
+  it("目标 profile 已在 → 视为已装（幂等，不覆盖）", () => {
+    expect(usernsProfileInstalled(aSet(USERNS_DEST))).toBe(true);
+    expect(usernsProfileInstalled(aSet(USERNS_SRC))).toBe(false);
+  });
+
+  it("复制命令：用系统 install 传参，不起 shell、不用重定向", () => {
+    expect(usernsCopyArgv(USERNS_SRC, aSet(INSTALL_BIN))).toEqual([
+      "/usr/bin/pkexec", INSTALL_BIN, "-m", "0644", USERNS_SRC, USERNS_DEST,
+    ]);
+    // 没有 install（coreutils）→ 不做
+    expect(usernsCopyArgv(USERNS_SRC, aSet())).toBeNull();
+  });
+
+  it("加载命令：apparmor_parser -r（未加载时会新建，不必重启）", () => {
+    expect(usernsLoadArgv(aSet(PARSER))).toEqual(["/usr/bin/pkexec", PARSER, "-r", USERNS_DEST]);
+    expect(usernsLoadArgv(aSet())).toBeNull();
+  });
+
+  it("能否一键修复：需要工具齐备，且模板已有或能装到", () => {
+    const bins = [INSTALL_BIN, PARSER];
+    expect(usernsFixAvailable(apt, aSet(...bins, USERNS_SRC))).toBe(true);      // 模板已在
+    expect(usernsFixAvailable(apt, aSet(...bins))).toBe(true);                  // 模板缺但能装
+    expect(usernsFixAvailable(null, aSet(...bins))).toBe(false);                // 模板缺且无包管理器
+    expect(usernsFixAvailable(apt, aSet(INSTALL_BIN, USERNS_SRC))).toBe(false); // 缺解析器
+    expect(usernsFixAvailable(apt, aSet(PARSER, USERNS_SRC))).toBe(false);      // 缺 install
+    expect(usernsFixAvailable(apt, aSet(...bins, USERNS_SRC, USERNS_DEST))).toBe(false); // 已装好
+  });
+
+  it("手工指引：官方三步，且与命令指向同一份 profile / 同一个包", () => {
+    const cmd = usernsManualCommand();
+    const lines = cmd.split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain(APPARMOR_PROFILES_PACKAGE);
+    expect(lines[1]).toContain(USERNS_SRC);
+    expect(lines[1]).toContain(USERNS_DEST);
+    expect(lines[2]).toContain(USERNS_DEST);
+    expect(lines[2]).toContain("apparmor_parser -r");
+    // 指引里**不能**出现"全局关掉 userns 限制"那条（会扩大所有进程的攻击面）
+    expect(cmd).not.toContain("sysctl");
+  });
+
+  it("包名常量构造（不经过 id 白名单，但同样只吃本文件常量）", () => {
+    expect(buildPackageArgv(["apparmor-profiles"], apt)).toEqual([
+      "/usr/bin/pkexec", "/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "apparmor-profiles",
+    ]);
+    expect(buildPackageArgv([], apt)).toBeNull();
+    expect(buildPackageArgv(["x"], null)).toBeNull();
   });
 });

@@ -14,7 +14,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { autoFixFor, readDistro, resolveInstaller, manualInstallCommand, distroHint } from "./plan";
+import {
+  autoFixFor, readDistro, resolveInstaller, manualInstallCommand, distroHint,
+  usernsFixAvailable, usernsManualCommand, type Installer,
+} from "./plan";
 import { findBashOnWindows } from "../background-shell/registry";
 import type { EnvItem, EnvItemId, EnvItemStatus, EnvReport } from "./types";
 
@@ -137,21 +140,19 @@ const USERNS_PROBE_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pi
  * Ubuntu 与同类产品（OpenAI Codex）的指引都是优先加载 profile。
  * deb 安装时由 `build/linux-after-install.sh` 自动落这份 profile；这里仍展示命令，
  * 是因为 AppImage / tar.gz / 源码运行拿不到那一步。
- * 只展示不代执行：它改的是系统安全配置（方案 §2 非目标），由用户自己确认后执行。
  */
 const APPARMOR_HINT =
   "系统默认策略不允许 bubblewrap 创建隔离空间（Ubuntu 24.04 起的默认行为）。"
   + "用 deb 安装时已自动处理过，这里仍显示说明那一步没成功；其余安装形态执行一次下面三条命令即可（不必重启）。";
 
-function blockedFix(): EnvItem["fix"] {
+/** 「被系统策略拦住」的修法：能一键修的给 auto，否则只给官方三步命令（两条路都留着） */
+function blockedFix(installer: Installer | null): EnvItem["fix"] {
   return {
+    // 应用内一键修复：三条**绝对路径单命令**经 pkexec 执行（改系统安全配置，故必须由系统弹框授权，
+    // 不是静默执行）。不可用时（缺 install/apparmor_parser、无包管理器、profile 已在）只留手工指引。
+    ...(usernsFixAvailable(installer) ? { auto: { strategy: "usernsProfile" as const } } : {}),
     manual: {
-      // 官方三步：装 apparmor-profiles 包 → 落 profile → 加载。多行用 \n 分隔，界面按多行展示、整体复制
-      command: [
-        "sudo apt-get install -y apparmor-profiles",
-        "sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/bwrap-userns-restrict",
-        "sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict",
-      ].join("\n"),
+      command: usernsManualCommand(),
       url: "https://documentation.ubuntu.com/server/how-to/security/apparmor",
     },
     sandboxOff: true,
@@ -211,7 +212,7 @@ export async function probeEnvironment(
         id: "userns", label: "隔离能力（用户命名空间）", required: true,
         status: ok ? "ok" : "blocked",
         ...(ok ? {} : { detail: APPARMOR_HINT }),
-        fix: ok ? {} : blockedFix(),
+        fix: ok ? {} : blockedFix(installer),
       });
     }
 

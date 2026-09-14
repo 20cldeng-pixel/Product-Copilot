@@ -1,21 +1,26 @@
 /**
  * 执行层：把「计划」跑起来，按**阶段**回报进度，装完复核。
  *
- * 两条执行策略：
+ * 三条执行策略：
  * - `pkg`（Linux）：包管理器 + pkexec 单命令（系统弹授权框）
+ * - `usernsProfile`（Linux）：加载 AppArmor profile 给 bwrap 放行 userns（pkexec；见 fixUserns）
  * - `winInstall`（Windows）：srt 自带的一次性装配（隔离账户 + WFP 网络过滤，自提权 → 一次 UAC）
  *
  * 为什么用阶段而非解析包管理器输出：apt/dnf/pacman/zypper 的输出格式、进度条、语言各不相同，
  * 解析必然脆弱且随时被上游改坏；阶段化在两家策略上都成立，进度条用"不确定态"更诚实。
  *
- * 安全（方案 §8）：命令只来自 plan 的白名单产物——本文件**不拼任何命令**；
- * 提权交给系统弹窗（pkexec / UAC），EM 不代持凭据；需要改系统安全配置的项不在这里（属 manual）。
+ * 安全（方案 §8）：命令只来自 plan 的白名单产物——本文件**不拼任何命令**（连 shell 都不起，
+ * 一律 argv 直接 spawn）；提权交给系统弹窗（pkexec / UAC），EM 不代持凭据。
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { buildInstallArgv, manualInstallCommand, readDistro, resolveInstaller } from "./plan";
+import {
+  APPARMOR_PROFILES_PACKAGE, buildInstallArgv, manualInstallCommand, readDistro, resolveInstaller,
+  resolveUsernsProfileSource, usernsCopyArgv, usernsInstallSourceArgv, usernsLoadArgv,
+  usernsManualCommand, usernsProfileInstalled, type Installer,
+} from "./plan";
 import { cleanEnv, prependPathDirs, probeEnvironment, probePathDirs } from "./probe";
 import type { EnvReport } from "./types";
 
@@ -94,6 +99,40 @@ async function computePlan(ids: readonly string[]): Promise<Plan> {
   };
 }
 
+/** 提权命令没用退出码表达失败时的通用兜底（srt 的装配抛异常） */
+const FAILED_EXIT = 1;
+
+/**
+ * 跑一条特权 argv 并等它结束：**只用 argv 直接 spawn，不起 shell**（杜绝命令拼接）；
+ * 传干净且补全过 PATH 的环境；取消时 SIGTERM 子进程。
+ */
+async function runArgv(
+  argv: readonly string[],
+  spawnFn: typeof spawn,
+  signal: AbortSignal | undefined,
+  log: (line: string) => void,
+): Promise<{ exitCode: number | null; tail: string }> {
+  const head = argv[0];
+  if (!head) return { exitCode: FAILED_EXIT, tail: "空命令" };
+  log(`[exec] argv=${JSON.stringify(argv)}`);
+  const child = spawnFn(head, [...argv.slice(1)], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: prependPathDirs(cleanEnv(), probePathDirs()),
+    windowsHide: true,
+  });
+  let out = "";
+  child.stdout?.on("data", (d) => { out += String(d); });
+  child.stderr?.on("data", (d) => { out += String(d); });
+  const kill = (): void => { try { child.kill("SIGTERM"); } catch { /* 已退出 */ } };
+  if (signal?.aborted) kill(); // 传入时已取消（addEventListener 不会再触发）
+  signal?.addEventListener("abort", kill, { once: true });
+  const exitCode = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
+  signal?.removeEventListener("abort", kill);
+  const tail = outputTail(out, 200);
+  log(`[exec] exit=${exitCode} tail=${tail}`);
+  return { exitCode, tail };
+}
+
 export async function installDependencies(
   ids: readonly string[],
   onEvent: (e: InstallEvent) => void,
@@ -122,21 +161,9 @@ export async function installDependencies(
     }
     log(`[install] argv=${JSON.stringify(plan.argv)}`);
     onEvent({ phase: "installing", index: 1, total, message: "正在安装系统组件（可能弹出系统授权窗口）…" });
-    const child = spawnFn(plan.argv[0]!, plan.argv.slice(1), {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: prependPathDirs(cleanEnv(), probePathDirs()),
-      windowsHide: true,
-    });
-    let out = "";
-    child.stdout?.on("data", (d) => { out += String(d); });
-    child.stderr?.on("data", (d) => { out += String(d); });
-    const kill = (): void => { try { child.kill("SIGTERM"); } catch { /* 已退出 */ } };
-    if (signal?.aborted) kill(); // 传入时已取消（addEventListener 不会再触发）
-    signal?.addEventListener("abort", kill, { once: true });
-    exitCode = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
-    signal?.removeEventListener("abort", kill);
-    errorText = outputTail(out, 200);
-    log(`[install] exit=${exitCode} tail=${errorText}`);
+    const r = await runArgv(plan.argv, spawnFn, signal, log);
+    exitCode = r.exitCode;
+    errorText = r.tail;
   } else {
     onEvent({ phase: "installing", index: 1, total, message: "正在安装系统保护组件（会弹出系统授权窗口）…" });
     log("[install] windows installWindowsSandboxAsync");
@@ -144,7 +171,7 @@ export async function installDependencies(
       await installWin();
     } catch (e) {
       errorText = (e as Error).message;
-      exitCode = 1; // 没有退出码，统一按失败处理
+      exitCode = FAILED_EXIT; // 没有退出码，统一按失败处理
       log(`[install] windows failed: ${errorText}`);
     }
   }
@@ -166,4 +193,134 @@ export async function installDependencies(
         + (errorText ? `。错误信息：${outputTail(errorText, 160)}` : "");
   onEvent({ phase: "failed", index: total, total, message: reason });
   return { ok: false, report, manualCommand: plan.manualCommand, reason, exitCode };
+}
+
+// ── userns 放行的一键修复 ─────────────────────────────────────────────────────
+//
+// AppImage / tar.gz / 源码运行拿不到 deb 的安装钩子，只能靠这条路：三条**绝对路径单命令**
+// 经 pkexec 执行（系统弹授权框）。不写脚本、不调用应用自带文件——pkexec 以 root 执行传入的程序，
+// 若该文件在用户可写目录（AppImage、解包目录）＝让 root 执行用户可改的代码。
+//
+// 每一步都**先判定再做**（模板在不在、install / apparmor_parser 在不在、目标是否已存在），
+// 幂等且不覆盖已存在的 profile（可能是系统自带，也可能用户改过）。
+
+export interface FixUsernsDeps {
+  spawn: typeof spawn;
+  probe: () => Promise<EnvReport>;
+  logger: (line: string) => void;
+  /** 文件存在判定（单测注入） */
+  exists: (p: string) => boolean;
+  /** 包管理器解析（单测注入；传 null = 明确"没有包管理器"） */
+  installer: Installer | null;
+  /** 平台（单测注入：本机是 macOS，但修复逻辑只针对 Linux，得能在测试里跑起来） */
+  platform: string;
+}
+
+/** 授权类失败的通用解释。**不硬编码 pkexec 的 126/127 含义**——本机（macOS）无法核实其准确语义，宁可如实报码 */
+const AUTH_HINT = "常见原因：取消了系统授权、当前环境弹不出授权窗口";
+
+export async function fixUserns(
+  onEvent: (e: InstallEvent) => void,
+  deps: Partial<FixUsernsDeps> = {},
+  signal?: AbortSignal,
+): Promise<InstallResult> {
+  if ((deps.platform ?? process.platform) !== "linux") return { ok: false, reason: "该修复只在 Linux 上适用" };
+
+  const total = 2; // 阶段数固定（准备 / 安装 1~2 步 / 复核），进度条不假装精确到每步
+  const manualCommand = usernsManualCommand();
+  const spawnFn = deps.spawn ?? spawn;
+  const probe = deps.probe ?? ((): Promise<EnvReport> => probeEnvironment());
+  const log = deps.logger ?? defaultLog;
+  const exists = deps.exists ?? ((p: string): boolean => fs.existsSync(p));
+  const installer = "installer" in deps
+    ? (deps.installer ?? null)
+    : ((): Installer | null => {
+      const d = readDistro();
+      return resolveInstaller({ id: d.id, idLike: [] });
+    })();
+
+  onEvent({ phase: "preparing", index: 0, total, message: "正在准备…" });
+
+  /** 唯一判定成功的地方：重新探测，看 userns 这一项是否真的变成可用（不看命令的退出码） */
+  const verify = async (failReason?: string, exitCode?: number | null): Promise<InstallResult> => {
+    onEvent({ phase: "verifying", index: total, total, message: "正在复核…" });
+    const report = await probe();
+    const userns = report.items.find((i) => i.id === "userns");
+    if (userns?.status === "ok") {
+      onEvent({ phase: "done", index: total, total, message: "已允许 bubblewrap 创建隔离空间" });
+      return { ok: true, report, exitCode };
+    }
+    const reason = failReason
+      ?? (userns
+        ? "配置已写入，但系统仍未放行——刚执行完可稍等片刻或重启后再检测；仍不行请按下面的命令手动执行"
+        : "复核时没找到「隔离能力」这一项，请点「重新检测」确认");
+    onEvent({ phase: "failed", index: total, total, message: reason });
+    return { ok: false, report, reason, manualCommand, exitCode };
+  };
+
+  // 幂等：目标已在 → 什么都不做（不覆盖系统自带 / 用户改过的 profile），直接复核
+  if (usernsProfileInstalled(exists)) return verify();
+
+  // 1) 本地没有 profile 模板 → 先装提供模板的包（Ubuntu 24.04 是 apparmor-profiles；25.04+ 由 apparmor 自带）
+  let source = resolveUsernsProfileSource(exists);
+  if (!source) {
+    const argv = usernsInstallSourceArgv(installer);
+    if (!argv) {
+      return {
+        ok: false,
+        reason: "本机没有 profile 模板，也无法自动安装（没有可用的包管理器）——请按下面的命令手动执行",
+        manualCommand,
+      };
+    }
+    onEvent({ phase: "installing", index: 1, total, message: "正在安装系统配置包（会弹出系统授权窗口）…" });
+    const r = await runArgv(argv, spawnFn, signal, log);
+    if (signal?.aborted) return { ok: false, reason: "已取消", manualCommand, exitCode: r.exitCode };
+    if (r.exitCode !== 0) {
+      return {
+        ok: false,
+        reason: `安装 ${APPARMOR_PROFILES_PACKAGE} 未完成（退出码 ${r.exitCode}）——${AUTH_HINT}`,
+        manualCommand,
+        exitCode: r.exitCode,
+      };
+    }
+    source = resolveUsernsProfileSource(exists); // 装完再确认，不假设包一定提供了它
+    if (!source) {
+      return {
+        ok: false,
+        reason: `已安装 ${APPARMOR_PROFILES_PACKAGE}，但仍未找到 profile 模板——请按下面的命令手动执行`,
+        manualCommand,
+        exitCode: 0,
+      };
+    }
+  }
+
+  // 2) 落 profile：用系统的 install 写文件（argv 传参，不起 shell、不用重定向）
+  const copy = usernsCopyArgv(source, exists);
+  if (!copy) return { ok: false, reason: "找不到 install 命令（coreutils），请按下面的命令手动执行", manualCommand };
+  onEvent({ phase: "installing", index: 1, total, message: "正在写入系统配置（会弹出系统授权窗口）…" });
+  const rc = await runArgv(copy, spawnFn, signal, log);
+  if (rc.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: signal?.aborted ? "已取消" : `写入系统配置未完成（退出码 ${rc.exitCode}）——${AUTH_HINT}`,
+      manualCommand,
+      exitCode: rc.exitCode,
+    };
+  }
+
+  // 3) 加载进内核（不重启就生效；apparmor_parser -r 在未加载时会新建）
+  const load = usernsLoadArgv(exists);
+  if (!load) {
+    return verify("配置已写入，但本机没有 apparmor_parser 可立即加载——重启后由系统服务加载", 0);
+  }
+  onEvent({ phase: "installing", index: 2, total, message: "正在让系统加载配置…" });
+  const rl = await runArgv(load, spawnFn, signal, log);
+  return verify(
+    signal?.aborted
+      ? "已取消：配置已写入，重启后由系统服务加载"
+      : rl.exitCode === 0
+        ? undefined // 命令成功但仍被挡 → 用 verify 的默认文案
+        : `配置已写入，但加载没成功（退出码 ${rl.exitCode}）——重启后由系统服务加载；仍不行请按下面的命令手动执行`,
+    rl.exitCode,
+  );
 }
