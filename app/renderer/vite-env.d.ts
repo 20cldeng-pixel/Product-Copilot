@@ -15,6 +15,42 @@ declare namespace JSX {
   type Element = import("react").ReactElement;
 }
 
+// ── 环境自检与依赖安装（env:*）────────────────────────────────────────────────
+/** 与 main 的 provisioning/types.ts 对齐（渲染层不 import main，故在此镜像声明） */
+interface EnvFixShape {
+  auto?: { packages: string[] };
+  manual?: { command?: string; url?: string };
+  sandboxOff?: boolean;
+}
+interface EnvItemShape {
+  id: string;
+  label: string;
+  required: boolean;
+  /** blocked=装了但被系统策略挡（如 Ubuntu 24.04 的 AppArmor）；unknown=探测失败，都不是"未安装" */
+  status: "ok" | "missing" | "blocked" | "unknown";
+  version?: string;
+  detail?: string;
+  fix: EnvFixShape;
+}
+interface EnvReportShape {
+  items: EnvItemShape[];
+  distro: { id: string; versionId?: string; autoInstallable: boolean };
+  probedAt: number;
+}
+interface EnvInstallResultShape {
+  ok: boolean;
+  manualCommand?: string;
+  reason?: string;
+  exitCode?: number | null;
+  report?: EnvReportShape;
+}
+interface EnvProgressShape {
+  phase: "preparing" | "installing" | "verifying" | "done" | "failed";
+  index: number;
+  total: number;
+  message?: string;
+}
+
 /** MCP 服务器配置（与 main/services/mcp-service.ts 的 McpServerConfig 对齐） */
 interface McpServerCfg {
   type: "stdio" | "http" | "sse";
@@ -407,6 +443,16 @@ interface ElectronAPI {
   sandbox: {
     /** Linux 系统依赖检测（bwrap/socat/rg）；其余平台恒为 found */
     detect: () => Promise<{ found: boolean; missing: string[]; blockedReason?: string; reason?: "probe-error" }>;
+  };
+  env: {
+    /** 环境自检（只读） */
+    probe: () => Promise<EnvReportShape>;
+    /** 重新检测：重置沙盒失败缓存后再探测（装完依赖点它即可生效，不必重启） */
+    retest: () => Promise<EnvReportShape>;
+    /** 安装缺失项（id 白名单在 main 侧；进度走 onProgress） */
+    install: (ids: string[]) => Promise<EnvInstallResultShape>;
+    cancel: () => Promise<void>;
+    onProgress: (cb: (ev: EnvProgressShape) => void) => () => void;
   };
   conv: {
     list: (projectPath: string) => Promise<{ sessionId: string; title: string; createdAt: number; updatedAt: number; pinnedAt?: number }[]>;

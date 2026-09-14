@@ -23,7 +23,8 @@ const POLLUTING_ENV = [
   "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
 ];
 
-function cleanEnv(): NodeJS.ProcessEnv {
+/** 探测/安装子进程都用一个干净且补全过 PATH 的环境（见文件头三条铁律） */
+export function cleanEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const k of POLLUTING_ENV) delete env[k];
   return env;
@@ -37,7 +38,8 @@ export function prependPathDirs(env: NodeJS.ProcessEnv, dirs: readonly string[])
   return { ...env, PATH: merged.join(sep) };
 }
 
-function pathCandidates(): string[] {
+/** PATH 前置目录（去重后拼到子进程 PATH 前面）——探测与安装子进程共用 */
+export function probePathDirs(): string[] {
   const home = os.homedir();
   if (process.platform === "win32") {
     const pf = process.env.ProgramFiles ?? "C:\\Program Files";
@@ -63,7 +65,7 @@ const realDeps: ProbeDeps = {
   run: (cmd, args) => {
     const r = spawnSync(cmd, [...args], {
       encoding: "utf-8", timeout: 5000, stdio: "pipe", windowsHide: true,
-      env: prependPathDirs(cleanEnv(), pathCandidates()),
+      env: prependPathDirs(cleanEnv(), probePathDirs()),
     });
     // 失败留痕：静默会把「装了但启不来」和「没装」压成同一个结论（这正是潜伏 v0.6.6→v0.23.1 的原因）
     if (r.status !== 0) {

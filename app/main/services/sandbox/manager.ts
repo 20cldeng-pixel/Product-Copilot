@@ -268,3 +268,11 @@ export async function resetSandboxForTest(): Promise<void> {
   _state = "untouched";
   _failReason = "";
 }
+
+/**
+ * 重置缓存状态（供生产使用）：依赖刚装好或用户点了「重新检测」时调用，
+ * 让「装完即生效」不必重启 EasyMint——否则失败状态会一直被缓存住继续 fail-closed。
+ */
+export async function resetSandboxState(): Promise<void> {
+  await resetSandboxForTest();
+}

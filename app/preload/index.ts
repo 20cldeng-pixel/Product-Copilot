@@ -68,6 +68,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sandbox: {
     detect: () => ipcRenderer.invoke("sandbox:detect"),
   },
+  env: {
+    probe: () => ipcRenderer.invoke("env:probe"),
+    retest: () => ipcRenderer.invoke("env:retest"),
+    install: (ids: string[]) => ipcRenderer.invoke("env:install", { ids }),
+    cancel: () => ipcRenderer.invoke("env:cancel"),
+    /** 订阅安装进度；返回取消订阅函数（与 todos:changed 同一形态） */
+    onProgress: (cb: (ev: { phase: string; index: number; total: number; message?: string }) => void) => {
+      const handler = (_e: unknown, ev: { phase: string; index: number; total: number; message?: string }): void => cb(ev);
+      ipcRenderer.on("env:progress", handler as never);
+      return () => { ipcRenderer.removeListener("env:progress", handler as never); };
+    },
+  },
   conv: {
     list: (projectPath: string) => ipcRenderer.invoke("conv:list", { projectPath }),
     listDesign: (projectPath: string) => ipcRenderer.invoke("conv:listDesign", { projectPath }) as Promise<Array<{ sessionId: string; title: string; createdAt: number; updatedAt: number; pinnedAt?: number; archivedAt?: number }>>,

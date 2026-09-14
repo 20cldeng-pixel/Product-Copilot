@@ -8,7 +8,9 @@ import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-
 import { Store } from "./services/store";
 import { broadcast } from "./services/ipc-broadcast";
 import { resetModelRuntime } from "./services/pi-init";
-import { setSandboxDisabledProvider, detectSandboxDeps } from "./services/sandbox/manager";
+import { setSandboxDisabledProvider, detectSandboxDeps, resetSandboxState } from "./services/sandbox/manager";
+import { probeEnvironment } from "./services/provisioning/probe";
+import { installDependencies } from "./services/provisioning/run";
 import { IMAGE_MIME, resolveHome, nearestExistingDir } from "./utils/paths";
 import { applyDockIcon } from "./utils/dock-icon";
 import { isImagePath } from "../shared/image-files";
@@ -122,6 +124,9 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   // 沙盒「关闭运行」开关的读取器接线：用注入的读取函数而非缓存字段，设置一改即生效
   // （Linux 兜底通道，见 sandbox/manager.isSandboxBypassed 的政策说明）
   setSandboxDisabledProvider(() => Boolean(store.getSettings().sandboxDisabled));
+
+  /** 进行中的依赖安装（同一时刻只允许一个，取消靠 abort） */
+  let envInstallAbort: AbortController | null = null;
 
   // dialog:*
   /**
@@ -533,6 +538,35 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("node:detect", () => detectNode());
   ipcMain.handle("codegraph:detect", () => detectCodegraph());
   ipcMain.handle("sandbox:detect", () => detectSandboxDeps());
+
+  // env:* — 环境自检与依赖安装（引导流程 / 启动自检共用同一引擎）
+  // 不走权限系统：这些是**产品自身的前置依赖**，不是 AI 提出的操作；命令由 provisioning/plan 白名单生成，
+  // 提权交给系统弹窗（Linux pkexec → polkit / Windows UAC）。见 docs/design/环境检测与依赖安装引导实施方案.md
+  ipcMain.handle("env:probe", () => probeEnvironment());
+  // 「重新检测」：先重置沙盒失败缓存——否则装好依赖仍会被缓存的 fail-closed 挡住，用户以为白装了
+  ipcMain.handle("env:retest", async () => {
+    await resetSandboxState();
+    return probeEnvironment();
+  });
+  ipcMain.handle("env:install", async (e, payload: unknown) => {
+    const raw = (payload as { ids?: unknown } | undefined)?.ids;
+    const ids = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+    if (ids.length === 0) return { ok: false, reason: "没有需要安装的条目" };
+    envInstallAbort = new AbortController();
+    try {
+      const result = await installDependencies(
+        ids,
+        (ev) => { try { e.sender.send("env:progress", ev); } catch { /* 窗口已关闭 */ } },
+        {},
+        envInstallAbort.signal,
+      );
+      if (result.ok) await resetSandboxState(); // 装完即生效（不必重启）
+      return result;
+    } finally {
+      envInstallAbort = null;
+    }
+  });
+  ipcMain.handle("env:cancel", () => { envInstallAbort?.abort(); });
 
   // appearance:* — 渲染层上报「当前生效主题」（单一真相源：theme-store 设置 data-theme 的同一处）
   // 主进程据此切换 macOS Dock 图标；其它平台在 applyDockIcon 内安全跳过
