@@ -542,15 +542,32 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   /* flex 子项可收缩（默认 min-width:auto 按内容撑开，长名称会把 + 按钮顶出区域） */
   min-width: 0;
 }
-/* 项目名称超长处理：固定宽度裁剪层 + 滚动层（参照 tab-marquee 模式） */
-.sb-project-name-clip { width: 180px; flex: none; min-width: 0; overflow: hidden; }
+/* 项目名称超长处理：自适应宽度（上限 170px）裁剪层 + 滚动层（参照 tab-marquee 模式）
+   上限而非固定宽度——短名称时宽度贴内容，hover 高亮块不会被拖成一条长条；
+   上限取 170（而非原来的固定 180）是为左侧图标让位，保证高亮块与「+」按钮之间留出间距 */
+.sb-project-name-clip { max-width: 170px; min-width: 0; overflow: hidden; }
 .sb-project-name-inner { display: inline-block; white-space: nowrap; }
 .sb-project-name:hover .sb-project-name-inner { animation: sb-marquee 4s linear infinite; }
 @keyframes sb-marquee {
   0%, 15% { transform: translateX(0); }
-  /* min() 钳制：文字未超出可视区（180px）时不滚动 */
-  80%, 100% { transform: translateX(min(0px, calc(180px - 100%))); }
+  /* min() 钳制：文字未超出可视区（170px）时不滚动 */
+  80%, 100% { transform: translateX(min(0px, calc(170px - 100%))); }
 }
+/* 项目名称区 = 「打开项目」入口（图标 + 名称同一按钮，避免两个热区做同一动作）：
+   hover 整块高亮，点击直接弹出打开项目列表 */
+.sb-project-switch {
+  /* button 复位：只覆盖 .sb-project-name 未声明的属性，避免与它的字体/配色规则打架 */
+  appearance: none; -webkit-appearance: none;
+  background: transparent; border: 0; text-align: left;
+  font-family: inherit; cursor: pointer; -webkit-app-region: no-drag;
+  transition: background-color 120ms var(--ease-smooth);
+}
+.sb-project-switch:hover { background: var(--color-surface-hover); }
+.sb-project-switch-icon {
+  flex: none; color: var(--color-text-muted);
+  transition: color 120ms var(--ease-smooth), transform 120ms var(--ease-smooth);
+}
+.sb-project-switch:hover .sb-project-switch-icon { color: var(--color-text-primary); transform: translateY(1px); }
 .sb-plus-wrap { position: relative; -webkit-app-region: no-drag; }
 .sb-plus-btn {
   width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;

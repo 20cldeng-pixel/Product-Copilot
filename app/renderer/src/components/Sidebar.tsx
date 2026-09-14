@@ -154,11 +154,25 @@ export function Sidebar({
 
       {/* Project name + actions */}
       <div className="sb-project-area">
-        <div className="sb-project-name">
+        {/* 项目名称区域整体是可点击的「打开项目」入口（图标 + 名称同一按钮，避免两个热区做同一个动作） */}
+        <button
+          type="button"
+          className="sb-project-name sb-project-switch"
+          title="打开项目"
+          onClick={() => onOpenProject?.()}
+        >
+          <svg
+            className="sb-project-switch-icon"
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 17V3" /><path d="m6 11 6 6 6-6" /><path d="M19 21H5" />
+          </svg>
           <span className="sb-project-name-clip">
             <span className="sb-project-name-inner">{!projectId ? "无工作空间" : (projectDeleted ? projectName + "（已删除）" : projectName)}</span>
           </span>
-        </div>
+        </button>
         <div className="sb-plus-wrap" ref={plusWrapRef}>
           <button className="sb-plus-btn" onClick={() => setPlusOpen(!plusOpen)}>
             {/* SVG 加号:精确居中(替代文字 + 的基线偏移) */}
