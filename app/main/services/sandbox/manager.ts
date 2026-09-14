@@ -104,7 +104,10 @@ async function platformFailureReason(e: Error): Promise<string | null> {
         + `Arch: sudo pacman -S bubblewrap socat ripgrep。`
         + `实在装不了可在同一处关闭沙盒运行（不推荐）`;
     }
-    return `沙盒初始化失败（Ubuntu 24.04 起默认禁止 bwrap 创建普通用户命名空间，需补 AppArmor profile，或临时执行 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0）：${e.message}`;
+    // 官方做法是给 bwrap 加载 AppArmor profile，而不是全局关掉 userns 限制
+    //（deb 安装时由 build/linux-after-install.sh 自动落；其余安装形态到「设置 → 环境检测」看指引）
+    return `沙盒初始化失败（Ubuntu 24.04 起默认禁止 bwrap 创建普通用户命名空间，需加载 AppArmor profile；`
+      + `用 deb 安装时已自动处理，仍失败请到「设置 → 环境检测」按指引执行一次）：${e.message}`;
   }
   if (process.platform === "win32") {
     try {

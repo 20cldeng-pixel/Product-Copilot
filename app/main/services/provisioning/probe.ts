@@ -130,15 +130,29 @@ const LINUX_BINARIES: BinarySpec[] = [
 /** userns 功能实测命令：`which bwrap` 查不出「包在但被 AppArmor 挡」（Ubuntu 24.04+ 默认如此） */
 const USERNS_PROBE_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid", "--", "echo", "ok"];
 
+/**
+ * Ubuntu 24.04 起 AppArmor 默认禁止非特权进程创建 user namespace，bwrap 因此失败。
+ * **官方做法是只给 bwrap 放行**（加载 bwrap-userns-restrict 这份 profile），而不是全局关掉限制
+ * （`sysctl kernel.apparmor_restrict_unprivileged_userns=0`）——后者会扩大所有进程的内核攻击面，
+ * Ubuntu 与同类产品（OpenAI Codex）的指引都是优先加载 profile。
+ * deb 安装时由 `build/linux-after-install.sh` 自动落这份 profile；这里仍展示命令，
+ * 是因为 AppImage / tar.gz / 源码运行拿不到那一步。
+ * 只展示不代执行：它改的是系统安全配置（方案 §2 非目标），由用户自己确认后执行。
+ */
 const APPARMOR_HINT =
   "系统默认策略不允许 bubblewrap 创建隔离空间（Ubuntu 24.04 起的默认行为）。"
-  + "需要一次系统级设置——这会调整系统安全配置，所以由你自己确认后执行，EasyMint 不会代做。";
+  + "用 deb 安装时已自动处理过，这里仍显示说明那一步没成功；其余安装形态执行一次下面三条命令即可（不必重启）。";
 
 function blockedFix(): EnvItem["fix"] {
   return {
     manual: {
-      command: "sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/bwrap-userns-restrict && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict",
-      url: "https://docs.kernel.org/userspace-api/apparmor.html",
+      // 官方三步：装 apparmor-profiles 包 → 落 profile → 加载。多行用 \n 分隔，界面按多行展示、整体复制
+      command: [
+        "sudo apt-get install -y apparmor-profiles",
+        "sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/bwrap-userns-restrict",
+        "sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict",
+      ].join("\n"),
+      url: "https://documentation.ubuntu.com/server/how-to/security/apparmor",
     },
     sandboxOff: true,
   };

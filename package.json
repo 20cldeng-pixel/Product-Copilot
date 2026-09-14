@@ -180,7 +180,12 @@
         "bubblewrap",
         "socat",
         "ripgrep"
-      ]
+      ],
+      "recommends": [
+        "libappindicator3-1",
+        "apparmor-profiles"
+      ],
+      "afterInstall": "build/linux-after-install.sh"
     }
   }
 }

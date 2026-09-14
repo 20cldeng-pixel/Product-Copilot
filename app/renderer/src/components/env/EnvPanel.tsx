@@ -134,10 +134,11 @@ export function EnvPanel({ variant = "settings" }: { variant?: "onboarding" | "s
               {item.detail && (
                 <p className="mt-1 text-[length:var(--text-2xs)] text-text-muted break-all">{item.detail}</p>
               )}
-              {/* 自助命令：装不了/被挡时唯一的出路（必须能复制，不能只有"一键"） */}
+              {/* 自助命令：装不了/被挡时唯一的出路（必须能复制，不能只有"一键"）。
+                  可能是多行步骤（用 \n 分隔）——按多行展示，别用 truncate 截掉后半截。 */}
               {item.status !== "ok" && item.fix.manual?.command && (
-                <div className="mt-1.5 flex items-center gap-1">
-                  <code className="text-[length:var(--text-2xs)] text-text-secondary bg-surface px-2 py-0.5 rounded-[var(--radius-lg)] select-all truncate">
+                <div className="mt-1.5 flex items-start gap-1">
+                  <code className="flex-1 min-w-0 text-[length:var(--text-2xs)] leading-relaxed text-text-secondary bg-surface px-2 py-0.5 rounded-[var(--radius-lg)] select-all whitespace-pre-wrap break-all">
                     {item.fix.manual.command}
                   </code>
                   <button
