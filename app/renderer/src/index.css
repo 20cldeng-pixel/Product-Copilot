@@ -560,6 +560,9 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   appearance: none; -webkit-appearance: none;
   background: transparent; border: 0; text-align: left;
   font-family: inherit; cursor: pointer; -webkit-app-region: no-drag;
+  /* 图标贴近文字（覆盖 .sb-project-name 的 --s2=8px）：折角图形左右各有 4px 内边距，
+     5px 间距实际观感约 9px，与文字排在一起更紧凑 */
+  gap: 5px;
   transition: background-color 120ms var(--ease-smooth);
 }
 .sb-project-switch:hover { background: var(--color-surface-hover); }

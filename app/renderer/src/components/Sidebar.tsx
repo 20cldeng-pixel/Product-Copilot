@@ -167,7 +167,7 @@ export function Sidebar({
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
             aria-hidden="true"
           >
-            <path d="M12 17V3" /><path d="m6 11 6 6 6-6" /><path d="M19 21H5" />
+            <path d="m6 9 6 6 6-6" />
           </svg>
           <span className="sb-project-name-clip">
             <span className="sb-project-name-inner">{!projectId ? "无工作空间" : (projectDeleted ? projectName + "（已删除）" : projectName)}</span>
