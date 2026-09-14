@@ -92,6 +92,7 @@ async function connect(
   name: string,
   cfg: McpServerConfig,
   execution?: { projectPath: string; mode: PermissionMode; contextId?: string },
+  timeoutMs = MCP_CONNECT_TIMEOUT_MS,
 ): Promise<Client> {
   const client = new Client(
     { name: "easymint", version: "1.0.0" },
@@ -121,9 +122,10 @@ async function connect(
       ? new StdioClientTransport({ command: wrapped.argv[0]!, args: wrapped.argv.slice(1), env: wrapped.env as Record<string, string>, cwd: projectPath })
       : new StdioClientTransport({ command: "/bin/sh", args: ["-c", wrapped.command], env: wrapped.env as Record<string, string>, cwd: projectPath });
     try {
-      await client.connect(transport);
+      await client.connect(transport, { timeout: timeoutMs });
       if (wrapped.release) clientSandboxLeases.set(client, wrapped.release);
     } catch (error) {
+      try { await client.close(); } catch { try { await transport.close(); } catch { /* 已退出 */ } }
       await wrapped.release?.();
       throw error;
     }
@@ -148,12 +150,13 @@ async function connect(
           authProvider: authProvider as any,
         });
     try {
-      await client.connect(transport);
+      await client.connect(transport, { timeout: timeoutMs });
       return client;
     } catch (e) {
       const msg = (e as Error).message || "";
       const needsAuth = /401|403|unauthorized|unauthorized_error/i.test(msg);
       if (wantsOauth && needsAuth && authProvider) {
+        try { await client.close(); } catch { try { await transport.close(); } catch { /* 已关闭 */ } }
         // 完整 OAuth 流程（SDK 驱动）：元数据发现 → DCR（如需）→ 浏览器授权 → 换 token → saveTokens
         console.log(`[mcp-oauth] ${name} 需要 OAuth，发起浏览器授权流程…`);
         await auth(authProvider as any, {
@@ -171,9 +174,15 @@ async function connect(
         const retry = cfg.type === "http"
           ? new StreamableHTTPClientTransport(new URL(cfg.url as string), { requestInit, authProvider: authProvider as any })
           : new SSEClientTransport(new URL(cfg.url as string), { requestInit, authProvider: authProvider as any });
-        await retryClient.connect(retry);
-        return retryClient;
+        try {
+          await retryClient.connect(retry, { timeout: timeoutMs });
+          return retryClient;
+        } catch (retryError) {
+          try { await retryClient.close(); } catch { try { await retry.close(); } catch { /* 已关闭 */ } }
+          throw retryError;
+        }
       }
+      try { await client.close(); } catch { try { await transport.close(); } catch { /* 已关闭 */ } }
       throw e;
     }
   }
@@ -208,7 +217,7 @@ async function loadOneServer(
     try {
       // 超时保护:冷启动首连挂起的 MCP 直接跳过,不让 loadMcpTools 阻塞发送链路
       const timeout = raw.timeout || MCP_CONNECT_TIMEOUT_MS;
-      client = await withTimeout(connect(s.name, cfg, { projectPath: projectPath ?? process.cwd(), mode: initialMode, contextId }), timeout, `MCP ${s.name} 连接`);
+      client = await connect(s.name, cfg, { projectPath: projectPath ?? process.cwd(), mode: initialMode, contextId }, timeout);
       clients.set(initialKey, client);
     } catch (e) {
       const msg = redact((e as Error).message);
@@ -242,10 +251,11 @@ async function loadOneServer(
               clients.delete(oldKey);
               try { await closeClient(oldClient); } catch { /* 已断开的旧连接无需阻塞新模式 */ }
             }
-            activeClient = await withTimeout(
-              connect(s.name, cfg, { projectPath: projectPath ?? process.cwd(), mode, contextId }),
+            activeClient = await connect(
+              s.name,
+              cfg,
+              { projectPath: projectPath ?? process.cwd(), mode, contextId },
               raw.timeout || MCP_CONNECT_TIMEOUT_MS,
-              `MCP ${s.name} ${mode} 模式连接`,
             );
             clients.set(key, activeClient);
           }
@@ -409,7 +419,7 @@ export async function testMcpServer(cfg: McpServerConfig): Promise<{ ok: boolean
   let client: Client | null = null;
   try {
     const { cfg: expanded } = expandServerConfig(cfg);
-    client = await withTimeout(connect("__test__", expanded), cfg.timeout || MCP_CONNECT_TIMEOUT_MS, "MCP 测试连接");
+    client = await connect("__test__", expanded, undefined, cfg.timeout || MCP_CONNECT_TIMEOUT_MS);
     const res = await withTimeout(client.listTools(), MCP_LIST_TIMEOUT_MS, "MCP 测试 listTools");
     return { ok: true, toolCount: res.tools.length };
   } catch (e) {
