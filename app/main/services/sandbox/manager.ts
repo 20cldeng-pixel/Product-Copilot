@@ -48,23 +48,6 @@ export function missingLinuxSandboxDeps(): string[] {
 }
 
 /**
- * 设置页「环境检测」用：Linux 上系统依赖是否齐备（其余平台无外部依赖，恒为 found）。
- * 依赖齐但初始化已失败过（典型：Ubuntu 24.04 的 userns/AppArmor 限制）时，
- * 一并回传失败原因——否则界面会显示「可用」而命令实际跑不了。
- */
-export function detectSandboxDeps(): { found: boolean; missing: string[]; blockedReason?: string; reason?: "probe-error" } {
-  if (process.platform !== "linux") return { found: true, missing: [] };
-  try {
-    const missing = missingLinuxSandboxDeps();
-    if (missing.length > 0) return { found: false, missing };
-    if (_state === "failed") return { found: false, missing: [], blockedReason: _failReason };
-    return { found: true, missing: [] };
-  } catch {
-    return { found: false, missing: [], reason: "probe-error" };
-  }
-}
-
-/**
  * 「是否关闭了沙盒运行」的读取器——由主进程启动时接线（读设置文件）。
  * 用注入的读取函数而不是缓存字段，避免设置改了、缓存没同步这类不一致。
  */

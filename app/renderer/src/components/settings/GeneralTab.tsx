@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
+import { EnvPanel } from "../env/EnvPanel";
 
 // ── Git Check ─────────────────────────────────────────────────────────────────
 
@@ -99,109 +100,10 @@ function CodegraphRow({ info }: { info: DetectInfo | null }) {
   );
 }
 
-// ── 系统保护（沙盒）─────────────────────────────────────────────────────────────
-
-type SandboxInfo = { found: boolean; missing: string[]; blockedReason?: string; reason?: "probe-error" };
-
-/** Linux 上 srt 需要的系统依赖；缺失时前台命令一律不执行（fail-closed），故在设置页给安装指引 */
-function useSandboxDetect() {
-  const [info, setInfo] = useState<SandboxInfo | null>(null);
-  const [nonce, setNonce] = useState(0);
-  useEffect(() => {
-    window.electronAPI?.sandbox?.detect().then(setInfo).catch(() => setInfo({ found: false, missing: [], reason: "probe-error" }));
-  }, [nonce]);
-  const refresh = useCallback(() => { setInfo(null); setNonce((n) => n + 1); }, []);
-  return { info, refresh };
-}
-
-const SANDBOX_INSTALL_CMD = "sudo apt install bubblewrap socat ripgrep";
-
-function SandboxRow({ info }: { info: SandboxInfo | null }): JSX.Element {
-  const isLinux = window.electronAPI?.platform === "linux";
-  const sandboxDisabled = useSettingsStore((s) => s.sandboxDisabled);
-  const setSandboxDisabled = useSettingsStore((s) => s.setSandboxDisabled);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(SANDBOX_INSTALL_CMD);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const broken = !!info && !info.found && info.reason !== "probe-error";
-  return (
-    <div className="px-4 py-2.5 em-hover-row transition-shadow">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-sm text-text-secondary">系统保护（沙盒）</span>
-          {info === null ? (
-            <span className="text-xs text-text-muted">检测中...</span>
-          ) : info.reason === "probe-error" ? (
-            <span className="text-xs text-danger">检测失败，可点「重新检测」重试</span>
-          ) : info.found ? (
-            <span className="text-xs text-text-secondary">{sandboxDisabled ? "可用（已手动关闭）" : "可用"}</span>
-          ) : info.missing.length > 0 ? (
-            <span className="text-xs text-danger">缺少 {info.missing.join("、")}</span>
-          ) : (
-            <span className="text-xs text-danger">不可用</span>
-          )}
-        </div>
-        {broken && info?.missing.length ? (
-          <div className="flex flex-col items-end gap-1.5">
-            <div className="flex items-center gap-1">
-              <code className="text-[length:var(--text-2xs)] text-text-secondary bg-surface px-2 py-0.5 rounded-[var(--radius-lg)] select-all">{SANDBOX_INSTALL_CMD}</code>
-              <button
-                className="shrink-0 px-1.5 py-0.5 rounded-[var(--radius-lg)] text-[length:var(--text-2xs)] text-text-secondary hover:text-accent em-hover-control transition-all"
-                onClick={handleCopy}
-              >
-                {copied ? "已复制" : "复制"}
-              </button>
-            </div>
-            <span className="text-[length:var(--text-2xs)] text-text-muted">
-              Fedora/RHEL 用 sudo dnf install、Arch 用 sudo pacman -S（同三个包）；装好点上方「重新检测」，不必重启
-            </span>
-          </div>
-        ) : null}
-      </div>
-
-      {broken && info?.blockedReason && (
-        <p className="mt-1.5 text-[length:var(--text-2xs)] text-text-muted break-all">{info.blockedReason}</p>
-      )}
-
-      {isLinux && broken && (
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-[length:var(--text-2xs)] text-text-muted">
-            装不了时可以先关掉沙盒继续用——命令将不再受系统层限制（EasyMint 自身的路径禁区检查仍生效）
-          </span>
-          <button
-            className={`shrink-0 px-3 py-1.5 rounded-[var(--radius-lg)] text-xs em-hover-control transition-shadow ${sandboxDisabled ? "text-text-secondary" : "text-danger"}`}
-            onClick={() => setSandboxDisabled(!sandboxDisabled)}
-          >
-            {sandboxDisabled ? "重新开启沙盒" : "关闭沙盒运行"}
-          </button>
-        </div>
-      )}
-
-      {isLinux && sandboxDisabled && !broken && (
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-[length:var(--text-2xs)] text-danger">沙盒已关闭：命令不受系统层限制（不推荐长期如此）</span>
-          <button
-            className="shrink-0 px-3 py-1.5 rounded-[var(--radius-lg)] text-xs text-text-secondary em-hover-control transition-shadow"
-            onClick={() => setSandboxDisabled(false)}
-          >
-            重新开启沙盒
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function EnvCheckSection(): JSX.Element {
   const git = useDetect("git");
   const nodeRt = useDetect("nodeRuntime");
   const codegraph = useDetect("codegraph");
-  const sandbox = useSandboxDetect();
 
   return (
     <section>
@@ -209,7 +111,7 @@ function EnvCheckSection(): JSX.Element {
         <h3 className="text-sm font-medium text-text-secondary">环境检测</h3>
         <button
           className="px-3 py-1.5 rounded-[var(--radius-lg)] text-xs text-text-secondary em-hover-control transition-shadow"
-          onClick={() => { git.refresh(); nodeRt.refresh(); codegraph.refresh(); sandbox.refresh(); }}
+          onClick={() => { git.refresh(); nodeRt.refresh(); codegraph.refresh(); }}
         >
           重新检测
         </button>
@@ -218,7 +120,7 @@ function EnvCheckSection(): JSX.Element {
         <EnvRow label="Git" info={git.info} installUrl="https://git-scm.com/downloads" />
         <EnvRow label="Node.js" info={nodeRt.info} installUrl="https://nodejs.org/" />
         <CodegraphRow info={codegraph.info} />
-        <SandboxRow info={sandbox.info} />
+        <EnvPanel variant="settings" />
       </div>
     </section>
   );

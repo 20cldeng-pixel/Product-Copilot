@@ -65,9 +65,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   codegraph: {
     detect: () => ipcRenderer.invoke("codegraph:detect"),
   },
-  sandbox: {
-    detect: () => ipcRenderer.invoke("sandbox:detect"),
-  },
   env: {
     probe: () => ipcRenderer.invoke("env:probe"),
     retest: () => ipcRenderer.invoke("env:retest"),
@@ -78,6 +75,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       const handler = (_e: unknown, ev: { phase: string; index: number; total: number; message?: string }): void => cb(ev);
       ipcRenderer.on("env:progress", handler as never);
       return () => { ipcRenderer.removeListener("env:progress", handler as never); };
+    },
+    /** 订阅启动自检结果（env:report）——侧边栏红点用 */
+    onReport: (cb: (report: unknown) => void) => {
+      const handler = (_e: unknown, report: unknown): void => cb(report);
+      ipcRenderer.on("env:report", handler as never);
+      return () => { ipcRenderer.removeListener("env:report", handler as never); };
     },
   },
   conv: {

@@ -3,12 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { useSettingsStore } from "../stores/settings-store";
 import { useThemeStore } from "../stores/theme-store";
 import { ProviderForm } from "../components/settings/ProviderSettings";
+import { EnvPanel } from "../components/env/EnvPanel";
 import { WindowControls } from "../components/WindowControls";
 import type { ProviderConfig, ApiProvidersData } from "@shared/platform-presets";
 
 const STEPS = [
   { number: 1, title: "欢迎使用 EasyMint" },
-  { number: 2, title: "选择 AI 供应商" },
+  // 依赖问题必须在"进入工作台之前"处理掉：放到对话中途才发现，用户已经聊了几轮、挫败感最强
+  { number: 2, title: "准备运行环境" },
+  { number: 3, title: "选择 AI 供应商" },
 ];
 
 export function OnboardingPage(): JSX.Element {
@@ -125,8 +128,11 @@ export function OnboardingPage(): JSX.Element {
               </div>
             </div>
           </div>
+        ) : currentStep === 1 ? (
+          /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）── */
+          <EnvPanel variant="onboarding" />
         ) : (
-          /* ── Step 2: Provider Setup ── */
+          /* ── Step 3: Provider Setup ── */
           <div className="w-full max-w-[540px]">
             <h1 className="text-xl font-semibold text-center mb-1">
               选择 AI 供应商
@@ -177,12 +183,19 @@ export function OnboardingPage(): JSX.Element {
             返回
           </button>
         )}
-        {currentStep !== 0 && (
+        {currentStep === 1 && (
+          <button
+            className="btn-accent px-6 py-2 rounded-[var(--radius-lg)] font-medium"
+            onClick={goNext}
+          >
+            下一步
+          </button>
+        )}
+        {currentStep === 2 && (
           <button
             className="btn-accent px-6 py-2 rounded-[var(--radius-lg)] font-medium"
             disabled={!savedCfg}
             onClick={handleComplete}
-            
           >
             进入工作台
           </button>

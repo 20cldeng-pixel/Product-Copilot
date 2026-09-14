@@ -8,7 +8,7 @@ import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-
 import { Store } from "./services/store";
 import { broadcast } from "./services/ipc-broadcast";
 import { resetModelRuntime } from "./services/pi-init";
-import { setSandboxDisabledProvider, detectSandboxDeps, resetSandboxState } from "./services/sandbox/manager";
+import { setSandboxDisabledProvider, resetSandboxState } from "./services/sandbox/manager";
 import { probeEnvironment } from "./services/provisioning/probe";
 import { installDependencies } from "./services/provisioning/run";
 import { IMAGE_MIME, resolveHome, nearestExistingDir } from "./utils/paths";
@@ -537,7 +537,6 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("git:detect", () => detectGit());
   ipcMain.handle("node:detect", () => detectNode());
   ipcMain.handle("codegraph:detect", () => detectCodegraph());
-  ipcMain.handle("sandbox:detect", () => detectSandboxDeps());
 
   // env:* — 环境自检与依赖安装（引导流程 / 启动自检共用同一引擎）
   // 不走权限系统：这些是**产品自身的前置依赖**，不是 AI 提出的操作；命令由 provisioning/plan 白名单生成，
@@ -567,6 +566,14 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
     }
   });
   ipcMain.handle("env:cancel", () => { envInstallAbort?.abort(); });
+
+  // 启动自检：延迟探测一次（不与启动争资源），结果广播给所有窗口 → 侧边栏红点 + 设置页环境检测。
+  // 探测失败**不打扰用户**（正式进设置页时还有一次主动探测兜底）。
+  setTimeout(() => {
+    probeEnvironment()
+      .then((report) => broadcast("env:report", report))
+      .catch(() => { /* 静默：探测失败会在设置页显示为「检测失败」 */ });
+  }, 1500);
 
   // appearance:* — 渲染层上报「当前生效主题」（单一真相源：theme-store 设置 data-theme 的同一处）
   // 主进程据此切换 macOS Dock 图标；其它平台在 applyDockIcon 内安全跳过
