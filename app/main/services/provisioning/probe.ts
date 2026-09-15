@@ -117,21 +117,32 @@ interface BinarySpec {
   candidates: string[];
 }
 
-/** 沙盒三件套 = 只对 Linux 有意义（macOS 用系统 Seatbelt，无外部依赖） */
+/**
+ * 沙盒三件套 = 只对 Linux 有意义（macOS 用系统 Seatbelt，无外部依赖）。
+ *
+ * **影响说明的口径（2026-09-15 校正）**：三项是 **AND 门**——`SandboxManager.initialize()`
+ * 把短缺项收进 errors，非空即抛（`sandbox-dependencies not available`），沙盒整体起不来。
+ * 所以三项的"缺了会怎样"**是同一句话**；区别只在"它负责什么"。此前每条各写各的后果，
+ * 现在看是不准确的（例如写 socat 缺了只影响"联网的命令"，实际是沙盒整个不可用）。
+ *
+ * `rg` 那条还要特别说明：它是**启动时的检查项**，不是运行时依赖——srt 里 `ripGrep()` 已无调用点
+ * （唯一调用者被 `scripts/patch-sandbox-runtime.cjs` 换成静态列表），而应用自带的检索功能用的是
+ * SDK 自己管理/下载的那一份。旧文案"缺少它代码检索不可用"会误导，已删。
+ */
 const LINUX_BINARIES: BinarySpec[] = [
   {
     id: "bwrap", label: "bubblewrap（隔离进程）", args: ["--version"],
-    impact: "缺少它无法把命令关进隔离环境——命令会被拦下，只能用「关闭沙盒运行」继续（不推荐）",
+    impact: "它负责把命令关进隔离环境。沙盒这三项依赖缺一不可——缺它时沙盒整体不可用，命令只能选择「关闭沙盒运行」（不推荐）",
     candidates: ["bwrap", "/usr/bin/bwrap", "/usr/local/bin/bwrap", "/bin/bwrap", "/snap/bin/bwrap", "/run/current-system/sw/bin/bwrap"],
   },
   {
     id: "socat", label: "socat（网络桥）", args: ["-V"],
-    impact: "缺少它隔离环境里的网络代理起不来——沙盒内需要联网的命令会失败",
+    impact: "它负责把隔离环境里的网络接到宿主。沙盒这三项依赖缺一不可——缺它时沙盒同样整体不可用",
     candidates: ["socat", "/usr/bin/socat", "/usr/local/bin/socat", "/bin/socat", "/run/current-system/sw/bin/socat"],
   },
   {
-    id: "rg", label: "ripgrep（检索）", args: ["--version"],
-    impact: "缺少它代码检索不可用，隔离环境也起不来（它是沙盒的系统依赖之一）",
+    id: "rg", label: "ripgrep（沙盒依赖项）", args: ["--version"],
+    impact: "沙盒启动时会检查它在不在（三项缺一不可，缺它沙盒同样整体不可用）；应用自带的检索功能不依赖它，缺了不影响检索",
     // cargo 安装（~/.cargo/bin）在开发者机器上很常见，必须列候选否则误报
     candidates: ["rg", "/usr/bin/rg", "/usr/local/bin/rg", "/bin/rg", "/snap/bin/rg",
       path.join(os.homedir(), ".cargo", "bin", "rg"), "/run/current-system/sw/bin/rg"],
