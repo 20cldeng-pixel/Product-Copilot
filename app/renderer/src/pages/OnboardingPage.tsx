@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useSettingsStore } from "../stores/settings-store";
 import { useThemeStore } from "../stores/theme-store";
 import { ProviderForm } from "../components/settings/ProviderSettings";
-import { EnvPanel, type EnvPanelHandle } from "../components/env/EnvPanel";
-import { EnvRetestButton } from "../components/env/EnvRetestButton";
+import { EnvPanel } from "../components/env/EnvPanel";
 import { TavilyKeySection } from "../components/settings/TavilyKeySection";
 import { WindowControls } from "../components/WindowControls";
 import type { ProviderConfig, ApiProvidersData } from "@shared/platform-presets";
@@ -31,9 +30,6 @@ export function OnboardingPage(): JSX.Element {
 
   // 记录本次已保存的供应商 ID，避免重复保存
   const [savedCfg, setSavedCfg] = useState<ProviderConfig | null>(null);
-
-  // Step 2 的「重新检测」：按钮由本页提供，动作来自面板句柄（与设置页同一份实现）
-  const envPanel = useRef<EnvPanelHandle>(null);
 
   // 重新运行引导时预填已配置的供应商（设置 store 异步加载，故订阅而非读一次快照）：
   // 否则「重看一遍引导」会被迫重填 API Key——配置本身不丢，只是多一道无谓操作
@@ -70,26 +66,20 @@ export function OnboardingPage(): JSX.Element {
   const goNext = useCallback(() => setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1)), []);
   const goPrev = useCallback(() => setCurrentStep((s) => Math.max(s - 1, 0)), []);
 
-  // 环境就绪 → 自动进入下一步（用户 2026-09-15 要求：检测/安装完不该再让人点一次）。
+  // 环境就绪 → **直接**进入下一步（用户 2026-09-15：这一步是纯过场，"没问题就直接跳供应商页面"）。
   // 守卫用 ref 而非 state：**只自动跳一次**——用户自己按「返回」回到本步时不该被立刻推走（否则回不去）。
-  // 延迟 1.2s 是为了让「运行环境已就绪」这句话被看见（面板副标题会同时改口为"正在进入下一步"）。
+  // 早先这里有 1.2s 延迟，是为让"正在进入下一步…"那句被看见；用户已明确不要那句文案，
+  // 于是延迟一并去掉 —— 没有话要说，就没有停的理由。
   const envAutoAdvanced = useRef(false);
-  const envAdvanceTimer = useRef<number | null>(null);
   /** 面板还要不要"就绪即自动离开"。**自动跳过一次后就不再传 onReady** ——
-   *  面板据此回落到普通态（显示依赖状态与「下一步」按钮），而不是挂着一个永不跳转的动画，
-   *  副标题也不会一直谎报"正在进入下一步"。 */
+   *  面板据此回落到普通态（显示依赖状态与「下一步」按钮），而不是挂着一个永不跳转的过场动画。 */
   const [willAutoAdvance, setWillAutoAdvance] = useState(true);
   const handleEnvReady = useCallback((): void => {
     if (envAutoAdvanced.current) return;
     envAutoAdvanced.current = true;
     setWillAutoAdvance(false);
-    envAdvanceTimer.current = window.setTimeout(() => {
-      // 用函数式更新并判当前步：这 1.2s 里用户可能已经按「返回」，直接 +1 会把他又推回来
-      setCurrentStep((s) => (s === 1 ? s + 1 : s));
-    }, 1200);
-  }, []);
-  useEffect(() => () => {
-    if (envAdvanceTimer.current !== null) window.clearTimeout(envAdvanceTimer.current);
+    // 函数式更新并判当前步：交回宿主是异步的，期间用户可能已经按「返回」
+    setCurrentStep((s) => (s === 1 ? s + 1 : s));
   }, []);
 
   return (
@@ -164,17 +154,14 @@ export function OnboardingPage(): JSX.Element {
             /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）──
                刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现。
                autoFix：进来就自动装（不再要求用户点「一键安装」）；就绪即自动进下一步 */
-            <>
-              <EnvPanel
-                ref={envPanel}
-                variant="onboarding"
-                autoFix
-                onReady={willAutoAdvance ? handleEnvReady : undefined}
-              />
-              <div className="mt-3">
-                <EnvRetestButton panel={envPanel} />
-              </div>
-            </>
+            /* 这里**不放「重新检测」按钮**（用户 2026-09-15：那个按钮不该出现在动画下方）——
+               这一步的出路是「一键安装/一键修复」（面板内）或底部的「下一步」跳过；
+               真要重测，去「设置 → 环境检测」（那里的按钮由设置页提供，是全项目唯一一处）。 */
+            <EnvPanel
+              variant="onboarding"
+              autoFix
+              onReady={willAutoAdvance ? handleEnvReady : undefined}
+            />
           ) : (
             /* ── Step 3: Provider Setup ── */
             <div className="w-full max-w-[540px]">

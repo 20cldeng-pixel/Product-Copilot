@@ -33,13 +33,14 @@ export function onboardingHint(s: {
   busy: boolean;
   /** 探测本身失败（≠ 没装） */
   probeFailed: boolean;
-  /** 面板已把"就绪"交回宿主（宿主随即自动进入下一步） */
-  handedOff: boolean;
 }): string | null {
   // 没有结论（既没报告也没失败）也不显示：那一瞬是在探测，文案只会是"正在检查"这种过渡话
   if (s.busy || (!s.hasReport && !s.probeFailed)) return null;
-  if (s.probeFailed) return "检查没能完成——可点「重新检测」重试";
-  if (s.handedOff) return "运行环境已就绪——正在进入下一步…";
+  // 引导页**没有「重新检测」按钮**（用户 2026-09-15：那个按钮不该出现在这里），故不指向按钮，
+  // 改为指向设置页；同时告诉他当前这一步可以先继续。
+  if (s.probeFailed) return "检查没能完成——可先点「下一步」继续，稍后在「设置 → 环境检测」里重试";
+  // 注意：**没有「正在进入下一步」这一档**（用户 2026-09-15：「也不用显示即将进入下一页」）——
+  // 没问题时这一步是纯过场，跳转前不留任何文案。
   if (s.requiredBroken > 0) {
     return `还有 ${s.requiredBroken} 项必须处理——缺少它们时命令会被拦下，下面的说明写了怎么装`;
   }
@@ -288,7 +289,7 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   const hint = variant === "onboarding" && !quiet
     ? onboardingHint({
         hasReport: report !== null, probeFailed,
-        requiredBroken, optionalBroken, busy, handedOff,
+        requiredBroken, optionalBroken, busy,
       })
     : null;
 
@@ -308,7 +309,11 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
       {!working && (
         <div className="bg-surface-alt rounded-[var(--radius-lg)] overflow-hidden">
           {probeFailed && (
-            <div className="px-4 py-3 text-xs text-danger">检测失败，可点「重新检测」重试</div>
+            <div className="px-4 py-3 text-xs text-danger">
+              {variant === "onboarding"
+                ? "检测失败——不影响继续，可稍后在「设置 → 环境检测」里重试"
+                : "检测失败，可点「重新检测」重试"}
+            </div>
           )}
           {!probeFailed && items.length === 0 && (
             <div className="px-4 py-3 text-xs text-text-muted">无需额外组件</div>
@@ -371,14 +376,15 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
           主进程仍在发 `env:progress` 阶段事件（preload 也仍暴露 onProgress），只是界面不再显示。 */}
       {working && (
         <div className="mt-4">
-          {/* `env-sweep-clip` 让裁剪框两端各留 10% 的软化区：光带穿越边界时是淡入淡出，
-              而不是被 `overflow: hidden` 竖切一刀（用户 2026-09-15 报"移动到两端时被整齐切开"）。
-              软化区与光带居中占位（27%~73%）不重叠，故中央观感不变。 */}
-          <div className="env-sweep-clip relative h-1 w-full overflow-hidden">
-            {/* 颜色、白芯与两端渐隐都在 index.css 的 .env-sweep-glow 里（那里用 mask 裁水平渐隐），
-                故此处不能加 bg-accent。也不能加 -translate-y-1/2 之类：动画 keyframes 写的是
-                transform: translateX，会抢同一属性。`rounded-[50%]` 给光带一个胶囊轮廓。 */}
-            <div className="env-sweep-glow absolute inset-y-0 left-0 w-[46%] rounded-[50%]" />
+          {/* 光带**全程在容器内往返**（用户 2026-09-15：「不要让动画线条消失，在一个背景内完整移动，
+              不超出边界」）：行程与宽度都由 index.css 的 `@keyframes envSweep` 与 `.env-sweep-glow`
+              负责（宽度也放在那边，因为行程是按它算的）。这里的 `overflow-hidden` 只是兜底，
+              正常一帧都不会裁到像素。 */}
+          <div className="relative h-1 w-full overflow-hidden">
+            {/* 颜色、宽度、白芯与两端渐隐都在 index.css 的 .env-sweep-glow 里（那里用 mask 裁水平渐隐），
+                故此处不能加 bg-accent、也不能再加 w-*。也不能加 -translate-y-1/2 之类：动画 keyframes
+                写的是 transform: translateX，会抢同一属性。`rounded-[50%]` 给光带一个胶囊轮廓。 */}
+            <div className="env-sweep-glow absolute inset-y-0 left-0 rounded-[50%]" />
           </div>
         </div>
       )}

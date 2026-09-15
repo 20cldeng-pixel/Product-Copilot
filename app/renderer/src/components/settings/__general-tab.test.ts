@@ -76,7 +76,7 @@ describe("引导步骤副标题：检查完就不再说「正在检查」；忙�
   const hint = onboardingHint;
   const base = {
     hasReport: true, probeFailed: false, requiredBroken: 0, optionalBroken: 0,
-    busy: false, handedOff: false,
+    busy: false,
   };
 
   it("检测/安装进行中 → 不显示任何文字（用户定：一个标题，一个动画）", () => {
@@ -91,7 +91,7 @@ describe("引导步骤副标题：检查完就不再说「正在检查」；忙�
   it("过渡文案已被彻底移除：「正在为你检查」「正在自动安装」在任何状态下都不出现", () => {
     for (const s of [
       { ...base, hasReport: false }, { ...base, busy: true },
-      { ...base, requiredBroken: 1 }, { ...base, handedOff: true }, base,
+      { ...base, requiredBroken: 1 }, base,
     ]) {
       expect(hint(s) ?? "").not.toContain("正在为你检查");
       expect(hint(s) ?? "").not.toContain("正在自动安装");
@@ -116,9 +116,11 @@ describe("引导步骤副标题：检查完就不再说「正在检查」；忙�
     expect(t).not.toContain("检查完毕");
   });
 
-  it("就绪并已交回宿主 → 改口为「正在进入下一步」（否则看起来像卡住）", () => {
-    const t = hint({ ...base, handedOff: true });
-    expect(t).toContain("正在进入下一步");
+  it("没有任何过渡文案 —— 没问题时这一步是纯过场，跳转前不留话", () => {
+    for (const s of [base, { ...base, busy: true }, { ...base, requiredBroken: 1 }, { ...base, hasReport: false }]) {
+      expect(hint(s) ?? "").not.toContain("正在进入");
+      expect(hint(s) ?? "").not.toContain("即将进入");
+    }
   });
 
   it("只有可选组件缺 → 不谎报「必须处理」，说明可以继续", () => {
