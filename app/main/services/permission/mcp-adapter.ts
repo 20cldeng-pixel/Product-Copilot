@@ -21,6 +21,11 @@ import type { PermissionMode } from "./access-policy";
 import { createExecutionContext } from "./execution-context";
 import { bindExecutionOwner } from "./execution-context";
 import { findBashOnWindows } from "../background-shell/registry";
+import {
+  INTENT_REQUIREMENT,
+  stripIntentParams,
+  withIntentParam,
+} from "../../../shared/tool-intent";
 
 const clients = new Map<string, Client>();
 /** stdio MCP 进程持有的 Windows ACL worker 租约；close 时与进程一起回收。 */
@@ -236,9 +241,13 @@ async function loadOneServer(
       tools.push(defineTool({
         name: `mcp__${s.name}__${t.name}`,
         label: `MCP: ${s.name}/${t.name}`,
-        description: desc,
+        // 末尾追加"必须填 _intent"的要求——与 bash 工具的写法一致（tool.ts），
+        // 让模型每次调用都填一句中文意图，聊天页不展开也能看出这次在做什么
+        description: `${desc}\n${INTENT_REQUIREMENT}`,
         promptSnippet: snippet,
-        parameters: t.inputSchema || { type: "object" as const, properties: {} },
+        // schema 是 server 给的，但**交给模型看的那份由我们拼** → 加一个仅用于展示的 _intent 字段；
+        // 转发给 server 前会剥掉（见下方 execute），server 永远看不到它
+        parameters: withIntentParam(t.inputSchema || { type: "object" as const, properties: {} }),
         async execute(_tid: any, params: any, _sig: any, _upd: any, _ctx: any) {
           const mode = getMode();
           const key = clientKey(s.name, projectPath, mode, contextId);
@@ -259,7 +268,10 @@ async function loadOneServer(
             );
             clients.set(key, activeClient);
           }
-          const result = await activeClient.callTool({ name: t.name, arguments: params as Record<string, unknown> });
+          // 剥掉 _intent 再发给 server：那是 EM 自己加给模型看的展示字段，
+          // 严格的 server 会因未知参数报错（甚至拒绝整次调用）
+          const args = stripIntentParams(params) as Record<string, unknown>;
+          const result = await activeClient.callTool({ name: t.name, arguments: args });
           const content = result.content as any;
           const text = Array.isArray(content) ? content.map((c: any) => c.text || "").join("\n") : String(content || "");
           return { content: [{ type: "text" as const, text: text || "(无输出)" }], details: {} };

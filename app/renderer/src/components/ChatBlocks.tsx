@@ -6,6 +6,7 @@ import { fadeTailChars, splitTailText, TAIL_FADE_CHARS } from "../lib/tail-fade"
 import { useTabStore } from "../stores/tab-store";
 import { useViewerStore } from "../stores/viewer-store";
 import { isImagePath } from "@shared/image-files";
+import { intentFromInput } from "@shared/tool-intent";
 
 /** 从文件路径取文件名(tab 标题/标题行显示用) */
 function baseName(p: string): string {
@@ -65,9 +66,12 @@ function toolIconPaths(name: string): JSX.Element | null {
     // issue(bug)
     case "list_issues": case "set_issue_status":
       return (<><path d="M12 20v-9"/><path d="M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z"/><path d="M14.12 3.88 16 2"/><path d="M21 21a4 4 0 0 0-3.81-4"/><path d="M21 5a4 4 0 0 1-3.55 3.97"/><path d="M22 13h-4"/><path d="M3 21a4 4 0 0 1 3.81-4"/><path d="M3 5a4 4 0 0 0 3.55 3.97"/><path d="M6 13H2"/><path d="m8 2 1.88 1.88"/><path d="M9 7.13V6a3 3 0 1 1 6 0v1.13"/></>);
-    // 网络搜索(magnifier)
-    case "web_fetch": case "web_search":
-      return (<><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></>);
+    // 联网搜索(world-search:地球 + 放大镜)
+    case "web_search":
+      return (<><path d="M21 12a9 9 0 1 0 -9 9"/><path d="M3.6 9h16.8"/><path d="M3.6 15h7.9"/><path d="M11.5 3a17 17 0 0 0 0 18"/><path d="M12.5 3a16.984 16.984 0 0 1 2.574 8.62"/><path d="M15 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M20.2 20.2l1.8 1.8"/></>);
+    // 抓取网页(world-download:地球 + 下箭头)——与搜索同族但动作不同,图标必须能区分
+    case "web_fetch":
+      return (<><path d="M21 12a9 9 0 1 0 -9 9"/><path d="M3.6 9h16.8"/><path d="M3.6 15h8.4"/><path d="M11.578 3a17 17 0 0 0 0 18"/><path d="M12.5 3c1.719 2.755 2.5 5.876 2.5 9"/><path d="M18 14v7m-3 -3l3 3l3 -3"/></>);
     // 待办(list-clock)
     case "todo_write": case "todo_user":
       return (<><path d="M16 13v2.2l1.6 1"/><path d="M3 12h3.458"/><path d="M3 19h3.832"/><path d="M3 5h18"/><circle cx="16" cy="15" r="6"/></>);
@@ -991,6 +995,15 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
     ?? (item.name.toLowerCase().startsWith("mcp__") ? "MCP" : "工具");
   // MCP/技能类:展开区显示具体名(标题行保持类别;其余工具展开区照常显示结果)
   const detailLabel = toolDetailLabel(item);
+  // 调用意图与具体名:只给 MCP 用(技能类的 detailLabel 自带"技能:"前缀,与动作词重复,暂不提上来)
+  const isMcp = item.name.toLowerCase().startsWith("mcp__");
+  const titleDetail = isMcp ? detailLabel : null;
+  // _intent 由模型填(仅 MCP——schema 是我们拼给模型看的那份,执行前已剥掉);
+  // 取不到时回退到参数摘要,让老会话/漏填时也能看出做了什么。
+  // web_search / web_fetch 同样填(它们的 _intent 是我们自己的内置工具加的,与 MCP 同一套机制);
+  // 漏填时回退 query / url —— 搜了什么、抓了哪个站,比"搜索网页"这个动作词有信息量
+  const showIntent = isMcp || item.name.toLowerCase() === "web_search" || item.name.toLowerCase() === "web_fetch";
+  const toolIntent = showIntent ? intentFromInput(item.input) : undefined;
 
   // 打开文件：图片交给内置查看器（Monaco 打开二进制只会显示乱码），其余仍开编辑器 tab
   const openFile = (e: React.MouseEvent): void => {
@@ -1068,6 +1081,13 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
           {bashTitle && (
             <span className="truncate max-w-[200px] text-text-muted" style={{ fontSize: "var(--text-caption)" }}>· {bashTitle}</span>
           )}
+          {/* MCP:标题行补具体名(server/tool)与意图——类别词"MCP"本身零信息量 */}
+          {titleDetail && (
+            <span className="truncate max-w-[180px] text-text-muted" style={{ fontSize: "var(--text-caption)" }}>· {titleDetail}</span>
+          )}
+          {toolIntent && (
+            <span className="truncate max-w-[160px] text-text-muted" style={{ fontSize: "var(--text-caption)" }}>· {toolIntent}</span>
+          )}
           {/* 执行中指示:tool_use 已到、result 未到且本行正在增长→ 转圈;回合结束的残留(中断无 result)不转 */}
           {streaming && item.pending && (
             <svg className="animate-spin text-accent" width="12" height="12" viewBox="0 0 16 16" fill="none">
@@ -1136,23 +1156,24 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
                   ) : null}
                 </div>
               </div>
+            ) : item.result ? (
+              // 有结果就铺结果——具体名(server/tool、技能名)已提到标题行,展开看结果更有信息量
+              <div className="mt-[2px] rounded-[var(--radius-lg)]" style={{ background: "var(--thinking-body)" }}>
+                <div className="px-3 py-2">
+                  <pre className="text-text-secondary font-mono overflow-x-auto x-thin-scroll whitespace-pre-wrap min-h-[1.625em]" style={{ fontSize: "var(--text-detail)" }}>
+                    {truncateResult(item.result)}
+                  </pre>
+                </div>
+              </div>
             ) : detailLabel ? (
-              // MCP/技能类:展开区显示具体工具/技能名(不铺结果——名称即本次调用的对象)
+              // 无结果时至少显示具体名,别让展开区空着
               <div className="mt-[2px] rounded-[var(--radius-lg)]" style={{ background: "var(--thinking-body)" }}>
                 <div className="px-3 py-2">
                   <span className="font-mono text-text-secondary" style={{ fontSize: "var(--text-detail)" }}>{detailLabel}</span>
                 </div>
               </div>
-            ) : (
-              <div className="mt-[2px] rounded-[var(--radius-lg)]" style={{ background: "var(--thinking-body)" }}>
-                <div className="px-3 py-2">
-                  <pre className="text-text-secondary font-mono overflow-x-auto x-thin-scroll whitespace-pre-wrap min-h-[1.625em]" style={{ fontSize: "var(--text-detail)" }}>
-                    {truncateResult(item.result!)}
-                  </pre>
-                </div>
-              </div>
-            )
-          )}
+            ) : null
+            )}
         </div>
       </div>
       )}

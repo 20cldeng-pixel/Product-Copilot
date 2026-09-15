@@ -12,6 +12,8 @@ import { describeImage, webFetch, webSearch, isToolEnabled } from "./api-clients
 import { validateTaskStatus } from "./hooks";
 import type { ToolDefinition } from "./pi-sdk";
 import { getDefineToolFn } from "./pi-sdk";
+// 主进程 tsconfig 无 @shared 路径别名（只有 renderer 配了），这里走相对路径
+import { INTENT_REQUIREMENT, stripIntentParams, withIntentParam } from "../../shared/tool-intent";
 
 type TaskRec = { id: number | string; status?: string; title?: string };
 
@@ -185,18 +187,25 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
       // 「试了会浪费/会污染」的顾虑（对齐 read 增强的同一原则）
       description: "抓取网页内容并提取正文文本（在线文档、博客、API 页面等静态可访问网页）。"
         + "动态渲染、需登录、或返回非文本内容（如 PDF 文件、图片）的 URL 可能抓取失败，"
-        + "失败会返回明确的错误信息，不会产生乱码——不确定能否抓取时直接尝试。",
+        + "失败会返回明确的错误信息，不会产生乱码——不确定能否抓取时直接尝试。"
+        // 与 Tavily MCP 的等价关系必须写明：实测模型会同时调 web_fetch 和 mcp__tavily__extract
+        // 查同一个 URL（两者底层都是 Tavily extract），既重复消耗额度又得到两份相同结果
+        + "**与 Tavily MCP 是同一个东西**：工具列表里的 mcp__tavily__extract 走的是同一套 Tavily 抓取，"
+        + "同一个 URL 只抓一次——用了本工具就不要再调 Tavily MCP（反之亦然）。"
+        + `\n${INTENT_REQUIREMENT}`,
       promptSnippet: "抓取网页内容并提取文本",
-      parameters: {
+      // _intent 只给模型看（聊天页展示这次抓取在查什么），转发前剥掉（见 execute）
+      parameters: withIntentParam({
         type: "object" as const,
         properties: {
           url: { type: "string" as const },
           prompt: { type: "string" as const },
         },
         required: ["url"],
-      },
+      }),
       async execute(_tid: any, params: any) {
-        try { const t = await webFetch(params); return { content: [{ type: "text" as const, text: t }] }; }
+        const args = stripIntentParams(params) as { url: string; prompt?: string };
+        try { const t = await webFetch(args); return { content: [{ type: "text" as const, text: t }] }; }
         catch (e) { return { content: [{ type: "text" as const, text: `web_fetch 失败: ${(e as Error).message}` }] }; }
       },
     } as any) as any);
@@ -207,18 +216,23 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
     tools.push(defineTool({
       name: "web_search", label: "联网搜索",
       description: "联网搜索并返回结果摘要（标题 + URL + 摘要片段）。适用：需要查实时/最新/在线信息、查某个话题有哪些来源时调用。"
-        + "拿到 URL 后配合 web_fetch 抓取整页读全文。动态渲染、需登录的查询可能无结果；没有匹配结果会明确告知。",
+        + "拿到 URL 后配合 web_fetch 抓取整页读全文。动态渲染、需登录的查询可能无结果；没有匹配结果会明确告知。"
+        // 同上：模型曾为同一个问题既调 web_search 又调 mcp__tavily__search
+        + "**与 Tavily MCP 是同一个东西**：工具列表里的 mcp__tavily__search 底层就是 Tavily 搜索，"
+        + "同一个问题只搜一次——用了本工具就不要再调 Tavily MCP（反之亦然）。"
+        + `\n${INTENT_REQUIREMENT}`,
       promptSnippet: "联网搜索并返回结果摘要",
-      parameters: {
+      parameters: withIntentParam({
         type: "object" as const,
         properties: {
           query: { type: "string" as const },
           max_results: { type: "number" as const, description: "返回结果条数（1-20，默认 5）" },
         },
         required: ["query"],
-      },
+      }),
       async execute(_tid: any, params: any) {
-        try { const t = await webSearch(params); return { content: [{ type: "text" as const, text: t }] }; }
+        const args = stripIntentParams(params) as { query: string; max_results?: number };
+        try { const t = await webSearch(args); return { content: [{ type: "text" as const, text: t }] }; }
         catch (e) { return { content: [{ type: "text" as const, text: `web_search 失败: ${(e as Error).message}` }] }; }
       },
     } as any) as any);
