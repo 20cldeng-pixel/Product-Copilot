@@ -34,6 +34,7 @@ vi.mock("../ui/ConfirmDialog", () => ({ confirmDialog: async (): Promise<boolean
 const { GeneralTab } = await import("./GeneralTab");
 const { EnvPanel, onboardingHint } = await import("../env/EnvPanel");
 const { EnvRetestButton } = await import("../env/EnvRetestButton");
+const { shouldPersistTavilyKey } = await import("./TavilyKeySection");
 
 const countOf = (html: string, needle: string): number => html.split(needle).length - 1;
 
@@ -98,5 +99,13 @@ describe("引导步骤副标题：检查完就不再说「正在检查」", () =
     expect(t).toContain("检查没能完成");
     expect(t).not.toContain("检查完毕");
     expect(t).not.toContain("正在为你检查");
+  });
+});
+
+describe("Tavily Key 持久化判定", () => {
+  it("比较最后一次落盘值，而不是输入框实时值", () => {
+    expect(shouldPersistTavilyKey("tvly-new", true, "")).toBe(true);
+    expect(shouldPersistTavilyKey(" tvly-saved ", true, "tvly-saved")).toBe(false);
+    expect(shouldPersistTavilyKey("tvly-new", false, "")).toBe(false);
   });
 });

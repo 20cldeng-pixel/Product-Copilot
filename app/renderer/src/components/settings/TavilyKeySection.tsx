@@ -10,26 +10,34 @@
  * `builtinTools.webSearch === true && !!apiKeys.TAVILY_API_KEY`（见 api-clients.ts），
  * 只写 key 不开开关 = 用户以为配好了、实际不可用（与"装完依赖不重置沙盒缓存"同类的静默失效）。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const TAVILY_KEY_URL = "https://app.tavily.com/home";
+
+/** 与最后一次成功持久化的值比较，不能与输入框的实时 state 比较。 */
+export function shouldPersistTavilyKey(raw: string, loaded: boolean, persisted: string): boolean {
+  return loaded && raw.trim() !== persisted;
+}
 
 export function TavilyKeySection(): JSX.Element {
   const [value, setValue] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [show, setShow] = useState(false);
+  const persistedValue = useRef("");
 
   useEffect(() => {
     void (async () => {
       const s = await window.electronAPI.settings.get();
-      setValue(s.apiKeys?.TAVILY_API_KEY ?? "");
+      const saved = s.apiKeys?.TAVILY_API_KEY ?? "";
+      persistedValue.current = saved;
+      setValue(saved);
       setLoaded(true);
     })();
   }, []);
 
   const save = async (raw: string): Promise<void> => {
     const v = raw.trim();
-    if (!loaded || v === value) return;
+    if (!shouldPersistTavilyKey(v, loaded, persistedValue.current)) return;
     // 以主进程配置为基底（组件态可能是空的，整体覆盖会清掉其他 key）
     const s = await window.electronAPI.settings.get();
     setValue(v);
@@ -42,6 +50,7 @@ export function TavilyKeySection(): JSX.Element {
         webFetch: true,
       });
     }
+    persistedValue.current = v;
   };
 
   return (
