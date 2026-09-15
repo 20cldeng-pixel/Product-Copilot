@@ -546,7 +546,7 @@ export function ProjectPage(): JSX.Element {
                 ))
               )}
               {/* 浏览文件夹入口 */}
-              <div className="mt-2 pt-2">
+              <div className="border-t border-border mt-2 pt-2">
                 <button
                   className="w-full text-left px-3 py-2.5 rounded-[var(--radius-lg)] text-sm text-text-secondary hover:bg-surface-hover transition-colors flex items-center gap-2"
                   onClick={handleBrowseFolder}
