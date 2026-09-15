@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { buildExecutionPolicy, type PermissionMode } from "../permission/access-policy";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { wrapWithWindowsWorker } from "./windows-execution-manager";
-import { srtWinSpawn } from "./srt-win";
+import { srtWinPath, srtWinSpawn } from "./srt-win";
 
 /** Linux 沙盒系统依赖（EM 不代做系统安装——缺失时给安装指引，装好前自动降级） */
 const LINUX_SANDBOX_DEPS = ["bwrap", "socat", "rg"] as const;
@@ -118,7 +118,9 @@ async function platformFailureReason(e: Error): Promise<string | null> {
       if (!userOk) {
         return `Windows 系统保护组件未安装（需一次性管理员安装，将弹出 UAC 授权）——安装指引见文档`;
       }
-    } catch { /* 状态探测失败按通用错误处理 */ }
+    } catch (e) { /* 状态探测失败按通用错误处理——但要留痕，静默过一次（spawn_failed 被吞） */
+      console.warn("[sandbox] Windows 状态探测失败:", (e as Error).message);
+    }
     return `Windows 沙盒初始化失败（可能是 WFP 过滤未生效）：${e.message}`;
   }
   return null; // macOS 无系统依赖，原样报错
@@ -126,13 +128,15 @@ async function platformFailureReason(e: Error): Promise<string | null> {
 
 /**
  * Windows 专属配置注入：srt 要求显式指定 srt-win.exe 路径（vendor 随包分发，
- * asarUnpack 后路径仍有效）。VENDORED_SRT_WIN_EXE 是 srt 导出的包内常量。
+ * asarUnpack 后文件在 asar 外）。VENDORED_SRT_WIN_EXE 是 srt 导出的包内常量，
+ * 但打包后它指向 `app.asar` 内——config 里这一串最终也是交给 spawn 的，
+ * 必须过 `srtWinPath()` 改写到 `.asar.unpacked`（原因见 srt-win.ts 文件头）。
  */
 async function applyWindowsConfig(cfg: SandboxRuntimeConfig): Promise<SandboxRuntimeConfig> {
   if (process.platform !== "win32") return cfg;
   try {
     const srt = await getSrt();
-    return { ...cfg, windows: { srtWin: { path: srt.VENDORED_SRT_WIN_EXE } } };
+    return { ...cfg, windows: { srtWin: { path: srtWinPath(srt) } } };
   } catch (e) {
     console.warn("[sandbox] srt-win 路径注入失败:", (e as Error).message);
     return cfg;

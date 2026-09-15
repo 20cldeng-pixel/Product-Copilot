@@ -275,7 +275,10 @@ export async function probeEnvironment(
           manual: { command: windowsInstallCommand(packagedSrtVersion(srt)) },
         },
       });
-    } catch {
+    } catch (e) {
+      // 留痕：这一处曾静默吞掉 `spawn_failed: ENOTDIR`（asar 路径不可 spawn），界面只显示
+      // "检测失败"，谁都没法从界面上看出是哪一步挂的（用户 2026-09-15 的第二轮报告）
+      console.warn("[provisioning] Windows 系统保护状态探测失败:", (e as Error).message);
       items.push({
         id: "winSandbox",
         label: "系统保护（隔离账户 + 网络过滤）",

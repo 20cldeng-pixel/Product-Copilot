@@ -7,6 +7,7 @@
  */
 import { SandboxManager, VENDORED_SRT_WIN_EXE, type WindowsBinShell } from "@anthropic-ai/sandbox-runtime";
 import { buildExecutionPolicy } from "../permission/access-policy";
+import { unpackedAsarPath } from "./srt-win";
 import type { ExecutionContext } from "../permission/execution-context";
 import type { WindowsSandboxWorkerRequest, WindowsSandboxWorkerResponse } from "./windows-worker-protocol";
 
@@ -29,7 +30,9 @@ async function initialize(context: ExecutionContext): Promise<void> {
   const policy = buildExecutionPolicy(context);
   await SandboxManager.initialize({
     ...policy,
-    windows: { srtWin: { path: VENDORED_SRT_WIN_EXE } },
+    // 打包后 VENDORED_SRT_WIN_EXE 落在 app.asar 内，而 srt 是 spawn 它 —— 必须先改写到
+    // `.asar.unpacked`，否则 ENOTDIR（详见 srt-win.ts 文件头）
+    windows: { srtWin: { path: unpackedAsarPath(VENDORED_SRT_WIN_EXE) } },
   });
   activeContext = context;
 }
