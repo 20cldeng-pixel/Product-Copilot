@@ -187,6 +187,46 @@ export type SandboxSpawnSpec =
   | { kind: "argv"; argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> };
 
 /**
+ * 沙盒命令的收尾租约：**每条沙盒命令结束后必须恰好调一次**（执行层在 exit/error 处调 spec.release()）。
+ *
+ * 为什么需要：Linux 上 bwrap 为「不存在的受保护路径」做 --ro-bind 时，会在宿主创建空文件当挂载点
+ * （srt 源码注释原话："bwrap creates empty files on the host filesystem as mount points. These
+ * persist after bwrap exits"）。不清理的话，工作区会凭空出现 0 字节的 .mcp.json，home 里也可能出现
+ * 空 .bashrc/.gitconfig（srt 称之为 ghost dotfiles）——用户会看到莫名其妙的新文件，空的 .mcp.json
+ * 还可能让下次读取直接解析失败。
+ *
+ * srt 为此提供了 SandboxManager.cleanupAfterCommand()（其文档写明 "Lightweight cleanup to call after
+ * each sandboxed command completes"）。EM 的四条执行路径（前台 bash / 后台 shell / shell:exec /
+ * install_dependency）本来就都在命令结束时调 spec.release()，但此前没人在 wrapForSandbox 里给它赋值
+ * → 整条清理链路空转（Linux 上会持续留占位文件，只有进程退出时 srt 的兜底才清一次）。
+ *
+ * **为什么必须幂等**：srt 用 activeSandboxCount 计数决定「是否推迟删除」（还有沙盒在跑就不删）。
+ * 同一租约被调两次会把别的沙盒的计数减掉，可能导致正在运行的沙盒的挂载点被提前删除——那条命令的
+ * deny 规则随之失效（受保护路径在它里面变成可写）。这是安全问题，不只是清理问题。
+ * 删除本身是保守的：srt 只删「仍是 0 字节的文件」与「空目录」，有真实内容的一律保留。
+ */
+function createOnceLease(run: () => void): () => Promise<void> {
+  let released = false;
+  return () => {
+    if (!released) {
+      released = true;
+      try {
+        run();
+      } catch {
+        // 清理失败不影响命令结果：占位文件残留只是脏，不该让命令报错
+      }
+    }
+    return Promise.resolve();
+  };
+}
+
+function createSandboxLease(): () => Promise<void> {
+  return createOnceLease(() => { _srt?.SandboxManager.cleanupAfterCommand(); });
+}
+
+export const sandboxLeaseInternals = { createOnceLease };
+
+/**
  * 包装命令为沙盒执行规格（调用前须 ensureSandbox ok；失败抛错由调用方转报错文本）。
  * Windows 分支：wrapWithSandboxArgv + Git Bash 绝对路径（EM Windows bash 统一走 Git Bash，
  * 与 resolveSpawn 的 findBashOnWindows 一致——gitBashPath 由调用方传入避免重复探测）。
@@ -199,7 +239,7 @@ export async function wrapForSandbox(
   const context = opts.context;
   if (process.platform === "win32") {
     const wrapped = await wrapWithWindowsWorker(command, context, opts.gitBashPath, opts.windowsShell);
-    return { kind: "argv", ...wrapped };
+    return { kind: "argv", ...wrapped, release: createSandboxLease() };
   }
   const policy = buildExecutionPolicy(context);
   // srt 会在外层把 TMPDIR 设为自己的 scratch 目录。标准模式在最内层恢复运行区变量，
@@ -207,10 +247,14 @@ export async function wrapForSandbox(
   const effectiveCommand = context.mode === "standard"
     ? `${runtimeEnvironmentPrefix(context.environment)} ${command}`
     : command;
+  // 先 await 完包装再建租约：wrapWithSandbox 抛错时不会留下「没人调用」的计数，
+  // 否则 srt 的 activeSandboxCount 会只增不减，后面所有清理都被推迟（占位文件永不清）
+  const wrappedCommand = await srt.SandboxManager.wrapWithSandbox(effectiveCommand, undefined, policy);
   return {
     kind: "shell",
-    command: await srt.SandboxManager.wrapWithSandbox(effectiveCommand, undefined, policy),
+    command: wrappedCommand,
     env: context.environment,
+    release: createSandboxLease(),
   };
 }
 
