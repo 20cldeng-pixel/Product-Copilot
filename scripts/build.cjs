@@ -86,9 +86,16 @@ module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerO
  * 它只报大小、不报来源——dev 里看到一个 `[1] app/main/dist/main.cjs 1.0mb ⚠️` 无从下手。
  * 这里在构建后补一行"谁贡献的"，只在越线时输出（不越线完全静默）。
  *
- * 处置顺序：① 若大头是纯 JS 第三方依赖 → 加进 EXTERNALS（前提：在 dependencies 里，
- * 且在 electron-builder 产物 node_modules 内，可用 @electron/asar 核验）
- * ② 若大头是自身代码 → 考虑拆入口或把大段文本资源外置 ③ 都不可行再看是否需要放宽
+ * 处置顺序（各手段的收益 2026-09-15 均实测过，明细见 docs/开发记录/2026-09-15.md）：
+ * ① 大头是纯 JS 第三方依赖 → 加进 EXTERNALS，这是**唯一高性价比**的手段（node_modules 本就在
+ *    安装包里，等于零成本搬家）。前提：在 dependencies 里、且在 electron-builder 产物 node_modules
+ *    内，可用 @electron/asar 的 listPackage() 核验
+ * ② 大头是自身代码 → 资源外置（大段文本改运行时读）或多入口拆分，没有配置级捷径：
+ *    - minify 能把体积砍 41%（938KB→553KB），但换算到启动**只省约 1.8ms**（冷启动一次性：
+ *      926KB 7.6ms → 553KB 5.8ms，独立进程实测），代价是生产堆栈不可读 → 非必要不开
+ *    - esbuild 的 `splitting` **只支持 ESM 输出**（官方文档明示），本 CJS 主进程用不了，别白试
+ * ③ 都不值得做 → 接受它。这只是提示线不是门禁：正常长大到 1MB 没问题，
+ *    只有**突增**（如 1MB→5MB）才说明有东西被误打包进来，那才是要查的
  */
 const SIZE_LIMIT = 1024 * 1024;
 
