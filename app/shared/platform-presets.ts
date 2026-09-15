@@ -116,6 +116,9 @@ export interface PlatformPreset {
 const PLATFORM_PRESETS: PlatformPreset[] = [
   { id: "anthropic",             label: "Anthropic",                brandKey: "anthropic", keyPlaceholder: "sk-ant-..." },
   { id: "openai",                label: "OpenAI",                   brandKey: "openai",    keyPlaceholder: "sk-..." },
+  // 与上面那条成对出现：同属 OpenAI，但认证方式相反（OpenAI 只能填密钥、Codex 只能账号登录），
+  // 排在一起用户才容易看清"这是两个不同的接入点"
+  { id: "openai-codex",          label: "OpenAI Codex",             brandKey: "codex",     keyPlaceholder: "sk-..." },
   { id: "deepseek",              label: "DeepSeek",                 brandKey: "deepseek",  keyPlaceholder: "sk-..." },
   { id: "google",                label: "Google Gemini",            brandKey: "google",    keyPlaceholder: "AIza..." },
   { id: "kimi-coding",           label: "Kimi Coding",              brandKey: "kimi",      keyPlaceholder: "sk-..." },
@@ -133,9 +136,12 @@ const PLATFORM_PRESETS: PlatformPreset[] = [
   { id: "xiaomi-token-plan-sgp", label: "MiMo Token Plan SGP",      brandKey: "xiaomi",    keyPlaceholder: "sk-..." },
   { id: "xiaomi-token-plan-ams", label: "MiMo Token Plan AMS",      brandKey: "xiaomi",    keyPlaceholder: "sk-..." },
   { id: "xai",                   label: "xAI",                      brandKey: "xai",       keyPlaceholder: "xai-..." },
-  { id: "openai-codex",          label: "OpenAI Codex",             brandKey: "codex",     keyPlaceholder: "sk-..." },
+  // GitHub Copilot 订阅：与 xai/anthropic 同类，账号登录或 API Key 两种都可
+  { id: "github-copilot",        label: "GitHub Copilot",           brandKey: "githubcopilot", keyPlaceholder: "ghu_..." },
   { id: "opencode",              label: "OpenCode",                 brandKey: "opencode",  keyPlaceholder: "sk-..." },
   { id: "opencode-go",           label: "OpenCode Go",              brandKey: "opencode",  keyPlaceholder: "sk-..." },
+  // 聚合网关：一个 key 打通多家模型（账号登录与 API Key 两种都可）
+  { id: "openrouter",            label: "OpenRouter",               brandKey: "openrouter", keyPlaceholder: "sk-or-..." },
 ];
 
 export function listPresets(): PlatformPreset[] {

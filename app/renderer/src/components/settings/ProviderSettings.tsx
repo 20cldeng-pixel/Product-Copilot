@@ -7,6 +7,7 @@ import type { ProviderAuthType } from "@shared/provider-auth";
 import { Select } from "../Select";
 import { hasOpenModal } from "../ui/Modal";
 import { BRAND_BY_PI_ID, providerSelectOptions } from "../../lib/provider-brands";
+import { authModeView } from "../../lib/auth-mode";
 import { toast } from "../ui/Toast";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { ModelManager, type OfficialModelInfo } from "./ModelManager";
@@ -55,7 +56,9 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
   const [name, setName] = useState(initial?.name || "");
   const [apiKey, setApiKey] = useState(initial?.apiKey || "");
   const [model, setModel] = useState(initial?.model || "");
-  // 认证方式：仅 SDK 声明支持账号登录的供应商显示分段，其余整段不出现。
+  // 认证方式：**只显示该供应商真正支持的那一种**（判据见 lib/auth-mode.ts）。
+  // 两种都支持 → 给分段；只支持账号登录（OpenAI Codex）→ 不给分段、直接进登录界面；
+  // 只支持 API Key → 整段不出现。
   // 不能拿本地 authType 兜底（曾写 `|| authType === "oauth"`）：认证方式是表单内状态，
   // 切换预设不会重置，从支持账号登录的供应商切到不支持的（如 OpenAI Codex → OpenAI）时
   // 账号登录界面会残留，点登录被后端拒，保存还会把 authType: "oauth" 写进不支持的配置里。
@@ -64,8 +67,11 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
   const [authType, setAuthType] = useState<ProviderAuthType>(
     !isCustom && initial?.authType === "oauth" ? "oauth" : "api_key",
   );
-  const showAuthMode = oauthSupported;
-  const usesAccountLogin = showAuthMode && authType === "oauth";
+  // 状态还没回来时按"支持 API Key"处理：不因查询未回而先改判定（查得到才收窄）
+  const apiKeySupported = oauthStatus?.supportsApiKey ?? true;
+  const { showSegment: showAuthMode, effectiveAuthType } =
+    authModeView({ supportsOAuth: oauthSupported, supportsApiKey: apiKeySupported }, authType);
+  const usesAccountLogin = oauthSupported && effectiveAuthType === "oauth";
   const accountLoggedIn = oauthStatus?.type === "oauth";
   const providerLabel = getPreset(presetId)?.label ?? oauthStatus?.name ?? presetId;
   // 官方目录模型(含展示名/窗口;null = 未加载,此时沿用配置里缓存的列表)
@@ -201,7 +207,9 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
       name: name.trim(),
       // 账号登录必须清空 apiKey：runtime key 的优先级高于 auth.json，留着会让 OAuth 凭据永远用不上
       apiKey: usesAccountLogin ? "" : apiKey.trim(),
-      authType: showAuthMode ? authType : undefined,
+      // 存的是**生效档位**而非表单里的旧选择：只支持账号登录的供应商（OpenAI Codex）必须落 "oauth"，
+      // 否则运行时按 api_key 取凭据（那里根本没有 key，表现为发消息无响应）
+      authType: oauthSupported ? effectiveAuthType : undefined,
       model: model || (modelList[0] ?? ""),
       models: modelList,
       extraModels: extraModels.length > 0 ? extraModels : undefined,
@@ -301,7 +309,7 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
           />
         )}
       </div>
-      {/* 认证方式分段：只对 SDK 声明支持账号登录的供应商出现，其他供应商整段不存在 */}
+      {/* 认证方式分段：只在该供应商**两种接入方式都支持**时出现，其余整段不存在 */}
       {showAuthMode && (
         <div>
           <label className="text-xs text-text-secondary block mb-1.5">认证方式</label>
@@ -312,7 +320,7 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
                 type="button"
                 onClick={() => setAuthType(m.id)}
                 className={`flex-1 h-8 rounded-[var(--radius-lg)] text-xs transition-all ${
-                  authType === m.id
+                  effectiveAuthType === m.id
                     ? "bg-[var(--preset-active)] text-text-primary"
                     : "bg-[var(--preset-idle)] hover:shadow-[inset_0_0_0_999px_var(--preset-hover)] text-text-secondary"
                 }`}

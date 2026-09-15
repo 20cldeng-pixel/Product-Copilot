@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
   let checkAuthResult: { type: "api_key" | "oauth"; source?: string } | undefined;
   const checkAuth = vi.fn(async () => checkAuthResult);
   const providers = [
-    { id: "anthropic", name: "Anthropic", auth: { oauth: {} } },
+    { id: "anthropic", name: "Anthropic", auth: { oauth: {}, apiKey: {} } },
     { id: "openai-codex", name: "OpenAI Codex", auth: { oauth: {} } },
     { id: "deepseek", name: "DeepSeek", auth: { apiKey: {} } },
   ];
@@ -88,6 +88,15 @@ describe("getProviderAuthStatus", () => {
     expect(anthropic).toMatchObject({ providerId: "anthropic", type: "oauth", hasCredential: true, source: "OAuth" });
   });
 
+  it("带出「两种接入方式各是否支持」——界面据此只显示可用的那一档", async () => {
+    const list = await getProviderAuthStatus(store, ["anthropic", "openai-codex", "deepseek"]);
+    expect(list.map((s) => [s.providerId, s.supportsOAuth, s.supportsApiKey])).toEqual([
+      ["anthropic", true, true],      // 两种都有 → 给「认证方式」分段
+      ["openai-codex", true, false],  // 只能账号登录 → 不再显示 API Key 输入框
+      ["deepseek", false, true],      // 只能填密钥 → 不显示账号登录
+    ]);
+  });
+
   it("单个供应商检查失败时降级为未配置，不影响其他条目", async () => {
     mocks.checkAuth.mockRejectedValueOnce(new Error("boom"));
     const list = await getProviderAuthStatus(store, ["anthropic", "openai-codex"]);
@@ -105,6 +114,29 @@ describe("loginProvider", () => {
     expect(r.ok).toBe(true);
     expect(events()).toEqual([{ kind: "browser", url: "https://example.com/auth" }]);
     expect(mocks.openExternal).toHaveBeenCalledWith("https://example.com/auth");
+  });
+
+  it("设备码事件同样自动打开授权页——kimi / xAI / Copilot 的第一步就是设备码，不打开会像卡住", async () => {
+    mocks.login.mockImplementation(async (_p: string, _t: string, interaction: AuthInteraction) => {
+      interaction.notify({
+        type: "device_code",
+        userCode: "ABCD-1234",
+        verificationUri: "https://github.com/login/device",
+        intervalSeconds: 5,
+        expiresInSeconds: 900,
+      });
+      return { type: "oauth" };
+    });
+    const r = await loginProvider(store, "anthropic", "req-2");
+    expect(r.ok).toBe(true);
+    expect(events()).toEqual([{
+      kind: "device_code",
+      userCode: "ABCD-1234",
+      verificationUri: "https://github.com/login/device",
+      intervalSeconds: 5,
+      expiresInSeconds: 900,
+    }]);
+    expect(mocks.openExternal).toHaveBeenCalledWith("https://github.com/login/device");
   });
 
   it("SDK 英文文案不进事件（只按类型给结构化数据）", async () => {

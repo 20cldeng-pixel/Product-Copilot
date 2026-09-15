@@ -17,6 +17,13 @@ import qwenIcon from "../assets/providers/qwen.png";
 import xiaomiIcon from "../assets/providers/xiaomi.png";
 import grokIcon from "../assets/providers/grok.png";
 import opencodeIcon from "../assets/providers/opencode.png";
+// GitHub 官方 mark（Proma 的 assets/models/github.svg，同一份来源）。
+// 注意：Copilot 有自己的 visor 标，这里用的是 GitHub 品牌标——与 Proma 的处理一致（它也只挂 github.svg）
+import githubCopilotIcon from "../assets/providers/github-copilot.svg";
+// OpenRouter 官方 wordmark 的**图标部分**（用户提供的 openrouter-light.svg 裁出）：
+// 原图是 1607×294 的横版（图标 + 文字），这里只保留左侧紫色 glyph（#7624F4）并按实测 bbox
+// 收成 395×395 的正方形 viewBox（内容占 92.6% 宽，与 deepseek 94.5% / claude 89.5% 同一惯例）
+import openrouterIcon from "../assets/providers/openrouter.svg";
 import { listPresets } from "@shared/platform-presets";
 
 export interface ProviderBrand {
@@ -30,7 +37,7 @@ export interface ProviderBrand {
   icon?: string;
 }
 
-/** EM 精选的 11 个主流供应商品牌(与 Proma 重叠,能提供品牌图标) */
+/** 供应商品牌表（与 Proma 重叠的品牌能提供图标；缺图标的条目只提供名称，列表里空白占位） */
 const BRANDS: ProviderBrand[] = [
   { key: "anthropic", name: "Anthropic", cnName: "Claude", icon: claudeIcon },
   { key: "openai",    name: "OpenAI",    icon: openaiIcon },
@@ -44,6 +51,9 @@ const BRANDS: ProviderBrand[] = [
   { key: "xai",       name: "xAI",       cnName: "Grok",     icon: grokIcon },
   { key: "codex",     name: "OpenAI Codex", icon: openaiIcon },
   { key: "opencode",  name: "OpenCode",  cnName: "中转",     icon: opencodeIcon },
+  // GitHub Copilot 用 GitHub 品牌标（与 Proma 同一份处理）；OpenRouter 用官方 glyph 裁出的方图
+  { key: "githubcopilot", name: "GitHub Copilot", icon: githubCopilotIcon },
+  { key: "openrouter",    name: "OpenRouter",     icon: openrouterIcon },
 ];
 
 const BRAND_BY_KEY: Map<string, ProviderBrand> = new Map(BRANDS.map((b) => [b.key, b]));

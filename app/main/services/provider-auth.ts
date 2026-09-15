@@ -74,6 +74,10 @@ function toUiEvent(event: AuthEvent, providerId: string): ProviderAuthUiEvent | 
       void openAuthUrl(event.url);
       return { kind: "browser", url: event.url };
     case "device_code":
+      // 同样先把授权页交给系统打开：kimi / xAI / GitHub Copilot 的**第一步就是设备码**
+      // （没有任何 auth_url 事件），不自动打开的话用户只看到一串码和一句等待，像是卡住了。
+      // kimi/xAI 给的还是 verificationUriComplete（码已内嵌），自动打开更省一步。
+      void openAuthUrl(event.verificationUri);
       return {
         kind: "device_code",
         userCode: event.userCode,
@@ -175,7 +179,20 @@ async function runLogin(
     await runtime.login(providerId, "oauth", createInteraction(requestId, providerId, pending));
     return { ok: true };
   } catch (e) {
-    return { ok: false, canceled: pending.abort.signal.aborted, error: e instanceof Error ? e.message : String(e) };
+    const err = e instanceof Error ? e : new Error(String(e));
+    // 必须留痕：界面把常见失败归成中文结论后可能不再显示原文（如 invalid_grant →「授权被拒绝」），
+    // 失败原因就只剩这一处可查。授权页显示成功≠登录成功——本地回调服务是**先回成功页、后换 token**，
+    // 失败都发生在回调之后（换 token / 取 accountId / 写凭据），只能靠这行日志区分。
+    if (pending.abort.signal.aborted) {
+      console.log(`[provider-auth] ${providerId} 登录已取消`);
+    } else {
+      const cause = (err as { cause?: unknown }).cause;
+      console.error(
+        `[provider-auth] ${providerId} 登录失败: ${err.message}`
+          + (cause instanceof Error ? `（原因：${cause.message}）` : ""),
+      );
+    }
+    return { ok: false, canceled: pending.abort.signal.aborted, error: err.message };
   } finally {
     // 未决输入随流程结束一并释放：界面可能还停在输入步骤上
     pending.prompt?.reject(new Error("登录流程已结束"));
@@ -251,7 +268,15 @@ export async function getProviderAuthStatus(store: Store, providerIds?: string[]
       // 单个供应商的可用性检查失败不该让整个设置页查不到状态：按「未配置」展示
       console.warn(`[provider-auth] 检查 ${p.id} 认证状态失败:`, (e as Error).message);
     }
-    out.push({ providerId: p.id, name: p.name, supportsOAuth: !!p.auth.oauth, type, hasCredential: stored.has(p.id), source });
+    out.push({
+      providerId: p.id,
+      name: p.name,
+      supportsOAuth: !!p.auth.oauth,
+      supportsApiKey: !!p.auth.apiKey,
+      type,
+      hasCredential: stored.has(p.id),
+      source,
+    });
   }
   return out;
 }

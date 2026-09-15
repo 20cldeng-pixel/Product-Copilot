@@ -14,6 +14,10 @@ export interface ProviderAuthStatus {
   name: string;
   /** 该供应商是否支持账号登录（SDK 的 provider.auth 含 oauth） */
   supportsOAuth: boolean;
+  /** 该供应商是否支持 API Key（SDK 的 provider.auth 含 apiKey）。
+   *  两种都支持的给分段让用户选；只支持一种的，界面就只显示那一种
+   *  （如 OpenAI Codex 只有 oauth、OpenAI 只有 apiKey） */
+  supportsApiKey: boolean;
   /** 当前生效的认证方式（含环境变量等外部来源）；null = 无可用凭据 */
   type: ProviderAuthType | null;
   /** auth.json 中是否存有该供应商的凭据（账号登录/落盘 API Key 的结果） */
