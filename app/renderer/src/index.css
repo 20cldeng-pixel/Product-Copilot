@@ -327,6 +327,7 @@ html[data-platform="win32"] {
   --text-lg: calc(18px * var(--ui-scale));    /* 大标题 */
   --text-xl: calc(24px * var(--ui-scale));    /* 特大标题 */
   --text-2xl: calc(24px * var(--ui-scale));   /* 页面大标题(对齐 Tailwind 2xl 档) */
+  --text-3xl: calc(30px * var(--ui-scale));   /* 超大标题:引导页欢迎主文案(2026-09-15 按用户"字体大一些"补档) */
   --leading-tight: 1.2; --leading-normal: 1.55;
 
   /* ── Spacing (4px grid) ──────────── */

@@ -144,14 +144,13 @@ export function OnboardingPage(): JSX.Element {
                   图标跟随主题取亮/暗版（与关于页、Dock 同一套素材） */}
               <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="EasyMint" className="w-24 h-24 mb-6" />
 
-              <h1 className="text-2xl font-bold text-text-primary mb-2">EasyMint</h1>
-              <p className="text-sm text-text-secondary mb-1">
-                AI 驱动开发，简单的操作让想法变为现实
-              </p>
-              <p className="text-xs text-text-muted mb-8 leading-relaxed">
-                填写项目需求，Mint 自动拆解任务、选择技术栈、调度 Builder 编码、
-                Evaluator 验收，你只需要对话。
-              </p>
+              {/* 欢迎主文案（用户 2026-09-15 给的新文案，替换原来的标题 + 两段说明）。
+                  字号走新增档 `--text-3xl`(30px)：体系里原本最大是 `--text-2xl`(24px)，
+                  用户要求"字体大一些"，按设计规范「缺档位再补」补一档（UI元素库设计.md 表已同步）。
+                  行高用 `leading-tight`：30px 折两行时，默认行高会显得散。 */}
+              <h1 className="text-[length:var(--text-3xl)] leading-tight font-semibold text-text-primary mb-8">
+                欢迎使用EasyMint，简单设置过后，进行开发你的第一个APP吧。
+              </h1>
 
               <div className="flex flex-col gap-3 w-full">
                 <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
