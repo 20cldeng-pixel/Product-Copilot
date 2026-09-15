@@ -11,17 +11,22 @@
     出来的观感一致。
   - **运行时 Dock 图标** assets/appicon-{light,dark}.png：同样自带形状（`app.dock.setIcon()`
     的图不经过系统图标遮罩流程），随应用主题切换；README 徽标复用这两张。
+  - **DMG 卷图标** assets/icon-volume.icns：同样自带形状。dmgbuild 对 `dmg.icon` 只做
+    `shutil.copyfile` 原样写进卷根 `.VolumeIcon.icns`，Finder 桌面直接画出该图、
+    **不套任何形状**（2026-09-15 取证：实测卷内 .VolumeIcon.icns 与源文件 md5 相同；
+    dmgbuild core.py 见 `icon_target_path` / `shutil.copyfile`）。所以与 Dock 运行图同一口径。
 
 步骤：
   1. rsvg-convert 渲染衍生 SVG（viewBox 1.5 0 390 390 → 本体 314/390 = 80.5% 内缩）到 1024 母图
      （不用 qlmanage：它的缩略图带不透明白底，会把透明外边变成白色方角）
   2. 套超椭圆遮罩 |x/a|^n + |y/a|^n = 1（n=5，a = 画布半宽 × 0.805），alpha 相乘叠加
   3. 遮罩后的亮色图导出非 mac 包内图标：icon.png（1024）+ icon.ico（16/24/32/48/64/128/256）
-  4. 仅 --icns：由同一素材按「裁到本体 → 1024 母图」出满幅直角口径，再打包成 icns
+  4. 仅 --icns：由同一素材出 mac 平台的两个 icns——满幅直角口径的 icon.icns（包内图标）、
+     遮罩口径的 icon-volume.icns（DMG 卷图标）
 
 用法：
   python3 scripts/gen-appicon.py          # dock 图标 + 非 mac 包内图标
-  python3 scripts/gen-appicon.py --icns   # 额外重建包内 mac 图标（改动品牌图形后才需要）
+  python3 scripts/gen-appicon.py --icns   # 额外重建 mac 的两个 icns（改动品牌图形后才需要）
 依赖：rsvg-convert（brew install librsvg）、Python Pillow；--icns 另需 macOS 自带 sips / iconutil
 """
 import argparse
@@ -181,19 +186,16 @@ def fullbleed(svg: Path, work: Path, tag: str) -> Image.Image:
     return Image.open(out).convert("RGBA")
 
 
-def build_icns(work: Path) -> Path:
-    """满幅直角母图（work/fullbleed-master.png）→ icns（sips 出 iconset → iconutil 打包）
-    母图不通过参数传：本函数靠 sips 从磁盘读它（调用方负责先落盘）。"""
-    iconset = work / "icon.iconset"
+def build_icns(master: Path, dest: Path, work: Path) -> Path:
+    """1024 母图 → icns（sips 出 iconset → iconutil 打包）。母图由调用方按目标口径先落盘。"""
+    iconset = work / f"{dest.stem}.iconset"
     shutil.rmtree(iconset, ignore_errors=True)
     iconset.mkdir(parents=True)
     for size, name in ICNS_REPS:
         subprocess.run(
-            ["sips", "-z", str(size), str(size), str(work / "fullbleed-master.png"),
-             "--out", str(iconset / name)],
+            ["sips", "-z", str(size), str(size), str(master), "--out", str(iconset / name)],
             check=True, stdout=subprocess.DEVNULL,
         )
-    dest = ROOT / "assets/icon.icns"
     subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(dest)], check=True)
     return dest
 
@@ -206,7 +208,8 @@ def body_ratio(img: Image.Image, threshold: int) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser(description="生成全部应用图标产物")
     parser.add_argument("--icns", action="store_true",
-                        help="额外重建包内 mac 图标 assets/icon.icns（满幅直角口径，改动品牌图形后才需要）")
+                        help="额外重建 mac 的两个 icns：assets/icon.icns（满幅直角）与 "
+                             "assets/icon-volume.icns（DMG 卷图标）——改动品牌图形后才需要")
     args = parser.parse_args()
 
     work = ROOT / "temp/drafts/appicon"
@@ -240,10 +243,18 @@ def main() -> int:
     if args.icns:
         master = fullbleed(SVGS["light"], work, "master")
         master.save(work / "fullbleed-master.png")
-        dest = build_icns(work)
+        dest = build_icns(work / "fullbleed-master.png", ROOT / "assets/icon.icns", work)
         print(f"{dest.name}: 满幅直角（macOS 包内图标，形状由系统套）")
+
+        # DMG 卷图标：dmgbuild 原样拷贝进 .VolumeIcon.icns、Finder 不套形状 → 自带形状口径。
+        # 直接复用上面的遮罩母图（与 appicon-light.png 同图），避免从产物再降采样一次。
+        vol_master = work / "volume-master.png"
+        shaped["light"].save(vol_master)
+        vol_dest = build_icns(vol_master, ROOT / "assets/icon-volume.icns", work)
+        print(f"{vol_dest.name}: 自带形状（DMG 卷图标，Finder 不套形状）")
     else:
         print("assets/icon.icns 未改动（满幅直角口径，仅 --icns 时重建）")
+        print("assets/icon-volume.icns 未改动（自带形状口径，仅 --icns 时重建）")
     return 0
 
 

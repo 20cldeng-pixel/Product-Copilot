@@ -148,6 +148,9 @@
         "brand-tokens/linear.app"
       ]
     },
+    "dmg": {
+      "icon": "assets/icon-volume.icns"
+    },
     "win": {
       "target": [
         "nsis",
