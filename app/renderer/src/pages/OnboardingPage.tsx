@@ -146,15 +146,18 @@ export function OnboardingPage(): JSX.Element {
               <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="EasyMint" className="w-24 h-24 mb-6" />
 
               {/* 欢迎主文案（用户 2026-09-15 给的新文案，替换原来的标题 + 两段说明）。
-                  **一排展示、不换行**（用户要求）：无头实测这行在 24px/600 下宽 **698.5px**，而引导页
-                  内容可用宽约 **960px**（窗口最小宽 1024 − 两侧 px-8 共 64），留有余量 —— 故去掉原先的
-                  `max-w-[480px]` 约束并加 `whitespace-nowrap`。
+                  **一排展示、不换行**（用户要求）：无头实测这行在 24px/600、PingFang SC 下宽 **681.0px**，
+                  而引导页内容可用宽约 **960px**（窗口最小宽 1024 − 两侧 px-8 共 64），留有余量 ——
+                  故去掉原先的 `max-w-[480px]` 约束并加 `whitespace-nowrap`。
                   （字号历程：用户先要"大一些"→ 按规范补 30px 档，实测 873.5px 几乎占满；随后用户
-                  「字体再小一号」→ 回到 `--text-2xl`(24px)，那个 3xl 档因 0 引用已删。）
+                  「字体再小一号」→ 回到 `--text-2xl`(24px)，那个 3xl 档因 0 引用已删。
+                  末尾句号按用户要求去掉，实测宽度随之由 698.5px 降到 681.0px。）
+                  字体保持系统默认栈：曾试过圆体，但三平台没有共同的预装圆体（Windows 的「幼圆」属
+                  Office 附带而非系统自带），要三平台一致只能打包字体文件，用户 2026-09-15 决定作罢。
                   若将来文案变长，会退化成内容区横向滚动（不裁字）。行高保持 tight，万一折行也不显散。
                   下方原有三张能力卡已按用户要求（2026-09-15）删除。 */}
               <h1 className="text-[length:var(--text-2xl)] leading-tight font-semibold text-text-primary whitespace-nowrap">
-                欢迎使用EasyMint，简单设置过后，进行开发你的第一个APP吧。
+                欢迎使用EasyMint，简单设置过后，进行开发你的第一个APP吧
               </h1>
             </div>
           ) : currentStep === 1 ? (
