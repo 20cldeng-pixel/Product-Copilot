@@ -19,7 +19,8 @@
     "build:renderer": "vite build --config app/renderer/vite.config.ts",
     "build:main": "node scripts/build.cjs main",
     "build:preload": "node scripts/build.cjs preload",
-    "lint": "eslint app/ --cache && concurrently --kill-others-on-fail --names main,preload,renderer \"tsc --noEmit -p app/main/tsconfig.json\" \"tsc --noEmit -p app/preload/tsconfig.json\" \"tsc --noEmit -p app/renderer/tsconfig.json\"",
+    "lint": "eslint app/ --cache && concurrently --kill-others-on-fail --names main,preload,renderer \"tsc --noEmit -p app/main/tsconfig.json\" \"tsc --noEmit -p app/preload/tsconfig.json\" \"tsc --noEmit -p app/renderer/tsconfig.json\" && node scripts/check-deps.mjs",
+    "check:deps": "node scripts/check-deps.mjs",
     "typecheck": "concurrently --kill-others-on-fail --names main,preload,renderer \"tsc --noEmit -p app/main/tsconfig.json\" \"tsc --noEmit -p app/preload/tsconfig.json\" \"tsc --noEmit -p app/renderer/tsconfig.json\"",
     "test": "vitest run"
   },
