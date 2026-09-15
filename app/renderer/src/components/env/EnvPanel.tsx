@@ -137,7 +137,7 @@ export function EnvPanel({ variant = "settings", ref }: {
       title: "关闭沙盒模式？",
       message:
         "关闭后，Mint 执行的命令不再受系统层限制（例如无法再阻止它写工作区外的文件）。\n\n"
-        + "仍然生效的保护：EasyMint 自己的路径禁区检查——系统核心目录、凭据目录、用户目录写入依旧会被拦。\n\n"
+        + "仍然保留的只有有限预检：结构化文件工具仍检查路径，已识别的提权和系统控制命令仍会被拒绝；但 shell、Python、Node 等命令可访问当前用户有权限访问的文件，包括凭据与用户目录。\n\n"
         + "你可以先用起来，等方便时在「设置 → 环境检测」里装好组件并随时开回来，不会影响已有项目与对话。",
       confirmText: "我了解，先关闭",
       danger: true,
@@ -246,7 +246,9 @@ export function EnvPanel({ variant = "settings", ref }: {
         </div>
       )}
       {result?.ok && (
-        <p className="mt-3 text-xs text-text-secondary">环境已就绪 ✓</p>
+        <p className="mt-3 text-xs text-text-secondary">
+          {broken.length === 0 ? "环境已就绪 ✓" : "所选组件已安装，请继续处理其余环境问题"}
+        </p>
       )}
 
       {/* 操作区 */}
@@ -300,7 +302,7 @@ export function EnvPanel({ variant = "settings", ref }: {
       )}
       {sandboxDisabled && (
         <p className="mt-1.5 text-[length:var(--text-2xs)] text-danger">
-          沙盒已关闭：命令不受系统层限制（不推荐长期如此），EasyMint 自身的路径禁区检查仍在生效
+          沙盒已关闭：shell、Python、Node 等命令可访问当前用户有权限访问的文件（不推荐长期如此）
         </p>
       )}
     </div>

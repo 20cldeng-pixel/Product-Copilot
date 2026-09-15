@@ -77,9 +77,9 @@ export async function createDependencyTool(cwd: string): Promise<ToolDefinition>
       const context = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined
         ?? createExecutionContext(cwd, "standard");
       const command = installCommand(manager, packages, scope, params.dev === true, context.workspaceRealPath);
-      // Linux 兜底：设置里关掉沙盒运行时直接执行（EM 自身策略层仍生效，失去 OS 层纵深防御）
+      // Linux 兜底：设置里关掉沙盒运行时直接执行；此时任意子进程 I/O 不再有 OS 强制边界
       if (isSandboxBypassed()) {
-        return executeForeground(command, context.workspaceRealPath, signal, undefined, undefined, true, onUpdate);
+        return executeForeground(command, context.workspaceRealPath, signal, undefined, undefined, false, onUpdate);
       }
       const initialized = await ensureSandbox(context.workspaceRealPath);
       if (!initialized.ok) throw new Error(`系统保护初始化失败：${initialized.reason}`);

@@ -61,7 +61,7 @@ export function setSandboxDisabledProvider(fn: () => boolean): void {
  * Linux 兜底通道：系统依赖装不上时允许关掉沙盒运行。
  * 用户政策：**优先引导安装依赖**，实在装不了才走这里（见设置页「环境检测」）。
  * 仅 Linux 生效——macOS 用系统 Seatbelt（无外部依赖），Windows 走 srt-sandbox 账户（另有一次性安装）。
- * 关闭后 EM 自身的策略层（access-policy 路径禁区检查）仍然生效，失去的是 OS 层纵深防御。
+ * 关闭后仅保留结构化工具的路径检查与已知系统命令预检；任意 shell/解释器 I/O 不再有强制边界。
  */
 export function isSandboxBypassed(): boolean {
   return process.platform === "linux" && _sandboxDisabledProvider();
