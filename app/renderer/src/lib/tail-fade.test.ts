@@ -50,6 +50,40 @@ describe("fadeTailChars：只在最后一个文本段的末尾包渐隐 span", (
   });
 });
 
+describe("emoji 不被切半（按 grapheme 计数，不按 UTF-16 码元）", () => {
+  // 一个 emoji 通常占 2 个以上码元：按 length/slice 切会留下孤立代理项（渲染成 U+FFFD 乱码框）
+  const FACE = "😀";              // 代理对，2 码元
+  const THUMB_TONE = "👍🏽";        // 基础 + 肤色修饰，4 码元
+  const FAMILY = "👨‍👩‍👧";            // ZWJ 序列，8 码元
+
+  it("splitTailText：切点落在代理对中间时，末段是整个 emoji", () => {
+    // "a😀" 的码元是 [a, D83D, DE00]：取末 1 个码元会得到落单的低代理项
+    expect(splitTailText(`a${FACE}`, 1)).toEqual(["a", FACE]);
+    expect(splitTailText(`看这里${FACE}`, 2)).toEqual(["看这", `里${FACE}`]);
+  });
+
+  it("splitTailText：肤色修饰不会脱钩、ZWJ 家庭序列不拆开", () => {
+    // 旧实现把 "👍🏽" 切成 "👍" + "🏽"，末段只剩一个肤色色块
+    expect(splitTailText(`好${THUMB_TONE}`, 1)).toEqual(["好", THUMB_TONE]);
+    expect(splitTailText(`好${FAMILY}`, 1)).toEqual(["好", FAMILY]);
+  });
+
+  it("fadeTailChars：渐隐 span 里不出现孤立代理项", () => {
+    const out = fadeTailChars(`<p>a${FACE}</p>`, 1);
+    expect(out).toBe(`<p>a${fade(FACE)}</p>`);
+    // 半个 emoji 的痕迹：span 里以低代理项开头 / 以高代理项结尾
+    expect(out).not.toContain(`<span class="stream-tail-fade">\uDE00`);
+    expect(out).not.toContain("\uD83D</span>");
+  });
+
+  it("fadeTailChars：实体与 emoji 混排，两类单元都整体算一个", () => {
+    // 可见单元 = a / ␣ / &amp; / ␣ / 😀（5 个）→ 末 2 个是「␣😀」，实体整个留在渐隐段之外
+    const out = fadeTailChars(`<p>a &amp; ${FACE}</p>`, 2);
+    expect(out).toBe(`<p>a &amp;${fade(` ${FACE}`)}</p>`);
+    expect(out).not.toContain("&am<span");
+  });
+});
+
 describe("splitTailText：纯文本（思考块）版的同一切分", () => {
   it("取末尾 count 个字符", () => {
     expect(splitTailText("先看它的换 token 请求走哪条路", 4))
