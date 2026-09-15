@@ -291,7 +291,7 @@ export function TransferModal({ open, deviceId, deviceName, onClose, onSent: _on
           {error && <div className="text-[length:var(--text-11)] text-danger">{error}</div>}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-6 py-4 shrink-0">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
           <button className="px-4 py-1.5 rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors text-sm" onClick={onClose} disabled={transferring}>
             取消
           </button>

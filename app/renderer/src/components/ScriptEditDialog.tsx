@@ -88,7 +88,7 @@ export function ScriptEditDialog({ projectPath, runnable, runnables, onClose }: 
           <span className="text-sm font-medium text-text-primary">编辑脚本</span>
           <button className="w-7 h-7 flex items-center justify-center rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors" onClick={onClose}>✕</button>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-4 py-3">
+        <div className="settings-body flex-1 min-h-0 overflow-y-auto space-y-3 px-4 py-3">
           <div>
             <label className="text-xs text-text-secondary block mb-1">标题</label>
             <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="如：安卓端打包" />

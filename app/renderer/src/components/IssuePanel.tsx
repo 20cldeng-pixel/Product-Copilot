@@ -134,7 +134,7 @@ export function IssuePanel({ projectPath }: IssuePanelProps): JSX.Element {
               <span className="text-sm font-medium text-text-primary">{form.mode === "new" ? "记录问题" : "编辑问题"}</span>
               <button className="w-7 h-7 flex items-center justify-center rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors" onClick={() => setForm(null)}>✕</button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-4 py-3">
+            <div className="settings-body flex-1 min-h-0 overflow-y-auto space-y-3 px-4 py-3">
               <div>
                 <label className="text-xs text-text-secondary block mb-1">功能模块（可选，如：登录页）</label>
                 <input

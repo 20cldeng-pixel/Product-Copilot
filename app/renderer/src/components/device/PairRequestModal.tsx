@@ -43,7 +43,7 @@ export function PairRequestModal(): JSX.Element | null {
           </div>
           {error && <div className="text-[length:var(--text-11)] text-danger mt-3">{error}</div>}
         </div>
-        <div className="flex items-center justify-end gap-2 px-6 py-4 ">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
           <button
             className="px-4 py-1.5 rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors text-sm"
             onClick={rejectPair}
