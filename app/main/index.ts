@@ -3,7 +3,7 @@ import fs from "fs";
 import { app, BrowserWindow, shell, ipcMain, Menu, nativeTheme } from "electron";
 import path from "path";
 import { loadUserEnv } from "./utils/user-path";
-import { installSystemProxyFetch } from "./services/system-proxy";
+import { installSystemProxyFetch, redactProxyUrl } from "./services/system-proxy";
 import { getResourcesDir } from "./utils/paths";
 import {
   startAutoUpdater,
@@ -270,7 +270,8 @@ app.whenReady().then(() => {
   // 必须早于任何网络请求；检测不到代理时什么都不做。
   {
     const r = installSystemProxyFetch();
-    console.log(`[main] 系统代理: ${r.reason}${r.proxy ? `（${r.proxy}）` : ""}`);
+    // 地址要脱敏：代理 URL 允许带 user:pass（企业代理常见），原样打印等于把凭据写进日志/截图
+    console.log(`[main] 系统代理: ${r.reason}${r.proxy ? `（${redactProxyUrl(r.proxy)}）` : ""}`);
   }
   // 恢复上次打开的项目（仅在 setup 完成后）
   let startHash: string | undefined;
