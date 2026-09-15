@@ -201,7 +201,7 @@ function PinCard({ pin, sessionId, layerRef, onMinimize, colorIdx }: PinCardProp
   // 让 mousedown 阶段 DOM 静止,与消息气泡的拖选路径一致;拖动/resize 路径仍按下即置顶
   return (
     <div
-      className="absolute rounded-[var(--radius-lg)] border border-border bg-surface-elevated shadow-xl overflow-hidden animate-[card-in_200ms_ease-out]"
+      className="absolute rounded-[var(--radius-lg)] bg-surface-elevated shadow-xl overflow-hidden animate-[card-in_200ms_ease-out]"
       style={{ left: x, top: y, width: pin.width || CARD_W, zIndex: getPinZ(pin.id) ?? (pin.z || 0) }}
       data-pin-id={pin.id}
       onClick={() => usePinStore.getState().bringToFront(sessionId, pin.id)}

@@ -185,9 +185,10 @@ export function App(): JSX.Element {
         {/* 全局确认框与轻提示（替换 window.confirm / window.alert 的系统弹窗） */}
         <ConfirmHost />
         <ToastHost />
-        {/* 迁移回执提示(发送端,3-5s 自动消失) */}
+        {/* 迁移回执提示(发送端,3-5s 自动消失)。无描边:靠投影 + 底色分层;
+            失败态保留 danger 描边——危险语义元素的描边按约定不参与去边框 */}
         {receipt && (
-          <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-toast px-4 py-2.5 rounded-[var(--radius-lg)] border shadow-lg text-sm modal-card ${receipt.ok ? "bg-surface-alt border-border text-text-primary" : "bg-surface-alt border-danger-border text-danger"}`}>
+          <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-toast px-4 py-2.5 rounded-[var(--radius-lg)] shadow-lg text-sm modal-card ${receipt.ok ? "bg-surface-alt text-text-primary" : "bg-surface-alt border border-danger-border text-danger"}`}>
             {receipt.text}
           </div>
         )}
@@ -254,7 +255,7 @@ export function App(): JSX.Element {
         )}
         {/* Windows 防火墙放行提示(设备互联端口,一次性) */}
         {firewallHint !== null && (
-          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-toast flex items-center gap-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-surface-alt border border-border shadow-lg text-xs text-text-primary">
+          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-toast flex items-center gap-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-surface-alt shadow-lg text-xs text-text-primary">
             <span>项目迁移需要 Windows 防火墙放行端口 {firewallHint}——首次弹窗时请勾选「专用网络」并允许访问</span>
             <button className="text-text-secondary hover:text-text-primary shrink-0" onClick={() => setFirewallHint(null)}>✕</button>
           </div>

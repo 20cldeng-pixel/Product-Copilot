@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 /**
  * 全局轻提示（替换 window.alert）。
  * 模块级调用：toast("消息") —— 顶部居中浮出，2.5s 自动消失。
- * 样式复用 ChatPanel 便签 toast 的 token（bg-surface-elevated + border + shadow）。
+ * 样式复用 ChatPanel 便签 toast 的 token（bg-surface-elevated + shadow，无描边）。
  */
 
 interface ToastState {
@@ -33,7 +33,7 @@ export function ToastHost(): JSX.Element | null {
   return (
     <div
       key={t.id}
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-toast px-4 py-2 rounded-[var(--radius-lg)] bg-surface-elevated border border-border shadow-lg text-xs text-text-primary pointer-events-none animate-[fadeIn_150ms_ease]"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-toast px-4 py-2 rounded-[var(--radius-lg)] bg-surface-elevated shadow-lg text-xs text-text-primary pointer-events-none animate-[fadeIn_150ms_ease]"
     >
       {t.message}
     </div>

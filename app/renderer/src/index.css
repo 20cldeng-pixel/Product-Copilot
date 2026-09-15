@@ -1631,7 +1631,8 @@ select.input {
   font-size: var(--text-xs);
   color: var(--color-text-primary);
   background: var(--color-elevated);
-  border: 1px solid var(--color-border);
+  /* 无描边(用户 2026-09-15:系统通知类气泡统一去边框):靠 --shadow-md + 底色分层;
+     胶囊浮在输入卡片上方 12px,与宿主不紧贴,暗色下二者虽同为 #1c1c1c 仍可由投影分开 */
   box-shadow: var(--shadow-md);
   cursor: pointer;
   z-index: var(--z-index-float);

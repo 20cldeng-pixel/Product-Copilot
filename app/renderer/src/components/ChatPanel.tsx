@@ -2442,7 +2442,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
       <ContextMenu menu={ctxMenu} onClose={closeMenu} />
       {/* 钉住提示 */}
       {pinToast && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-[var(--radius-lg)] bg-surface-elevated border border-border shadow-lg text-xs text-text-primary pointer-events-none">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-[var(--radius-lg)] bg-surface-elevated shadow-lg text-xs text-text-primary pointer-events-none">
           {pinToast}
         </div>
       )}
