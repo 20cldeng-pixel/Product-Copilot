@@ -646,10 +646,11 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
 .sb-drawer {
   position: absolute; left: var(--s2); right: var(--s2); bottom: 86px;
   z-index: var(--z-index-dialog);
-  /* 玻璃基色：亮色取 --color-surface（比侧栏深一档）——本抽屉悬浮在侧栏之上，若沿用右侧
-     抽屉的 surface-elevated 白色薄纱，近白的卡片底（--color-drawer-card）会与玻璃同色而丢失边界；
-     暗色反取亮一档（见下方 dark 覆盖），压深会与侧栏同色 */
-  --glass-base: var(--color-surface);
+  /* 玻璃基色**不在此覆盖**：本抽屉曾按主题各取一档（亮色 --color-surface / 暗色 --color-surface-alt），
+     为的是与侧栏、与抽屉内卡片（--color-drawer-card）都拉开层次。2026-09-15 复算后统一改用
+     .em-glass 的默认基色——暗色那档的收益实测只有 ΔL* 2.47（本就处于"勉强能分"的边缘，用户看不出
+     差别）；浅色那档确实有效（与卡片的 ΔL* 由 5.92 掉到 0.42）。若日后浅色主题下觉得抽屉内卡片
+     边界不够，按上面这两档恢复即可。复核脚本：temp/glass-check/verify-base.py */
   transform-origin: bottom center;
   transform: scaleY(0);
   pointer-events: none;
@@ -657,8 +658,6 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   transition: transform 0.35s cubic-bezier(0.4,0,0.2,1),
               opacity 0.2s cubic-bezier(0.4,0,0.2,1);
 }
-/* 暗色下侧栏（#1c1c1c）比 surface（#1b1b1b）还亮，压深会让抽屉与侧栏同色——反取亮一档 */
-[data-theme="dark"] .sb-drawer { --glass-base: var(--color-surface-alt); }
 .sb-drawer.open { transform: scaleY(1); pointer-events: auto; opacity: 1; }
 /* 外框材质 = 毛玻璃（.em-glass，与右侧滑出抽屉同一观感）——不再实色，透出后面的会话列表 */
 .sb-drawer-body-wrap { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
@@ -1830,7 +1829,8 @@ body:has([class*="z-dialog"], [class*="z-modal"]) .sidebar { -webkit-app-region:
 
 /* ══ 毛玻璃面板（2026-09-10 提取为语义类）══════════════════════
    半透明底(基色 65%) + 背景模糊 20px：背景内容模糊但轮廓可辨，前景文字保持干净。
-   基色由 --glass-base 覆盖（默认 surface-elevated 的白色薄纱）——见 .sb-drawer 的侧栏变体。
+   基色由 --glass-base 覆盖（默认 surface-elevated 的白色薄纱）。目前**没有使用方覆盖它**：
+   侧栏抽屉曾按主题各取一档，2026-09-15 复算后统一回默认（原因与恢复方式见 .sb-drawer 的注释）。
    引用：右侧滑出抽屉（项目迁移 DevicePanel / 历史输入 QuestionHistory）+ 侧栏抽屉（.sb-drawer-body-wrap / -arrow）。
    提取原因：同一材质多处引用，改一处生效——此前两处各写一份内联 style。 */
 .em-glass {
