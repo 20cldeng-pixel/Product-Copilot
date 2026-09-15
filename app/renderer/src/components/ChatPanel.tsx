@@ -2334,22 +2334,6 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
                   onPointerUp={handleSliderPointerUp}
                   onPointerCancel={abortDrag}
                 >
-                  {sliderPressed && (
-                    <>
-                      {/* 边框彩虹色散:细描边环(mask 只留 0.5px 环)叠在灰色边框上,
-                          低透明度渐变——玻璃边缘的彩虹折射 */}
-                      <span
-                        className="absolute inset-0 rounded-full pointer-events-none"
-                        style={{
-                          padding: 0.5,
-                          WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-                          WebkitMaskComposite: "xor",
-                          maskComposite: "exclude",
-                          background: "linear-gradient(135deg, rgba(244,63,94,0.4), rgba(245,158,11,0.4) 20%, rgba(34,197,94,0.4) 40%, rgba(59,130,246,0.4) 60%, rgba(168,85,247,0.4) 80%, rgba(244,63,94,0.4))",
-                        }}
-                      />
-                    </>
-                  )}
                 </div>
                 {/* 文字双层:灰层(未选中)全量显示;选中层(黑/白)同布局按滑块区域 clip-path 裁剪——
                     滑块盖住多少文字,选中色实时显示多少(半字级跟随);同字重保证两层像素对齐;
