@@ -29,7 +29,6 @@ interface Settings {
   model?: string;
   availableModels?: string[];
   apiKeys?: Record<string, string>;
-  builtinTools?: Record<string, boolean>;
   /** 允许 AI 在会话中写 managed skill 区（manage_skill 工具注册开关，D8 默认关闭） */
   manageSkillEnabled?: boolean;
   /** 允许 AI 自沉淀（learn / search_experiences / retire_experiences 三工具同开的注册开关，D8 默认关闭） */
@@ -207,7 +206,6 @@ export class Store {
       model: (emData.model as string) || undefined,
       availableModels: (emData.availableModels as string[]) || undefined,
       apiKeys: dropLegacyEncryptedApiKeys(emData.apiKeys as Record<string, string> | undefined),
-      builtinTools: (emData.builtinTools as Record<string, boolean>) || undefined,
       manageSkillEnabled: emData.manageSkillEnabled as boolean | undefined,
       learnEnabled: emData.learnEnabled as boolean | undefined,
       importExternalSkills: emData.importExternalSkills as boolean | undefined,
@@ -317,7 +315,6 @@ export class Store {
     if (settings.apiKeys && Object.keys(settings.apiKeys).length > 0) {
       data.apiKeys = settings.apiKeys;
     }
-    if (settings.builtinTools) data.builtinTools = settings.builtinTools;
     if (settings.manageSkillEnabled !== undefined) data.manageSkillEnabled = settings.manageSkillEnabled;
     if (settings.learnEnabled !== undefined) data.learnEnabled = settings.learnEnabled;
     if (settings.importExternalSkills !== undefined) data.importExternalSkills = settings.importExternalSkills;

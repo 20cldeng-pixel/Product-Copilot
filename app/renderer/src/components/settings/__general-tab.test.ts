@@ -34,7 +34,7 @@ vi.mock("../ui/ConfirmDialog", () => ({ confirmDialog: async (): Promise<boolean
 const { GeneralTab } = await import("./GeneralTab");
 const { EnvPanel, onboardingHint, nextAutoAction, workScreenVisible } = await import("../env/EnvPanel");
 const { EnvRetestButton } = await import("../env/EnvRetestButton");
-const { shouldPersistTavilyKey } = await import("./TavilyKeySection");
+const { shouldPersistTavilyKey } = await import("./WebCapabilityConfig");
 
 const countOf = (html: string, needle: string): number => html.split(needle).length - 1;
 

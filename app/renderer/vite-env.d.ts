@@ -503,7 +503,7 @@ interface ElectronAPI {
   settings: {
     get: () => Promise<{
       defaultProjectDir?: string; setupComplete?: boolean;
-      apiKeys?: Record<string, string>; builtinTools?: Record<string, boolean>; model?: string;
+      apiKeys?: Record<string, string>; model?: string;
       manageSkillEnabled?: boolean;
       learnEnabled?: boolean;
       importExternalSkills?: boolean;

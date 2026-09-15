@@ -43,13 +43,20 @@ function readApiKeys(): Record<string, string> {
   return dropLegacyEncryptedApiKeys((readEmSettings().apiKeys as Record<string, string> | undefined)) || {};
 }
 
+/**
+ * 能力是否可用 —— **只看 key 有没有填**（用户 2026-09-15 拍板：不再设开关，填写即启用）。
+ *
+ * 此前是「开关 on + key 非空」两个条件，于是存在"填了 key 却没打开开关"的静默失效：
+ * 界面上看不出差别，模型那边工具就是不出现。收成单一判据后不可能再出现这种状态；
+ * 想关掉某项能力就清空对应的 key。
+ */
 export function isToolEnabled(name: "vision" | "webFetch" | "webSearch"): boolean {
-  const settings = readEmSettings();
-  const builtin = (settings.builtinTools as Record<string, boolean>) || {};
   const keys = readApiKeys();
-  if (name === "vision") return builtin.vision === true && !!keys.VISION_API_KEY;
-  if (name === "webSearch") return builtin.webSearch === true && !!keys.TAVILY_API_KEY;
-  return builtin.webFetch === true && !!keys.TAVILY_API_KEY;
+  // 判据是 **key 本身**：填了即启用、清空即停用。trim 后判空——只写了空白的 key 不算已配置
+  // （否则工具会注册出来，调用时才因为 key 无效失败）。
+  if (name === "vision") return !!keys.VISION_API_KEY?.trim();
+  // 搜索与抓取共用同一个 Tavily Key：填了即两项都可用
+  return !!keys.TAVILY_API_KEY?.trim();
 }
 
 // ── Vision ──────────────────────────────────────────
@@ -178,7 +185,7 @@ export async function webFetch(args: { url: string; prompt?: string }): Promise<
 export async function webSearch(args: { query: string; max_results?: number }): Promise<string> {
   const keys = readApiKeys();
   const tavilyKey = keys.TAVILY_API_KEY;
-  if (!tavilyKey) return "TAVILY_API_KEY 未配置，请在设置→模型能力增强→联网搜索中填写 API Key。";
+  if (!tavilyKey) return "TAVILY_API_KEY 未配置，请在设置→模型能力增强→联网能力中填写 API Key。";
   if (!args.query) return "搜索查询不能为空。";
   // 上限 20 取自 Tavily 官方 Search 文档的 max_results 取值范围（0–20，默认值文档标 10、
   // 最佳实践页标 5，我们一律显式传值故不受其影响）。此前写 50 会让超范围的请求被拒
