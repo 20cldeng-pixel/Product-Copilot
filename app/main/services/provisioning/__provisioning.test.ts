@@ -54,8 +54,18 @@ describe("发行版识别", () => {
     expect(resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] }, (p) => p === "/usr/bin/apt-get")?.kind).toBe("apt");
   });
 
-  it("非 Linux 平台没有包管理器这一层", () => {
-    expect(readDistro().autoInstallable).toBe(false);
+  it("非 Linux 平台没有包管理器这一层（必须注入平台，别拿宿主平台当断言对象）", () => {
+    // 曾踩：本用例原先直接调 `readDistro()`，于是断言的对象变成「跑测试的那台机器」——
+    // macOS 开发机走 platform!=="linux" 分支恰好通过，Linux CI 上则真读到 /etc/os-release
+    // 得到 autoInstallable=true → 红。测试要钉代码逻辑，不能钉宿主环境。
+    expect(readDistro(() => "", "darwin", () => true).autoInstallable).toBe(false);
+    expect(readDistro(() => "", "win32", () => true).autoInstallable).toBe(false);
+    // 反向也要钉住：Linux 上确实会给出可安装性（假文件系统，全程不碰真实 /etc/os-release）
+    const linux = readDistro(() => "ID=ubuntu\n", "linux", (p) => p === "/usr/bin/apt-get");
+    expect(linux.id).toBe("ubuntu");
+    expect(linux.autoInstallable).toBe(true);
+    // 同是 Linux，但没有可用的包管理器 → 不可自动安装（转自助指引）
+    expect(readDistro(() => "ID=ubuntu\n", "linux", () => false).autoInstallable).toBe(false);
   });
 });
 
