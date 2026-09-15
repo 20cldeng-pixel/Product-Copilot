@@ -371,7 +371,10 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
           主进程仍在发 `env:progress` 阶段事件（preload 也仍暴露 onProgress），只是界面不再显示。 */}
       {working && (
         <div className="mt-4">
-          <div className="relative h-1 w-full overflow-hidden">
+          {/* `env-sweep-clip` 让裁剪框两端各留 10% 的软化区：光带穿越边界时是淡入淡出，
+              而不是被 `overflow: hidden` 竖切一刀（用户 2026-09-15 报"移动到两端时被整齐切开"）。
+              软化区与光带居中占位（27%~73%）不重叠，故中央观感不变。 */}
+          <div className="env-sweep-clip relative h-1 w-full overflow-hidden">
             {/* 颜色、白芯与两端渐隐都在 index.css 的 .env-sweep-glow 里（那里用 mask 裁水平渐隐），
                 故此处不能加 bg-accent。也不能加 -translate-y-1/2 之类：动画 keyframes 写的是
                 transform: translateX，会抢同一属性。`rounded-[50%]` 给光带一个胶囊轮廓。 */}

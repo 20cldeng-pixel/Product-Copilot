@@ -1468,6 +1468,23 @@ select.input {
    * 芯改为**黑**——浅灰光带上一条暗芯，与亮色的"绿底 + 白芯"对称。 */
   --core-rgb: 0, 0, 0;
 }
+
+/* 光带的裁剪框（＝ EnvPanel 里那个 `overflow-hidden` 的容器）。
+ *
+ * WHY 需要它：容器边界是**硬切**。位移范围本身是够的（-100% → 250%，两端都完全移出），
+ * 但光带**穿越边界的过程中**，它的实心中段会压在边界上，被 `overflow: hidden` 竖着切一刀
+ * → 看起来像"光带被整齐切开"（用户 2026-09-15 报的现象；定格渲染实测：t=0.30/0.50s 左端、
+ * t=1.30s 右端各有一条笔直竖边）。
+ *
+ * 解法：给裁剪框自己加一道水平渐隐，边界处像素趋于透明，于是光带进出变成**淡入淡出**。
+ * 关键是**软化区与光带居中时的占位不重叠**：光带宽 46%，居中占 27%~73%，而软化区只在
+ * 0~10% 与 90%~100% —— 所以光带正常扫过中央时一点不受影响（定格对比已确认）。
+ * 两端各 10% 是按实测选的：再短则软化不充分，再长就开始吃掉光带的可视行程。
+ * 与主题无关（只裁 alpha），故不分亮暗。 */
+.env-sweep-clip {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+}
 @media (prefers-reduced-motion: reduce) {
   /* 降级：不来回走，但居中留一条光带（"正在工作"这件事由"只显示标题 + 动画"这层表达） */
   .env-sweep-glow { animation: none; left: 50%; transform: translateX(-50%); }
