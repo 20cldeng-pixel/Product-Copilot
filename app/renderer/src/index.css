@@ -591,7 +591,8 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
   /* 宽度贴合菜单文字（原固定 min-width:160px，最长一项「重命名项目」实际只需约 113px，
      右侧会空出 47px）。条目本身 nowrap，宽度由最宽那项决定 */
   width: max-content; background: var(--color-sidebar);
-  border: 1px solid var(--color-border);
+  /* 无边框：浮层靠 --shadow-menu 与所在面分层（设计语言「色差分层／无边框拼色」2026-09-15） */
+  border: none;
   border-radius: var(--radius-lg); box-shadow: var(--shadow-menu);
   padding: var(--s1); z-index: var(--z-index-dropdown); display: none; flex-direction: column;
 }
