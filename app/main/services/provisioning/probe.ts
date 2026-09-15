@@ -109,6 +109,9 @@ export function probeBinary(
 interface BinarySpec {
   id: EnvItemId;
   label: string;
+  /** 缺了它会影响什么功能（面向用户）。**必须说能力，不说包名**——用户不关心 bubblewrap 是什么，
+   *  只关心"不装会怎样"（用户 2026-09-15 反馈：此前没说清影响，提醒不够明确） */
+  impact: string;
   args: string[];
   candidates: string[];
 }
@@ -117,19 +120,28 @@ interface BinarySpec {
 const LINUX_BINARIES: BinarySpec[] = [
   {
     id: "bwrap", label: "bubblewrap（隔离进程）", args: ["--version"],
+    impact: "缺少它无法把命令关进隔离环境——命令会被拦下，只能用「关闭沙盒运行」继续（不推荐）",
     candidates: ["bwrap", "/usr/bin/bwrap", "/usr/local/bin/bwrap", "/bin/bwrap", "/snap/bin/bwrap", "/run/current-system/sw/bin/bwrap"],
   },
   {
     id: "socat", label: "socat（网络桥）", args: ["-V"],
+    impact: "缺少它隔离环境里的网络代理起不来——沙盒内需要联网的命令会失败",
     candidates: ["socat", "/usr/bin/socat", "/usr/local/bin/socat", "/bin/socat", "/run/current-system/sw/bin/socat"],
   },
   {
     id: "rg", label: "ripgrep（检索）", args: ["--version"],
+    impact: "缺少它代码检索不可用，隔离环境也起不来（它是沙盒的系统依赖之一）",
     // cargo 安装（~/.cargo/bin）在开发者机器上很常见，必须列候选否则误报
     candidates: ["rg", "/usr/bin/rg", "/usr/local/bin/rg", "/bin/rg", "/snap/bin/rg",
       path.join(os.homedir(), ".cargo", "bin", "rg"), "/run/current-system/sw/bin/rg"],
   },
 ];
+
+/** userns 条目（两种状态共用）：说的是"少了哪项能力"，不是"哪个内核开关" */
+const USERNS_IMPACT = "系统不允许创建隔离空间——即使 bubblewrap 装好了，命令仍会被拦下";
+
+/** Windows 系统保护条目：装配本身要弹一次 UAC，影响也说清"少了它会被怎样" */
+const WIN_SANDBOX_IMPACT = "缺少它 Mint 无法隔离执行命令，也不限制其网络访问（安装时会弹一次系统授权窗口）";
 
 /** userns 功能实测命令：`which bwrap` 查不出「包在但被 AppArmor 挡」（Ubuntu 24.04+ 默认如此） */
 const USERNS_PROBE_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid", "--", "echo", "ok"];
@@ -189,6 +201,7 @@ export async function probeEnvironment(
         label: spec.label,
         required: true,
         status,
+        impact: spec.impact,
         ...(out.status === "ok" ? { version: out.version } : {}),
         ...(out.status === "unknown"
           ? { detail: "已安装但无法启动——可能是权限问题或安装不完整（不是没装）" }
@@ -204,15 +217,17 @@ export async function probeEnvironment(
     if (!bwrapOk) {
       items.push({
         id: "userns", label: "隔离能力（用户命名空间）", required: true, status: "unknown",
+        impact: USERNS_IMPACT,
         detail: "需先装好 bubblewrap 才能验证",
         fix: { sandboxOff: true },
       });
     } else {
-      const out = probe({ id: "userns", label: "", args: USERNS_PROBE_ARGS, candidates: ["bwrap", "/usr/bin/bwrap"] });
+      const out = probe({ id: "userns", label: "", impact: USERNS_IMPACT, args: USERNS_PROBE_ARGS, candidates: ["bwrap", "/usr/bin/bwrap"] });
       const ok = out.status === "ok";
       items.push({
         id: "userns", label: "隔离能力（用户命名空间）", required: true,
         status: ok ? "ok" : "blocked",
+        impact: USERNS_IMPACT,
         ...(ok ? {} : { detail: APPARMOR_HINT }),
         fix: ok ? {} : blockedFix(installer),
       });
@@ -244,6 +259,7 @@ export async function probeEnvironment(
         label: "系统保护（隔离账户 + 网络过滤）",
         required: true,
         status: ok ? "ok" : "missing",
+        impact: WIN_SANDBOX_IMPACT,
         ...(ok
           ? { version: wfpState === "cannot-read" ? "网络过滤需管理员权限才能读取（不影响使用）" : undefined }
           : { detail: `未安装：${missingPart}（安装时会弹一次系统授权窗口）` }),
@@ -260,6 +276,7 @@ export async function probeEnvironment(
         label: "系统保护（隔离账户 + 网络过滤）",
         required: true,
         status: "unknown",
+        impact: WIN_SANDBOX_IMPACT,
         detail: "检测失败（可能已安装）——不代表未安装，可点「重新检测」重试",
         fix: { manual: { command: windowsInstallCommand() } },
       });
@@ -267,14 +284,15 @@ export async function probeEnvironment(
 
     // Git Bash 是 bash 类工具的依赖；复用既有探测函数（避免两套候选路径各自漂移）
     const bash = findBashOnWindows();
-    items.push({
-      id: "gitBash",
-      label: "Git Bash（bash 工具依赖）",
-      required: false,
-      status: bash ? "ok" : "missing",
-      ...(bash ? { version: bash } : { detail: "未找到 Git Bash——bash 类命令无法执行" }),
-      fix: bash ? {} : { manual: { url: "https://git-scm.com/download/win" } },
-    });
+      items.push({
+        id: "gitBash",
+        label: "Git Bash（bash 工具依赖）",
+        required: false,
+        status: bash ? "ok" : "missing",
+        impact: "缺少它 bash 类命令跑不了（Mint 的 shell 与 git 工具依赖它）——不影响主要功能，可按需安装",
+        ...(bash ? { version: bash } : { detail: "未找到 Git Bash——bash 类命令无法执行" }),
+        fix: bash ? {} : { manual: { url: "https://git-scm.com/download/win" } },
+      });
   }
 
   return { items, distro, probedAt: Date.now() };

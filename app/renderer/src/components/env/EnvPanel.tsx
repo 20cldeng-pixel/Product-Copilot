@@ -5,30 +5,68 @@
  * - 只推荐"能自动装的"：一键安装缺失项；装不了的给可复制的自助命令，不猜命令。
  * - 状态四态如实呈现：ok / missing / **blocked（装了但被系统策略挡，不是没装）** / unknown（检测失败）。
  *   把后两者说成"未安装"会逼用户反复装——那是这个面板最不能犯的错。
+ * - **说清"少了它会影响什么"**（`item.impact`）：用户不关心 bubblewrap 是什么，只关心不装的后果
+ *   （用户 2026-09-15 反馈：此前只说缺什么、没说影响，提醒不够明确）。
  * - 实在装不了才提供「关闭沙盒运行」，且必须先说清失去什么、保留什么，并说明随时能开回来（安抚）。
  */
-import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { useSettingsStore } from "../../stores/settings-store";
 
 /**
  * 引导步骤的副标题文案。**检查完就不能继续说"正在检查"**（用户明确要求：
  * 无需依赖时提醒"检查完毕、继续下一步"）。抽成纯函数以便单测各状态。
+ *
+ * 2026-09-15 起还负责说明"现在在做什么"：自动安装中 / 已就绪正在跳下一步 / 必装项还差几项。
  */
 export function onboardingHint(s: {
   probing: boolean;
   probeFailed: boolean;
   hasReport: boolean;
-  brokenCount: number;
+  /** 必装项里还没就绪的（决定能不能继续往下走） */
+  requiredBroken: number;
+  /** 可选项没就绪的（不影响继续，只提示） */
+  optionalBroken: number;
+  /** 正在自动安装/修复 */
+  busy: boolean;
+  /** 面板已把"就绪"交回宿主（宿主随即自动进入下一步） */
+  handedOff: boolean;
 }): string {
   if (s.probing || (!s.hasReport && !s.probeFailed)) {
     return "Mint 需要几个系统组件才能安全地执行命令，正在为你检查…";
   }
   if (s.probeFailed) return "检查没能完成——可点「重新检测」重试";
-  if (s.brokenCount > 0) {
-    return `检查完毕——有 ${s.brokenCount} 项需要处理，按下面对应的提示装好后即可继续`;
+  if (s.handedOff) return "运行环境已就绪——正在进入下一步…";
+  if (s.busy) return "正在自动安装缺少的组件（若弹出系统授权窗口，请点允许）…";
+  if (s.requiredBroken > 0) {
+    return `还有 ${s.requiredBroken} 项必须处理——缺少它们时命令会被拦下，下面的说明写了怎么装`;
+  }
+  if (s.optionalBroken > 0) {
+    return `运行环境已就绪，点下方「下一步」继续；另有 ${s.optionalBroken} 项可选组件未安装，可按需安装`;
   }
   return "检查完毕——运行环境已就绪，点下方「下一步」继续";
+}
+
+/**
+ * 「自动安装」的一次性决策（纯函数，便于单测）：返回这一轮该自动触发的动作。
+ *
+ * 跑过的动作记在 `done` 里——**失败/被用户拒绝授权框后不再自动重试**（否则会反复弹 UAC）；
+ * 此时按钮仍在操作区，由用户决定何时再来。`installableCount === 0`（平台没有自动安装通道、
+ * 或只能手工）时返回 null → 界面只剩自助命令，这正是"无法自动化才让用户点击"的落点。
+ */
+export function nextAutoAction(s: {
+  autoFix: boolean;
+  hasReport: boolean;
+  probing: boolean;
+  installing: boolean;
+  installableCount: number;
+  fixableCount: number;
+  done: ReadonlySet<"pkg" | "userns">;
+}): "pkg" | "userns" | null {
+  if (!s.autoFix || !s.hasReport || s.probing || s.installing) return null;
+  if (s.installableCount > 0) return s.done.has("pkg") ? null : "pkg";
+  if (s.fixableCount > 0) return s.done.has("userns") ? null : "userns";
+  return null;
 }
 
 /** 面板对外的唯一能力：重新探测（含重置沙盒失败缓存，「装好点一下即生效」靠它）。
@@ -37,8 +75,13 @@ export interface EnvPanelHandle {
   retest: () => void;
 }
 
-export function EnvPanel({ variant = "settings", ref }: {
+export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }: {
   variant?: "onboarding" | "settings";
+  /** **进入即自动装**：探测完自动开始安装（引导流程用，用户要求"不需要点击"）。
+   *  只自动跑一次每种动作——失败/被系统授权框拒绝后不再自动重试，按钮留着交给用户决定。 */
+  autoFix?: boolean;
+  /** 必装项全部就绪时回调一次（引导流程据此自动进入下一步）。宿主需传稳定引用（useCallback）。 */
+  onReady?: () => void;
   /** 宿主用它驱动重探。**面板自身不再渲染任何「重新检测」按钮**——
    *  按钮由宿主提供，全项目只有一处定义（EnvRetestButton），避免同屏两个、刷一半的两套逻辑 */
   ref?: Ref<EnvPanelHandle>;
@@ -50,6 +93,7 @@ export function EnvPanel({ variant = "settings", ref }: {
   const [installing, setInstalling] = useState(false);
   const [result, setResult] = useState<EnvInstallResultShape | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [handedOff, setHandedOff] = useState(false);
   const sandboxDisabled = useSettingsStore((s) => s.sandboxDisabled);
   const setSandboxDisabled = useSettingsStore((s) => s.setSandboxDisabled);
 
@@ -81,6 +125,9 @@ export function EnvPanel({ variant = "settings", ref }: {
 
   const items = report?.items ?? [];
   const broken = items.filter((i) => i.status !== "ok");
+  /** 必装项未就绪（决定能否继续）vs 可选项未就绪（只提示）——引导页据此决定是"等"还是"往下走" */
+  const requiredBroken = broken.filter((i) => i.required).length;
+  const optionalBroken = broken.length - requiredBroken;
   /** 能自动装的（fix.auto 且有包名由 main 侧白名单决定）；blocked/unknown 不在一键安装范围。
    *  usernsProfile 走单独的「一键修复」按钮——它不吃 id 列表，混进来会被 main 侧整批拒绝 */
   const installable = broken.filter((i) => i.status === "missing" && i.fix.auto && i.fix.auto.strategy !== "usernsProfile");
@@ -132,6 +179,31 @@ export function EnvPanel({ variant = "settings", ref }: {
     setTimeout(() => setCopied(null), 2000);
   };
 
+  // ── 自动安装（autoFix=true，仅引导流程）──────────────────────────────────────
+  // 用户 2026-09-15 要求：「进入检测页面就自动检测和安装，不需要用户点击」。
+  // 决策交给纯函数 nextAutoAction（含"每种动作只自动跑一次"），这里只负责执行。
+  // 不写依赖数组：每次渲染都判一次，靠 autoDone 去重（写数组反而要在 deps 里塞一堆派生量）
+  const autoDone = useRef<Set<"pkg" | "userns">>(new Set());
+  useEffect(() => {
+    const action = nextAutoAction({
+      autoFix, hasReport: report !== null, probing, installing,
+      installableCount: installable.length, fixableCount: fixable.length,
+      done: autoDone.current,
+    });
+    if (!action) return;
+    autoDone.current.add(action);
+    void (action === "pkg" ? install() : fixUserns());
+  });
+
+  // ── 就绪即交回宿主（引导流程据此自动进入下一步）───────────────────────────────
+  // 判据用**必装项**：可选项（如 Windows 的 Git Bash）没装不挡路，只在副标题里提一句
+  useEffect(() => {
+    if (!onReady || !report || probing || probeFailed) return;
+    if (requiredBroken > 0) return;
+    setHandedOff(true);   // 副标题据此改口为"正在进入下一步"，别让用户以为卡住了
+    onReady();
+  }, [onReady, report, probing, probeFailed, requiredBroken]);
+
   const turnOffSandbox = async (): Promise<void> => {
     const okToOff = await confirmDialog({
       title: "关闭沙盒模式？",
@@ -177,7 +249,10 @@ export function EnvPanel({ variant = "settings", ref }: {
         <>
           <h1 className="text-xl font-semibold text-center mb-1">准备运行环境</h1>
           <p className="text-text-secondary text-center text-sm mb-6">
-            {onboardingHint({ probing, probeFailed, hasReport: report !== null, brokenCount: broken.length })}
+            {onboardingHint({
+              probing, probeFailed, hasReport: report !== null,
+              requiredBroken, optionalBroken, busy: installing, handedOff,
+            })}
           </p>
         </>
       )}
@@ -199,18 +274,22 @@ export function EnvPanel({ variant = "settings", ref }: {
                   {item.status === "ok" && item.version ? item.version : st.text}
                 </span>
               </div>
+              {/* 影响说明放最前：用户要先知道"不装会怎样"，再看状态原因与命令 */}
+              {item.status !== "ok" && item.impact && (
+                <p className="mt-1 text-[length:var(--text-xs)] text-text-secondary leading-relaxed">{item.impact}</p>
+              )}
               {item.detail && (
-                <p className="mt-1 text-[length:var(--text-2xs)] text-text-muted break-all">{item.detail}</p>
+                <p className="mt-1 text-[length:var(--text-xs)] text-text-muted leading-relaxed break-all">{item.detail}</p>
               )}
               {/* 自助命令：装不了/被挡时唯一的出路（必须能复制，不能只有"一键"）。
                   可能是多行步骤（用 \n 分隔）——按多行展示，别用 truncate 截掉后半截。 */}
               {item.status !== "ok" && item.fix.manual?.command && (
                 <div className="mt-1.5 flex items-start gap-1">
-                  <code className="flex-1 min-w-0 text-[length:var(--text-2xs)] leading-relaxed text-text-secondary bg-surface px-2 py-0.5 rounded-[var(--radius-lg)] select-all whitespace-pre-wrap break-all">
+                  <code className="flex-1 min-w-0 text-[length:var(--text-xs)] leading-relaxed text-text-secondary bg-surface px-2 py-1 rounded-[var(--radius-lg)] select-all whitespace-pre-wrap break-all">
                     {item.fix.manual.command}
                   </code>
                   <button
-                    className="shrink-0 px-1.5 py-0.5 rounded-[var(--radius-lg)] text-[length:var(--text-2xs)] text-text-secondary hover:text-accent em-hover-control transition-all"
+                    className="shrink-0 px-1.5 py-1 rounded-[var(--radius-lg)] text-[length:var(--text-xs)] text-text-secondary hover:text-accent em-hover-control transition-all"
                     onClick={() => void copy(item.fix.manual!.command!)}
                   >
                     {copied === item.fix.manual.command ? "已复制" : "复制"}
@@ -228,14 +307,14 @@ export function EnvPanel({ variant = "settings", ref }: {
           <div className="h-1 w-full rounded-full bg-surface-hover overflow-hidden">
             <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
           </div>
-          <p className="mt-1.5 text-[length:var(--text-2xs)] text-text-muted">
+          <p className="mt-1.5 text-[length:var(--text-xs)] text-text-muted">
             {progress?.message ?? "正在准备安装…"}
           </p>
         </div>
       )}
 
       {result && !result.ok && (
-        <div className="mt-3 px-3 py-2 rounded-[var(--radius-lg)] bg-surface text-[length:var(--text-2xs)] text-text-secondary leading-relaxed">
+        <div className="mt-3 px-3 py-2 rounded-[var(--radius-lg)] bg-surface text-[length:var(--text-xs)] text-text-secondary leading-relaxed">
           <p>{result.reason}</p>
           {result.manualCommand && (
             <p className="mt-1">
@@ -270,7 +349,10 @@ export function EnvPanel({ variant = "settings", ref }: {
               disabled={installing}
               onClick={() => void install()}
             >
-              {installing ? "正在安装…" : `一键安装 ${installable.length} 项`}
+              {/* 自动装过一次后改口为"重试"：否则用户会以为是第一次，不知道自己刚才拒绝过授权框 */}
+              {installing
+                ? "正在安装…"
+                : `${autoDone.current.has("pkg") ? "重试安装" : "一键安装"} ${installable.length} 项`}
             </button>
           )}
           {installing && (
@@ -301,7 +383,7 @@ export function EnvPanel({ variant = "settings", ref }: {
         </div>
       )}
       {sandboxDisabled && (
-        <p className="mt-1.5 text-[length:var(--text-2xs)] text-danger">
+        <p className="mt-1.5 text-[length:var(--text-xs)] text-danger">
           沙盒已关闭：shell、Python、Node 等命令可访问当前用户有权限访问的文件（不推荐长期如此）
         </p>
       )}

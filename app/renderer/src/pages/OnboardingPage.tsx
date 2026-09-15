@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsStore } from "../stores/settings-store";
 import { useThemeStore } from "../stores/theme-store";
@@ -60,8 +60,25 @@ export function OnboardingPage(): JSX.Element {
     navigate("/");
   };
 
-  const goNext = () => setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  const goPrev = () => setCurrentStep((s) => Math.max(s - 1, 0));
+  const goNext = useCallback(() => setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1)), []);
+  const goPrev = useCallback(() => setCurrentStep((s) => Math.max(s - 1, 0)), []);
+
+  // 环境就绪 → 自动进入下一步（用户 2026-09-15 要求：检测/安装完不该再让人点一次）。
+  // 守卫用 ref 而非 state：**只自动跳一次**——用户自己按「返回」回到本步时不该被立刻推走（否则回不去）。
+  // 延迟 1.2s 是为了让「运行环境已就绪」这句话被看见（面板副标题会同时改口为"正在进入下一步"）。
+  const envAutoAdvanced = useRef(false);
+  const envAdvanceTimer = useRef<number | null>(null);
+  const handleEnvReady = useCallback((): void => {
+    if (envAutoAdvanced.current) return;
+    envAutoAdvanced.current = true;
+    envAdvanceTimer.current = window.setTimeout(() => {
+      // 用函数式更新并判当前步：这 1.2s 里用户可能已经按「返回」，直接 +1 会把他又推回来
+      setCurrentStep((s) => (s === 1 ? s + 1 : s));
+    }, 1200);
+  }, []);
+  useEffect(() => () => {
+    if (envAdvanceTimer.current !== null) window.clearTimeout(envAdvanceTimer.current);
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -141,9 +158,10 @@ export function OnboardingPage(): JSX.Element {
             </div>
           ) : currentStep === 1 ? (
             /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）──
-               刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现 */
+               刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现。
+               autoFix：进来就自动装（不再要求用户点「一键安装」）；就绪即自动进下一步 */
             <>
-              <EnvPanel ref={envPanel} variant="onboarding" />
+              <EnvPanel ref={envPanel} variant="onboarding" autoFix onReady={handleEnvReady} />
               <div className="mt-3">
                 <EnvRetestButton panel={envPanel} />
               </div>

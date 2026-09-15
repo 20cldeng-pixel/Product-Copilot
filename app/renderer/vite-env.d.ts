@@ -32,6 +32,8 @@ interface EnvItemShape {
   /** blocked=装了但被系统策略挡（如 Ubuntu 24.04 的 AppArmor）；unknown=探测失败，都不是"未安装" */
   status: "ok" | "missing" | "blocked" | "unknown";
   version?: string;
+  /** 缺了它会影响什么功能（说能力，不说包名）；面板只在非 ok 时展示 */
+  impact?: string;
   detail?: string;
   fix: EnvFixShape;
 }

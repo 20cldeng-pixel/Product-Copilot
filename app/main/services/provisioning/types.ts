@@ -36,6 +36,9 @@ export interface EnvItem {
   required: boolean;
   status: EnvItemStatus;
   version?: string;
+  /** 缺了它会影响什么功能（面向用户的一句话，说"少了什么能力"而不是"这是个什么包"）。
+   *  面板只在 status !== "ok" 时展示——用户要知道的不是包名，是"不装的后果"。 */
+  impact?: string;
   /** status=unknown 时的原因（面向用户的中文） */
   detail?: string;
   fix: EnvFix;

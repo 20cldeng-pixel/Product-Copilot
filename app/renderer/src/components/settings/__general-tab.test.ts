@@ -32,7 +32,7 @@ vi.mock("../../stores/settings-store", () => {
 vi.mock("../ui/ConfirmDialog", () => ({ confirmDialog: async (): Promise<boolean> => true }));
 
 const { GeneralTab } = await import("./GeneralTab");
-const { EnvPanel, onboardingHint } = await import("../env/EnvPanel");
+const { EnvPanel, onboardingHint, nextAutoAction } = await import("../env/EnvPanel");
 const { EnvRetestButton } = await import("../env/EnvRetestButton");
 const { shouldPersistTavilyKey } = await import("./TavilyKeySection");
 
@@ -74,31 +74,85 @@ describe("「重新检测」全项目只有一处", () => {
 
 describe("引导步骤副标题：检查完就不再说「正在检查」", () => {
   const hint = onboardingHint;
+  const base = { probing: false, probeFailed: false, hasReport: true, requiredBroken: 0, optionalBroken: 0, busy: false, handedOff: false };
 
   it("探测进行中（含首帧还没拿到结果）→ 说正在检查", () => {
-    expect(hint({ probing: true, probeFailed: false, hasReport: false, brokenCount: 0 })).toContain("正在为你检查");
-    expect(hint({ probing: false, probeFailed: false, hasReport: false, brokenCount: 0 })).toContain("正在为你检查");
+    expect(hint({ ...base, probing: true, hasReport: false })).toContain("正在为你检查");
+    expect(hint({ ...base, hasReport: false })).toContain("正在为你检查");
   });
 
   it("无需依赖 → 提醒检查完毕 + 继续下一步，且**不再出现「正在为你检查」**", () => {
-    const t = hint({ probing: false, probeFailed: false, hasReport: true, brokenCount: 0 });
+    const t = hint(base);
     expect(t).toContain("检查完毕");
     expect(t).toContain("下一步");
     expect(t).not.toContain("正在为你检查");
   });
 
-  it("有依赖要装 → 说清有几项需要处理，同样不再说「正在检查」", () => {
-    const t = hint({ probing: false, probeFailed: false, hasReport: true, brokenCount: 2 });
-    expect(t).toContain("检查完毕");
+  it("有必装项要装 → 说清有几项必须处理，同样不再说「正在检查」", () => {
+    const t = hint({ ...base, requiredBroken: 2 });
     expect(t).toContain("2 项");
+    expect(t).toContain("必须处理");
     expect(t).not.toContain("正在为你检查");
   });
 
   it("探测失败 → 不谎报「检查完毕」（那是「检测失败」，不是「没问题」）", () => {
-    const t = hint({ probing: false, probeFailed: true, hasReport: false, brokenCount: 0 });
+    const t = hint({ ...base, probeFailed: true, hasReport: false });
     expect(t).toContain("检查没能完成");
     expect(t).not.toContain("检查完毕");
     expect(t).not.toContain("正在为你检查");
+  });
+
+  it("自动安装中 → 说清在装什么、并提示授权窗口（别让用户以为卡住）", () => {
+    const t = hint({ ...base, busy: true, requiredBroken: 2 });
+    expect(t).toContain("正在自动安装");
+    expect(t).toContain("授权");
+    expect(t).not.toContain("正在为你检查");
+  });
+
+  it("就绪并已交回宿主 → 改口为「正在进入下一步」（否则看起来像卡住）", () => {
+    const t = hint({ ...base, handedOff: true });
+    expect(t).toContain("正在进入下一步");
+  });
+
+  it("只有可选组件缺 → 不谎报「必须处理」，说明可以继续", () => {
+    const t = hint({ ...base, optionalBroken: 1 });
+    expect(t).toContain("已就绪");
+    expect(t).toContain("继续");
+    expect(t).toContain("可选");
+    expect(t).not.toContain("必须处理");
+  });
+});
+
+describe("进入环境检测页即自动安装（决策纯函数）", () => {
+  const s = {
+    autoFix: true, hasReport: true, probing: false, installing: false,
+    installableCount: 0, fixableCount: 0, done: new Set<"pkg" | "userns">(),
+  };
+
+  it("探测完且有可自动安装项 → 自动装（无需点击）", () => {
+    expect(nextAutoAction({ ...s, installableCount: 3 })).toBe("pkg");
+    expect(nextAutoAction({ ...s, fixableCount: 1 })).toBe("userns");
+  });
+
+  it("没探测完 / 探测在飞 / 正在装 / 未开启自动 → 不动", () => {
+    expect(nextAutoAction({ ...s, installableCount: 2, hasReport: false })).toBeNull();
+    expect(nextAutoAction({ ...s, installableCount: 2, probing: true })).toBeNull();
+    expect(nextAutoAction({ ...s, installableCount: 2, installing: true })).toBeNull();
+    expect(nextAutoAction({ ...s, installableCount: 2, autoFix: false })).toBeNull();
+  });
+
+  it("同一种动作**只自动跑一次** —— 用户拒绝授权框/装失败后不再自动弹，改由用户点", () => {
+    expect(nextAutoAction({ ...s, installableCount: 2, done: new Set(["pkg"]) })).toBeNull();
+    expect(nextAutoAction({ ...s, fixableCount: 1, done: new Set(["userns"]) })).toBeNull();
+  });
+
+  it("平台没有自动安装通道（只能手工）→ 不给自动动作，界面留自助命令", () => {
+    expect(nextAutoAction({ ...s, installableCount: 0, fixableCount: 0 })).toBeNull();
+  });
+
+  it("先装包、装完仍被策略挡时才轮到 userns 自动修复（不会同一轮抢跑）", () => {
+    expect(nextAutoAction({ ...s, installableCount: 1, fixableCount: 1 })).toBe("pkg");
+    expect(nextAutoAction({ ...s, installableCount: 0, fixableCount: 1 })).toBe("userns");
   });
 });
 
