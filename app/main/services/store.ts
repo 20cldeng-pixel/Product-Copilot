@@ -269,10 +269,26 @@ export class Store {
     return this.getSettings().lastProjectId ?? null;
   }
 
+  /**
+   * 记录当前项目，并顺带刷新它在 projects.json 里的 lastOpenedAt（「打开项目」弹窗按此排序）。
+   * 合并写在同一个方法里是因为**所有打开项目的入口最终都收敛到这里**：
+   * 弹窗选中/切换项目 → 渲染层 settings:set-last-project；新窗口打开 → window:open-project。
+   * 单开一条 project:touch IPC 等于让两个入口各写一次同一件事。
+   */
   setLastProjectId(projectId: string): void {
     const s = this.getSettings();
     s.lastProjectId = projectId;
     this.writeEmSettings(s);
+    this.touchProject(projectId);
+  }
+
+  /** 刷新项目最近打开时间。项目已不在列表中（被删/被过滤）时静默跳过。 */
+  private touchProject(id: string): void {
+    const projects = this.getProjects();
+    const idx = projects.findIndex((p) => p.id === id);
+    if (idx === -1) return;
+    projects[idx] = { ...projects[idx], lastOpenedAt: new Date().toISOString() };
+    this.saveProjects(projects);
   }
 
   /** Write EM-only fields to ~/.easymint/settings.json */

@@ -28,6 +28,12 @@ function getTemplateDir(): string {
   return path.resolve(__dirname, "..", "..", "..", "template");
 }
 
+/** lastOpenedAt → 时间戳。缺失/非法（旧数据、手改过的 json）一律当 0 排到最后，避免 NaN 打乱顺序 */
+export function openedAt(p: { lastOpenedAt?: string }): number {
+  const t = Date.parse(p.lastOpenedAt ?? "");
+  return Number.isNaN(t) ? 0 : t;
+}
+
 export class ProjectService {
   private templateDir: string;
 
@@ -45,7 +51,10 @@ export class ProjectService {
       .map((p) => ({
         ...p,
         exists: fs.existsSync(p.path),
-      }));
+      }))
+      // 最近打开在前（打开项目弹窗的默认顺序）。排序放这里，UI 与其它调用方共用同一顺序。
+      // sort 稳定(ES2019+)：lastOpenedAt 相同的按 projects.json 原有顺序，不会来回抖
+      .sort((a, b) => openedAt(b) - openedAt(a));
   }
 
   create(opts: { name: string; path: string }): Project {
