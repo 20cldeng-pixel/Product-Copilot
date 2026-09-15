@@ -213,7 +213,7 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
         type: "object" as const,
         properties: {
           query: { type: "string" as const },
-          max_results: { type: "number" as const, description: "返回结果条数（1-50，默认 5）" },
+          max_results: { type: "number" as const, description: "返回结果条数（1-20，默认 5）" },
         },
         required: ["query"],
       },

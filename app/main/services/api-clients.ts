@@ -180,7 +180,10 @@ export async function webSearch(args: { query: string; max_results?: number }): 
   const tavilyKey = keys.TAVILY_API_KEY;
   if (!tavilyKey) return "TAVILY_API_KEY 未配置，请在设置→模型能力增强→联网搜索中填写 API Key。";
   if (!args.query) return "搜索查询不能为空。";
-  const maxResults = Math.min(Math.max(Math.floor(Number(args.max_results) || 5), 1), 50);
+  // 上限 20 取自 Tavily 官方 Search 文档的 max_results 取值范围（0–20，默认值文档标 10、
+  // 最佳实践页标 5，我们一律显式传值故不受其影响）。此前写 50 会让超范围的请求被拒
+  // （表现成「搜索失败 (400)」而不是自动截断）。下限 1 与默认 5 保持原语义。
+  const maxResults = Math.min(Math.max(Math.floor(Number(args.max_results) || 5), 1), 20);
   try {
     const resp = await fetch("https://api.tavily.com/search", {
       method: "POST",
