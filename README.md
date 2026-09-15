@@ -146,14 +146,14 @@ EasyMint 与主流 AI 编程工具的 skill 生态互通，已有的技能资产
 
 ## AI 供应商
 
-内置 **Anthropic、OpenAI、DeepSeek、智谱 GLM（Z.AI）、Kimi、MiniMax、Qwen、小米 MiMo、xAI、Google Gemini、OpenAI Codex、OpenCode** 等主流平台预设，选中即可用；也支持自定义供应商（OpenAI / Anthropic 兼容协议）；可同时配置多个供应商并随时切换；**视觉模型独立配置**（图片理解、界面验证等场景可选专用模型）。
+内置 **Anthropic、OpenAI、OpenAI Codex、GitHub Copilot、OpenRouter、DeepSeek、智谱 GLM（Z.AI）、Kimi、MiniMax、Qwen、小米 MiMo、xAI、Google Gemini、OpenCode** 等主流平台预设，选中即可用；也支持自定义供应商（OpenAI / Anthropic 兼容协议）；可同时配置多个供应商并随时切换；**视觉模型独立配置**（图片理解、界面验证等场景可选专用模型）。
 
-两种接入方式，按供应商二选一：
+两种接入方式，按供应商二选一（部分供应商两种都支持，可在设置里切换）：
 
-- **账号登录（浏览器授权）**——不用自备 API Key，在应用内点登录、浏览器里完成授权即可：**Anthropic**（订阅用量按 token 计费，不占套餐额度）、**OpenAI Codex**（用 ChatGPT Plus / Pro 订阅账号登录）、**Kimi Coding**、**xAI**
+- **账号登录（浏览器授权）**——不用自备 API Key，在应用内点登录、浏览器里完成授权即可：**Anthropic**（订阅用量按 token 计费，不占套餐额度）、**OpenAI Codex**（用 ChatGPT Plus / Pro 订阅账号登录）、**GitHub Copilot**（订阅账号）、**OpenRouter**、**Kimi Coding**、**xAI**
 - **API Key**——其余内置供应商（**OpenAI**、DeepSeek、智谱 GLM / Z.AI、MiniMax、Qwen、Google Gemini、小米 MiMo、OpenCode 等）与自定义供应商；密钥与账号凭据一样只存在本机
 
-> 某家供应商支持哪种接入方式，由内置引擎的能力声明决定——设置页只在支持账号登录的供应商上显示登录入口。**注意「OpenAI」与「OpenAI Codex」是两个独立预设**：前者是 OpenAI 官方 API（`api.openai.com`），只能填密钥；后者的接口对应 Codex 订阅（`chatgpt.com/backend-api`），只能账号登录。选哪个预设，决定你能用哪种方式接入。
+> 某家供应商支持哪种接入方式，由内置引擎的能力声明决定——设置页的「认证方式」分段只在**两种都支持**的供应商上出现，只支持一种的不会给你一个填了也没用的输入框。**注意「OpenAI」与「OpenAI Codex」是两个独立预设**：前者是 OpenAI 官方 API（`api.openai.com`），只能填密钥；后者的接口对应 Codex 订阅（`chatgpt.com/backend-api`），只能账号登录。选哪个预设，决定你能用哪种方式接入。
 
 ## 联网搜索
 
