@@ -279,7 +279,8 @@ export async function fixUserns(
     const report = await probe();
     const userns = report.items.find((i) => i.id === "userns");
     if (userns?.status === "ok") {
-      onEvent({ phase: "done", index: total, total, message: "已允许 bubblewrap 创建隔离空间" });
+      // 进度文案不点包名（用户 2026-09-15：安装动画上"不要显示具体的在安装什么依赖"）
+      onEvent({ phase: "done", index: total, total, message: "已允许创建隔离空间" });
       return { ok: true, report, exitCode };
     }
     const reason = failReason

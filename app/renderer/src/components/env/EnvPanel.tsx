@@ -144,6 +144,10 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   /** 操作区是否有内容：设置页在"全部就绪"时不该留一行空白 */
   const hasActions = installable.length > 0 || fixable.length > 0 || installing
     || sandboxOffAvailable || sandboxDisabled;
+  /** 检测/安装进行中只留「标题 + 动画」（用户 2026-09-15 定："不要显示具体的在安装什么依赖，
+   *  一个标题，一个动画"）。此时列出依赖名与状态既没意义、又抢动画的视线；真正要用户处理的情形
+   *  （缺组件、被系统策略拦）都只在这两件事做完之后才成立。 */
+  const busy = probing || installing;
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
@@ -246,63 +250,62 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
         </>
       )}
 
-      <div className="bg-surface-alt rounded-[var(--radius-lg)] overflow-hidden">
-        {probeFailed && (
-          <div className="px-4 py-3 text-xs text-danger">检测失败，可点「重新检测」重试</div>
-        )}
-        {!probeFailed && items.length === 0 && (
-          <div className="px-4 py-3 text-xs text-text-muted">无需额外组件</div>
-        )}
-        {items.map((item) => {
-          const st = statusText(item.status);
-          return (
-            <div key={item.id} className="px-4 py-2.5 em-hover-row transition-shadow">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-text-secondary">{item.label}</span>
-                <span className={`text-xs ${st.cls}`}>
-                  {item.status === "ok" && item.version ? item.version : st.text}
-                </span>
-              </div>
-              {/* 影响说明放最前：用户要先知道"不装会怎样"，再看状态原因与命令 */}
-              {item.status !== "ok" && item.impact && (
-                <p className="mt-1 text-[length:var(--text-xs)] text-text-secondary leading-relaxed">{item.impact}</p>
-              )}
-              {item.detail && (
-                <p className="mt-1 text-[length:var(--text-xs)] text-text-muted leading-relaxed break-all">{item.detail}</p>
-              )}
-              {/* 自助命令：装不了/被挡时唯一的出路（必须能复制，不能只有"一键"）。
-                  可能是多行步骤（用 \n 分隔）——按多行展示，别用 truncate 截掉后半截。 */}
-              {item.status !== "ok" && item.fix.manual?.command && (
-                <div className="mt-1.5 flex items-start gap-1">
-                  <code className="flex-1 min-w-0 text-[length:var(--text-xs)] leading-relaxed text-text-secondary bg-surface px-2 py-1 rounded-[var(--radius-lg)] select-all whitespace-pre-wrap break-all">
-                    {item.fix.manual.command}
-                  </code>
-                  <button
-                    className="shrink-0 px-1.5 py-1 rounded-[var(--radius-lg)] text-[length:var(--text-xs)] text-text-secondary hover:text-accent em-hover-control transition-all"
-                    onClick={() => void copy(item.fix.manual!.command!)}
-                  >
-                    {copied === item.fix.manual.command ? "已复制" : "复制"}
-                  </button>
+      {!busy && (
+        <div className="bg-surface-alt rounded-[var(--radius-lg)] overflow-hidden">
+          {probeFailed && (
+            <div className="px-4 py-3 text-xs text-danger">检测失败，可点「重新检测」重试</div>
+          )}
+          {!probeFailed && items.length === 0 && (
+            <div className="px-4 py-3 text-xs text-text-muted">无需额外组件</div>
+          )}
+          {items.map((item) => {
+            const st = statusText(item.status);
+            return (
+              <div key={item.id} className="px-4 py-2.5 em-hover-row transition-shadow">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">{item.label}</span>
+                  <span className={`text-xs ${st.cls}`}>
+                    {item.status === "ok" && item.version ? item.version : st.text}
+                  </span>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                {/* 影响说明放最前：用户要先知道"不装会怎样"，再看状态原因与命令 */}
+                {item.status !== "ok" && item.impact && (
+                  <p className="mt-1 text-[length:var(--text-xs)] text-text-secondary leading-relaxed">{item.impact}</p>
+                )}
+                {item.detail && (
+                  <p className="mt-1 text-[length:var(--text-xs)] text-text-muted leading-relaxed break-all">{item.detail}</p>
+                )}
+                {/* 自助命令：装不了/被挡时唯一的出路（必须能复制，不能只有"一键"）。
+                    可能是多行步骤（用 \n 分隔）——按多行展示，别用 truncate 截掉后半截。 */}
+                {item.status !== "ok" && item.fix.manual?.command && (
+                  <div className="mt-1.5 flex items-start gap-1">
+                    <code className="flex-1 min-w-0 text-[length:var(--text-xs)] leading-relaxed text-text-secondary bg-surface px-2 py-1 rounded-[var(--radius-lg)] select-all whitespace-pre-wrap break-all">
+                      {item.fix.manual.command}
+                    </code>
+                    <button
+                      className="shrink-0 px-1.5 py-1 rounded-[var(--radius-lg)] text-[length:var(--text-xs)] text-text-secondary hover:text-accent em-hover-control transition-all"
+                      onClick={() => void copy(item.fix.manual!.command!)}
+                    >
+                      {copied === item.fix.manual.command ? "已复制" : "复制"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* 进度：只表达"在忙"，不假装精确百分比（真正的进展由下面那行阶段文案说）。
-          用户 2026-09-15 定稿：光带**不柔化**（硬边）且**比轨道框细**（4px，见下），
-          底衬轨道是一条与光带垂直居中的 1px 细线（`bg-divider`）——往复本身是唯一的视觉主体。 */}
+          用户 2026-09-15 定稿：光带**不柔化**（硬边）、4px 厚 × 46% 长，**底衬轨道彻底去掉**
+          （不再画任何线或色块）——于是"往复"是唯一的视觉主体，这是个装饰性动画，不是进度条。
+          容器同时是裁剪框（`overflow-hidden` 让光带从两端出入干净），故它就等于光带高度。 */}
       {installing && (
         <div className="mt-3">
-          <div className="relative h-1.5 w-full overflow-hidden">
-            {/* 细线轨道：1px，与光带垂直居中对齐 */}
-            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-divider" />
-            {/* 光带：4px 厚 × 46% 宽（上下各留 1px，故 `top-px` 即居中；长度 2026-09-15 用户要求整体 +20%）。
-                这里用 top-px 而非 -translate-y-1/2 —— 动画的 keyframes 写的是 transform: translateX，
-                再叠一个 translate-y 工具类会与之抢同一个属性（谁赢取决于生成顺序）。
-                背景（含两端渐隐的"拖尾"）在 index.css 的 .env-sweep-glow 里，故此处不能加 bg-accent。 */}
-            <div className="env-sweep-glow absolute left-0 top-px h-1 w-[46%] rounded-[50%]" />
+          <div className="relative h-1 w-full overflow-hidden">
+            {/* 背景（含两端渐隐的"拖尾"）在 index.css 的 .env-sweep-glow 里，故此处不能加 bg-accent。
+                也不能加 -translate-y-1/2 之类：动画 keyframes 写的是 transform: translateX，会抢同一属性。 */}
+            <div className="env-sweep-glow absolute inset-y-0 left-0 w-[46%] rounded-[50%]" />
           </div>
           <p className="mt-1.5 text-[length:var(--text-xs)] text-text-muted">
             {progress?.message ?? "正在准备安装…"}
