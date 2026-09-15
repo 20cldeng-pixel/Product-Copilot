@@ -9,7 +9,7 @@
  *   （用户 2026-09-15 反馈：此前只说缺什么、没说影响，提醒不够明确）。
  * - 实在装不了才提供「关闭沙盒运行」，且必须先说清失去什么、保留什么，并说明随时能开回来（安抚）。
  */
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from "react";
 import { confirmDialog } from "../ui/ConfirmDialog";
 import { useSettingsStore } from "../../stores/settings-store";
 
@@ -82,6 +82,17 @@ export function workScreenVisible(s: {
  *  至少显示 5 秒（不然我白做了）"。没有它，在本来就什么都不用装的机器上，探测几百毫秒就结束，
  *  动画一闪而过甚至来不及出现。 */
 const MIN_WORK_SCREEN_MS = 5000;
+
+/**
+ * 「本次运行里，这个自动动作是否已经自动跑过一次」——
+ * ⚠️ **刻意放在模块级，不能用组件内的 `useRef`**（2026-09-15 定稿复查时修掉的缺陷）：
+ * 面板会因用户点「返回」而卸载、再进来时重新挂载，`useRef` 随之重置，于是**又自动弹一次系统
+ * 授权框**——而"失败或被拒授权后不再自动重试"（否则反复弹 UAC）是 nextAutoAction 的明确意图。
+ * 模块级 Set 的生命周期＝渲染进程，语义正好是"这次运行里别再自动动第二次"。
+ * 用户随后手动点按钮不受影响（按钮文案会据此显示"重试安装"）。
+ * 设置页传 autoFix=false，本集合对它无作用。
+ */
+const autoDoneOnce = new Set<"pkg" | "userns">();
 
 /**
  * 「自动安装」的一次性决策（纯函数，便于单测）：返回这一轮该自动触发的动作。
@@ -190,6 +201,7 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
+    autoDoneOnce.add("pkg"); // 手动点过一次也算——失败后按钮据此改口"重试安装"，别让用户以为是第一次
     setInstalling(true);
     setResult(null);
     try {
@@ -227,16 +239,15 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   // ── 自动安装（autoFix=true，仅引导流程）──────────────────────────────────────
   // 用户 2026-09-15 要求：「进入检测页面就自动检测和安装，不需要用户点击」。
   // 决策交给纯函数 nextAutoAction（含"每种动作只自动跑一次"），这里只负责执行。
-  // 不写依赖数组：每次渲染都判一次，靠 autoDone 去重（写数组反而要在 deps 里塞一堆派生量）
-  const autoDone = useRef<Set<"pkg" | "userns">>(new Set());
+  // 不写依赖数组：每次渲染都判一次，靠 autoDoneOnce 去重（写数组反而要在 deps 里塞一堆派生量）
   useEffect(() => {
     const action = nextAutoAction({
       autoFix, hasReport: report !== null, probeFailed, probing, installing, sandboxDisabled,
       installableCount: installable.length, fixableCount: fixable.length,
-      done: autoDone.current,
+      done: autoDoneOnce,
     });
     if (!action) return;
-    autoDone.current.add(action);
+    autoDoneOnce.add(action);
     void (action === "pkg" ? install() : fixUserns());
   });
 
@@ -297,7 +308,7 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
     <div className={variant === "onboarding" ? "w-full max-w-[540px]" : ""}>
       {variant === "onboarding" && (
         <>
-          <h1 className="text-xl font-semibold text-center mb-1">准备运行环境</h1>
+          <h1 className="text-xl font-semibold text-center mb-1 relative -top-[10px]">准备运行环境</h1>
           {/* 检测/安装进行中**连副标题也不显示**（用户 2026-09-15 逐条点名去掉了"正在为你检查…"
               与阶段文案）：忙的时候只有标题 + 动画，任何文字都不抢它。 */}
           {hint !== null && (
@@ -371,21 +382,32 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
 
       {/* 安装动画：**只有这一条动画，不配任何文字**（用户 2026-09-15："不要显示具体的在安装什么
           依赖，一个标题，一个动画"，随后又点名去掉了阶段文案 —— 所以既没有依赖名，也没有"正在…"那行）。
-          形状：硬边、4px 厚 × 46% 长、两端渐隐、**无轨道**（装饰性动画，不是进度条）。
-          容器就是裁剪框（`overflow-hidden` 让光带从两端出入干净），高度与光带一致。
+          形状：硬边、4px 厚 × 300px 长、两端渐隐、**无轨道线**（装饰性动画，不是进度条）。
+          容器就是裁剪框（`overflow-hidden` 让光带贴边即返时干净收住），高度与光带一致。
           主进程仍在发 `env:progress` 阶段事件（preload 也仍暴露 onProgress），只是界面不再显示。 */}
       {working && (
         /* mt-[26px] = 原来的 mt-4(16px) + 用户 2026-09-15 要求的 10px。
-           注意它和标题之间还有 h1 的 mb-1(4px)，故实际间距 30px。 */
-        <div className="mt-[26px]">
-          {/* 光带**全程在容器内往返**（用户 2026-09-15：「不要让动画线条消失，在一个背景内完整移动，
-              不超出边界」）：行程与宽度都由 index.css 的 `@keyframes envSweep` 与 `.env-sweep-glow`
-              负责（宽度也放在那边，因为行程是按它算的）。这里的 `overflow-hidden` 只是兜底，
-              正常一帧都不会裁到像素。 */}
-          <div className="relative h-1 w-full overflow-hidden">
-            {/* 颜色、宽度、白芯与两端渐隐都在 index.css 的 .env-sweep-glow 里（那里用 mask 裁水平渐隐），
-                故此处不能加 bg-accent、也不能再加 w-*。也不能加 -translate-y-1/2 之类：动画 keyframes
-                写的是 transform: translateX，会抢同一属性。`rounded-[50%]` 给光带一个胶囊轮廓。 */}
+           注意它和标题之间还有 h1 的 mb-1(4px)，故实际间距 30px。
+           另有 `relative top-[20px]`：用户要求「光带下移10px」后追加「光带再下移10px」（同期标题上移
+           10px，见上面 h1 的 `-top-[10px]`），故累计 20px。用 position 位移而不是改 margin/gap ——
+           这层是 justify-center 的 flex 容器，改 margin 会让整块重新居中、标题被一起带着走，
+           达不到"若干项各自上下"的效果。连续微调时也可以把两个 10px 合并成一个值（现为 20px）。 */
+        <div className="mt-[26px] flex justify-center relative top-[20px]">
+          {/* 轨道 900px（用户 2026-09-15 先给 800，随后单独调到 900；光带 300 不变）→ 行程 600px。
+              **它比本面板的内容宽（540px）宽，这不是笔误** —— 面板被根节点 `max-w-[540px]` 框住，
+              而光带要有 600px 的行程，就必须让轨道比内容宽。靠这层 `flex justify-center` 溢出居中：
+              540/2 与 900/2 差 180px，于是轨道相对页面左右对称地各溢出 180px（主窗口默认 1400 宽，
+              内容区可用 1336px；即使拖到最小宽 1024 也还有 960px，900 都在其内，不会被 #app-shell 裁）。
+              `shrink-0` 必需：flex 项默认可收缩，否则它会被压回 540px，行程白加。
+              宽度上限（`max-width: calc(100vw - 64px)`，与引导页内容区的 px-8 对齐）写在
+              index.css 的 `.sweep-track` 里，与行程公式同处，见那里的注释。
+              行程与光带宽度都由 index.css 的 `@keyframes envSweep` 与 `.env-sweep-glow` 负责，
+              这里的 `overflow-hidden` 只是兜底，正常一帧都不会裁到像素。 */}
+          <div className="sweep-track relative h-1 w-[900px] shrink-0 overflow-hidden">
+            {/* 颜色、宽度（300px）、白芯与两端渐隐都在 index.css 的 .env-sweep-glow 里（那里用 mask 裁
+                水平渐隐），故此处不能加 bg-accent、也不能再加 w-*。也不能加 -translate-y-1/2 之类：
+                动画 keyframes 写的是 transform: translateX，会抢同一属性。`rounded-[50%]` 给光带一个
+                胶囊轮廓。行程 = `100cqw - 100%`（轨道宽 − 光带宽）在 keyframes 里自动算，此处无需配合。 */}
             <div className="env-sweep-glow absolute inset-y-0 left-0 rounded-[50%]" />
           </div>
         </div>
@@ -430,7 +452,7 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
               {/* 自动装过一次后改口为"重试"：否则用户会以为是第一次，不知道自己刚才拒绝过授权框 */}
               {installing
                 ? "正在安装…"
-                : `${autoDone.current.has("pkg") ? "重试安装" : "一键安装"} ${installable.length} 项`}
+                : `${autoDoneOnce.has("pkg") ? "重试安装" : "一键安装"} ${installable.length} 项`}
             </button>
           )}
           {installing && (
