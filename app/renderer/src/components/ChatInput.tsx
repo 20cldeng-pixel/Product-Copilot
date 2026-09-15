@@ -75,7 +75,7 @@ function AttachPreview_({ attaches, setAttaches, onPreview }: AttachPreviewProps
           <img src={a.dataUrl} className="w-full h-full object-contain transition-opacity group-hover:opacity-85" alt={a.name} />
           <button
             type="button"
-            className="absolute top-0 right-0 w-5 h-5 rounded-tr-[var(--radius-lg)] border-l border-b border-border bg-surface-alt/95 text-text-secondary hover:text-danger transition-colors flex items-center justify-center text-[length:var(--text-11)] leading-none"
+            className="absolute top-0 right-0 w-5 h-5 rounded-tr-[var(--radius-lg)] bg-surface-alt/95 text-text-secondary hover:text-danger transition-colors flex items-center justify-center text-[length:var(--text-11)] leading-none"
             onClick={(e) => removeAttach(i, e)}
           >✕</button>
         </div>
@@ -85,7 +85,7 @@ function AttachPreview_({ attaches, setAttaches, onPreview }: AttachPreviewProps
           <span className="truncate w-full text-center text-[length:var(--text-11)] text-text-primary leading-tight">{a.name}</span>
           <button
             type="button"
-            className="absolute top-0 right-0 w-5 h-5 rounded-tr-[var(--radius-lg)] border-l border-b border-border bg-surface-alt/95 text-text-secondary hover:text-danger transition-colors flex items-center justify-center text-[length:var(--text-11)] leading-none"
+            className="absolute top-0 right-0 w-5 h-5 rounded-tr-[var(--radius-lg)] bg-surface-alt/95 text-text-secondary hover:text-danger transition-colors flex items-center justify-center text-[length:var(--text-11)] leading-none"
             onClick={(e) => removeAttach(i, e)}
           >✕</button>
         </div>

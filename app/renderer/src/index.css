@@ -11,7 +11,6 @@
   --color-overlay: rgb(0 0 0 / 0.5);
   /* 液态玻璃(角色滑动选择器材质):轨道为白玻璃;滑块亮色灰白半透明,暗色灰白玻璃 */
   --color-glass-track: var(--color-input-card);
-  --color-glass-track-border: rgba(255, 255, 255, 0.72);
   --color-glass-slider: rgba(220, 220, 220, 0.42);
   --color-glass-slider-border: rgba(255, 255, 255, 0.9);
   /* 角色选择器文字态:亮色选中=主色黑、未选中=次级灰;暗色选中=白、未选中=灰(见 dark 块覆盖) */
@@ -149,7 +148,6 @@ html[data-platform="win32"] {
   --color-overlay: rgba(0, 0, 0, 0.5);
   /* 液态玻璃(角色滑动选择器材质):轨道为白玻璃;滑块亮色灰白半透明,暗色灰白玻璃 */
   --color-glass-track: var(--color-input-card);
-  --color-glass-track-border: rgba(255, 255, 255, 0.72);
   --color-glass-slider: rgba(220, 220, 220, 0.42);
   --color-glass-slider-border: rgba(255, 255, 255, 0.9);
   /* 角色选择器文字态:亮色选中=主色黑、未选中=次级灰;暗色选中=白、未选中=灰(见 dark 块覆盖) */
@@ -354,7 +352,6 @@ html[data-platform="win32"] {
   --color-overlay: rgba(0, 0, 0, 0.85);
   /* 液态玻璃(角色滑动选择器材质):暗色玻璃透明度更低,靠高光描边塑形 */
   --color-glass-track: rgba(255, 255, 255, 0.06);
-  --color-glass-track-border: rgba(255, 255, 255, 0.12);
   --color-glass-slider: rgba(255, 255, 255, 0.16);
   --color-glass-slider-border: rgba(255, 255, 255, 0.2);
   /* 角色选择器文字态(暗色):选中=白、未选中=灰 */
