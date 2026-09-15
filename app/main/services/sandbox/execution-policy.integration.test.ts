@@ -40,7 +40,7 @@ describe("执行策略真实 I/O", () => {
     // 执行层靠它收尾，退回 undefined 就等于整条清理链路空转（见 __sandbox-lease.test.ts）
     expect(typeof wrapped.release).toBe("function");
     const result = run(wrapped.command, wrapped.env);
-    return { result, release: (): Promise<void> => wrapped.release?.() ?? Promise.resolve() };
+    return { result, command: wrapped.command, release: (): Promise<void> => wrapped.release?.() ?? Promise.resolve() };
   }
 
   it("标准模式由 OS 沙盒阻止工作区外写入，完全访问允许同一普通目标", async () => {
@@ -113,10 +113,20 @@ describe("执行策略真实 I/O", () => {
     expect(initialized).toEqual({ ok: true });
     const protectedFile = path.join(workspace, ".mcp.json");
     for (const mode of ["standard", "full"] as const) {
-      const { result, release } = await spawnSandboxed(
+      // 诊断（临时）：SRT_DEBUG 让 srt 把自己的 deny 处理决策打到 stderr（[SandboxDebug] 前缀）
+      process.env.SRT_DEBUG = "1";
+      const { result, command, release } = await spawnSandboxed(
         `printf '%s' '{"mcpServers":{}}' > ${JSON.stringify(protectedFile)}`,
         mode,
       );
+      delete process.env.SRT_DEBUG;
+
+      const state = (): string => (fs.existsSync(protectedFile) ? `${fs.statSync(protectedFile).size}B` : "不存在");
+      console.log(`[diag] mode=${mode} 执行后=${state()} status=${result.status}`);
+      console.log(`[diag] stderr=${String(result.stderr).slice(0, 200).replace(/\n/g, " | ")}`);
+      const at = command.indexOf(".mcp.json");
+      console.log(`[diag] 命令中的 .mcp.json 片段: ${at >= 0 ? command.slice(Math.max(0, at - 150), at + 40) : "（命令里根本没提到 .mcp.json）"}`);
+
       expect(result.status).not.toBe(0);
 
       // ① 安全属性：内容没被写进去。bwrap 为「不存在的 deny 路径」做 --ro-bind 时会在宿主先创建
