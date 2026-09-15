@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  APPARMOR_PROFILES_PACKAGE, buildInstallArgv, buildPackageArgv, formatCommand, manualInstallCommand,
-  parseOsRelease, readDistro, resolveInstaller, resolveUsernsProfileSource, usernsCopyArgv,
-  usernsFixAvailable, usernsLoadArgv, usernsManualCommand, usernsProfileInstalled,
-  windowsInstallCommand, type Installer,
+  APPARMOR_PROFILES_PACKAGE, buildInstallArgv, buildPackageArgv, distroManualInstallCommand,
+  formatCommand, hasDistroManualCommand, manualInstallCommand, parseOsRelease, readDistro,
+  resolveInstaller, resolvePkexec, resolveUsernsProfileSource, usernsCopyArgv, usernsFixAvailable,
+  usernsLoadArgv, usernsManualCommand, usernsProfileInstalled, windowsInstallCommand, type Installer,
 } from "./plan";
-import { prependPathDirs, probeBinary, probeEnvironment, type ProbeDeps } from "./probe";
+import { prependPathDirs, probeBinary, probeEnvironment, type ProbeDeps, type ProbeOutcome } from "./probe";
 
 /**
  * srt 打桩：Windows 分支的回归测试用（真实模块是 ESM-only、且要 Windows 才跑得起来）。
@@ -28,6 +28,7 @@ vi.mock("@anthropic-ai/sandbox-runtime", () => ({
 /** 与 plan.ts 的常量同源的钉子：命令与指引必须指向同一处 */
 const USERNS_DEST = "/etc/apparmor.d/bwrap-userns-restrict";
 const USERNS_SRC = "/usr/share/apparmor/extra-profiles/bwrap-userns-restrict";
+const PKEXEC = "/usr/bin/pkexec";
 const INSTALL_BIN = "/usr/bin/install";
 const PARSER = "/usr/sbin/apparmor_parser";
 const aSet = (...paths: string[]) => (p: string): boolean => paths.includes(p);
@@ -186,14 +187,21 @@ describe("userns 放行的一键修复：计划层（纯函数）", () => {
     expect(usernsLoadArgv(aSet())).toBeNull();
   });
 
-  it("能否一键修复：需要工具齐备，且模板已有或能装到", () => {
-    const bins = [INSTALL_BIN, PARSER];
+  it("能否一键修复：需要工具齐备（含 pkexec），且模板已有或能装到", () => {
+    const bins = [PKEXEC, INSTALL_BIN, PARSER];
     expect(usernsFixAvailable(apt, aSet(...bins, USERNS_SRC))).toBe(true);      // 模板已在
     expect(usernsFixAvailable(apt, aSet(...bins))).toBe(true);                  // 模板缺但能装
     expect(usernsFixAvailable(null, aSet(...bins))).toBe(false);                // 模板缺且无包管理器
-    expect(usernsFixAvailable(apt, aSet(INSTALL_BIN, USERNS_SRC))).toBe(false); // 缺解析器
-    expect(usernsFixAvailable(apt, aSet(PARSER, USERNS_SRC))).toBe(false);      // 缺 install
-    expect(usernsFixAvailable(apt, aSet(...bins, USERNS_SRC, USERNS_DEST))).toBe(false); // 已装好
+    expect(usernsFixAvailable(apt, aSet(INSTALL_BIN, PARSER, USERNS_SRC))).toBe(false); // 缺 pkexec
+    expect(usernsFixAvailable(apt, aSet(PKEXEC, PARSER, USERNS_SRC))).toBe(false);      // 缺 install
+    expect(usernsFixAvailable(apt, aSet(PKEXEC, INSTALL_BIN, USERNS_SRC))).toBe(false); // 缺解析器
+    expect(usernsFixAvailable(apt, aSet(PKEXEC, ...bins, USERNS_SRC, USERNS_DEST))).toBe(false); // 已装好
+  });
+
+  it("pkexec 是否存在：只看机器上那个能弹授权的程序，与发行版是否被认识无关", () => {
+    expect(resolvePkexec(aSet(PKEXEC))).toBe(PKEXEC);
+    expect(resolvePkexec(aSet("/bin/pkexec"))).toBe("/bin/pkexec"); // merged-usr 之外的老布局
+    expect(resolvePkexec(aSet())).toBeNull();                       // WSL / 精简镜像 / 无 polkit 桌面
   });
 
   it("手工指引：官方三步，且与命令指向同一份 profile / 同一个包", () => {
@@ -215,6 +223,55 @@ describe("userns 放行的一键修复：计划层（纯函数）", () => {
     ]);
     expect(buildPackageArgv([], apt)).toBeNull();
     expect(buildPackageArgv(["x"], null)).toBeNull();
+  });
+});
+
+/**
+ * 非主流发行版的手工命令（用户 2026-09-15：只给一句"请用你的包管理器安装…"等于没给）。
+ * 纪律与包名白名单同源：**逐个核过才写**——所以这里只钉 NixOS 这一家的形态。
+ */
+describe("非主流发行版的手工命令", () => {
+  it("NixOS 给可整块复制的单行命令（属性名在 nixpkgs 里逐个核过）", () => {
+    const cmd = distroManualInstallCommand({ id: "nixos" }, ["bwrap", "socat", "rg"]);
+    expect(cmd).toBe("nix profile install nixpkgs#bubblewrap nixpkgs#socat nixpkgs#ripgrep");
+    expect(cmd).not.toContain("\n"); // 界面整块当代码复制，混进散文就不能用了
+  });
+
+  it("未核过包名的发行版 → 不给命令（宁缺勿猜），由界面退回包名提示", () => {
+    expect(distroManualInstallCommand({ id: "someexotic" }, ["bwrap"])).toBeNull();
+    expect(hasDistroManualCommand({ id: "someexotic" })).toBe(false);
+    expect(hasDistroManualCommand({ id: "nixos" })).toBe(true);
+  });
+
+  it("含「不是装个包能解决」的项（userns）→ 整批不给命令", () => {
+    expect(distroManualInstallCommand({ id: "nixos" }, ["bwrap", "userns"])).toBeNull();
+    expect(distroManualInstallCommand({ id: "nixos" }, [])).toBeNull();
+  });
+
+  it("白名单外的任意串 id → 整批拒绝（渲染层不能借它注入包名）", () => {
+    expect(distroManualInstallCommand({ id: "nixos" }, ["bwrap; rm -rf /"])).toBeNull();
+  });
+});
+
+/**
+ * 一键通道的门槛是「这台机器上真有 pkexec」，不是「发行版被我们认识」。
+ * WSL / 精简镜像 / 没装 polkit 的桌面上 pkexec 不存在——按钮点了必失败（用户 2026-09-15 评估时抓出）。
+ */
+describe("Linux 环境探测：一键通道以 pkexec 存在为前提", () => {
+  const probeMissing = (): ProbeOutcome => ({ status: "missing" });
+  const itemsWith = async (exists: (p: string) => boolean) =>
+    (await probeEnvironment({ platform: "linux", exists, probe: probeMissing })).items;
+
+  it("有 pkexec → 给出 fix.auto（包名仍来自白名单）", async () => {
+    const bwrap = (await itemsWith((p) => p === PKEXEC)).find((i) => i.id === "bwrap");
+    expect(bwrap?.fix.auto).toEqual({ strategy: "pkg", packages: ["bubblewrap"] });
+    expect(bwrap?.detail ?? "").not.toContain("pkexec");
+  });
+
+  it("没有 pkexec → 不给 fix.auto，并把原因写进 detail（否则按钮凭空消失，用户只会以为功能坏了）", async () => {
+    const bwrap = (await itemsWith(() => false)).find((i) => i.id === "bwrap");
+    expect(bwrap?.fix.auto).toBeUndefined();
+    expect(bwrap?.detail).toContain("pkexec");
   });
 });
 

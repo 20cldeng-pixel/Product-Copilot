@@ -90,6 +90,28 @@ describe("依赖安装执行层", () => {
     expect(res.reason).toBe("安装已取消");
   });
 
+  it("Windows：用户关掉 UAC 弹窗 → 说成「你点了取消」，不冒充安装失败", async () => {
+    // srt 的 installWindowsSandboxAsync 在用户取消时**不抛异常**，而是返回 {cancelled:true}（exit 10）。
+    // 此前这个返回值被丢掉 → 复核后发现没装上 → 界面显示「安装未完成（退出码 null：…网络/镜像源不可达）」，
+    // 把用户自己的选择说成了故障（用户 2026-09-15 评估时抓出来的）。
+    const events: InstallEvent[] = [];
+    const res = await installDependencies(
+      ["winSandbox"],
+      (e) => events.push(e),
+      {
+        plan: { strategy: "winInstall" },
+        installWin: async () => ({ cancelled: true }),
+        logger: () => {},
+        probe: async () => report(["missing"], ["winSandbox"]),
+      },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain("取消");
+    // 断言要钉住"不再套用通用文案"：那两串只在 Linux/pkexec 的兜底分支里出现
+    expect(res.reason).not.toContain("null");
+    expect(res.reason).not.toContain("镜像源");
+  });
+
   it("只复核本次请求：Windows 可选 Git Bash 缺失不把 winSandbox 安装判成失败", async () => {
     const events: InstallEvent[] = [];
     const res = await installDependencies(
@@ -97,7 +119,7 @@ describe("依赖安装执行层", () => {
       (e) => events.push(e),
       {
         plan: { strategy: "winInstall" },
-        installWin: async () => {},
+        installWin: async () => ({ cancelled: false }),
         logger: () => {},
         probe: async () => ({
           items: [
@@ -186,7 +208,9 @@ function fixRun(opts: {
   };
 }
 
-const BINS = ["/usr/bin/install", "/usr/sbin/apparmor_parser"];
+/** 一台"能一键修复"的机器的文件系统：pkexec（弹授权）+ install + apparmor_parser 都要在 */
+const PKEXEC = "/usr/bin/pkexec";
+const BINS = [PKEXEC, "/usr/bin/install", "/usr/sbin/apparmor_parser"];
 
 describe("userns 一键修复：执行层", () => {
   it("模板已在：只跑 复制 + 加载 两条 pkexec 命令（都是绝对路径单命令）", async () => {
@@ -304,6 +328,17 @@ describe("userns 一键修复：执行层", () => {
     const child = spawnFn.mock.results[0]!.value as { kill: ReturnType<typeof vi.fn> };
     expect(child.kill).toHaveBeenCalled();
     expect(res.reason).toBe("已取消");
+  });
+
+  it("没有 pkexec（polkit 缺失的镜像）→ 不 spawn，直接给手工三步并说明原因", async () => {
+    // WSL / 精简镜像 / 没装 polkit 的桌面上没有 pkexec：此前界面照样给「一键修复」，
+    // 点了必然失败（而这类机器其实有 sudo，手工命令一贴就成）
+    const { promise, spawnFn } = fixRun({ existing: [...BINS.filter((p) => p !== PKEXEC), SRC], after: "blocked" });
+    const res = await promise;
+    expect(spawnFn).not.toHaveBeenCalled();
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain("pkexec");
+    expect(res.manualCommand).toContain("apparmor_parser -r");
   });
 
   it("非 Linux：直接拒绝，不做任何事", async () => {

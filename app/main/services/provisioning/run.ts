@@ -17,9 +17,10 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
-  APPARMOR_PROFILES_PACKAGE, buildInstallArgv, manualInstallCommand, readDistro, resolveInstaller,
-  resolveUsernsProfileSource, usernsCopyArgv, usernsInstallSourceArgv, usernsLoadArgv,
-  usernsManualCommand, usernsProfileInstalled, windowsInstallCommand, type Installer,
+  APPARMOR_PROFILES_PACKAGE, buildInstallArgv, distroManualInstallCommand, manualInstallCommand,
+  readDistro, resolveInstaller, resolvePkexec, resolveUsernsProfileSource, usernsCopyArgv,
+  usernsInstallSourceArgv, usernsLoadArgv, usernsManualCommand, usernsProfileInstalled,
+  windowsInstallCommand, type Installer,
 } from "./plan";
 import { cleanEnv, prependPathDirs, probeEnvironment, probePathDirs } from "./probe";
 import { packagedSrtVersion, srtWinSpawn } from "../sandbox/srt-win";
@@ -49,10 +50,15 @@ type Plan =
   | { strategy: "pkg"; argv: string[] | null; manualCommand?: string }
   | { strategy: "winInstall"; manualCommand?: string };
 
+/** Windows 一次性装配的结果：`cancelled` = 用户在 UAC 窗口点了取消（srt 的 exit 10） */
+export interface WinInstallOutcome {
+  cancelled: boolean;
+}
+
 export interface RunDeps {
   spawn: typeof spawn;
   /** Windows 一次性装配（srt 自提权）；单测注入用 */
-  installWin: () => Promise<void>;
+  installWin: () => Promise<WinInstallOutcome>;
   probe: () => Promise<EnvReport>;
   logger: (line: string) => void;
   /** 覆盖计划层（单测注入用；生产不传） */
@@ -75,11 +81,14 @@ export function outputTail(s: string, n = 400): string {
   return s.replace(/\u001b\[[0-9;]*m/g, "").trim().slice(-n);
 }
 
-async function defaultInstallWin(): Promise<void> {
+async function defaultInstallWin(): Promise<WinInstallOutcome> {
   const srt = await import("@anthropic-ai/sandbox-runtime");
   // 必须传 srtWin（srt 的 spawn 规格）：不传时 srt 内部 `opts.srtWin ?? resolveSrtWin()` 会抛
   // `no srt-win path configured` —— 见 sandbox/srt-win.ts
-  await srt.installWindowsSandboxAsync({ srtWin: srtWinSpawn(srt) });
+  const st = await srt.installWindowsSandboxAsync({ srtWin: srtWinSpawn(srt) });
+  // 「用户关掉了 UAC 弹窗」这件事 srt 是用返回值表达的（cancel 不抛异常）：必须把它接出来，
+  // 否则复核后发现没装上，只能笼统报"安装未完成（退出码 null）"，把用户自己的选择说成故障
+  return { cancelled: st?.cancelled === true };
 }
 
 /** 计划层：Linux 走包管理器白名单；Windows 走 srt 装配（手工指引见 plan.ts 的 windowsInstallCommand） */
@@ -95,10 +104,14 @@ async function computePlan(ids: readonly string[]): Promise<Plan> {
   }
   const distro = readDistro();
   const installer = resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] });
+  // pkexec 的真实路径在这里解析（plan 层默认值只是兜底），**且它必须存在**才产出特权 argv：
+  // 与 probe 的 auto 门槛同一判据，避免"界面不给按钮、执行层却硬跑"两边口径漂移
+  const pkexec = resolvePkexec();
   return {
     strategy: "pkg",
-    argv: buildInstallArgv(ids, installer),
-    manualCommand: manualInstallCommand(ids, installer) ?? undefined,
+    argv: installer && pkexec ? buildInstallArgv(ids, installer, pkexec) : null,
+    manualCommand:
+      manualInstallCommand(ids, installer) ?? distroManualInstallCommand(distro, ids) ?? undefined,
   };
 }
 
@@ -163,11 +176,13 @@ export async function installDependencies(
   // ── 执行段：两种策略产出统一的 (exitCode | errorText)，后面共用复核逻辑 ──
   let exitCode: number | null = null;
   let errorText = "";
+  /** 用户在 UAC 窗口点了取消——不是失败，措辞必须与"装失败了"分开 */
+  let winCancelled = false;
   if (plan.strategy === "pkg") {
     if (!plan.argv) {
       return {
         ok: false,
-        reason: "当前系统无法自动安装（未识别的发行版，或没有可用的包管理器）",
+        reason: "当前系统无法自动安装（未识别的发行版、没有可用的包管理器，或缺少系统授权组件 pkexec）",
         manualCommand: plan.manualCommand,
       };
     }
@@ -180,7 +195,7 @@ export async function installDependencies(
     onEvent({ phase: "installing", index: 1, total, message: "正在安装系统保护组件（会弹出系统授权窗口）…" });
     log("[install] windows installWindowsSandboxAsync");
     try {
-      await installWin();
+      winCancelled = (await installWin())?.cancelled === true;
     } catch (e) {
       errorText = (e as Error).message;
       exitCode = FAILED_EXIT; // 没有退出码，统一按失败处理
@@ -201,13 +216,20 @@ export async function installDependencies(
     return { ok: true, report, exitCode };
   }
 
-  // 失败原因要能指导下一步：区分「取消 / 命令跑完了但仍不可用（多为系统策略拦截）/ 命令没跑成」
-  const reason = signal?.aborted
-    ? "安装已取消"
-    : exitCode === 0
-      ? `组件已安装，但 ${remaining.join("、")} 仍不可用——多为系统策略拦截，请看下方说明`
-      : `安装未完成（退出码 ${exitCode}：${pkexecExitNote(exitCode)}）`
-        + (errorText ? `。错误信息：${outputTail(errorText, 160)}` : "");
+  // 失败原因要能指导下一步，四种情况分开说：取消 / 用户关掉了授权框 / 命令跑完了但仍不可用
+  //（多为系统策略拦截）/ 命令没跑成。写成分支而非嵌套三元，是因为四种情形各自有独立措辞。
+  let reason: string;
+  if (signal?.aborted) {
+    reason = "安装已取消";
+  } else if (winCancelled) {
+    // 用户的选择，不是故障：不能套下面那条"安装未完成（退出码 null）"
+    reason = "你在系统授权窗口点了取消，环境没有改变——需要时再点一次「一键安装」即可";
+  } else if (exitCode === 0) {
+    reason = `组件已安装，但 ${remaining.join("、")} 仍不可用——多为系统策略拦截，请看下方说明`;
+  } else {
+    reason = `安装未完成（退出码 ${exitCode}：${pkexecExitNote(exitCode)}）`
+      + (errorText ? `。错误信息：${outputTail(errorText, 160)}` : "");
+  }
   onEvent({ phase: "failed", index: total, total, message: reason });
   return { ok: false, report, manualCommand: plan.manualCommand, reason, exitCode };
 }
@@ -264,6 +286,15 @@ export async function fixUserns(
   const probe = deps.probe ?? ((): Promise<EnvReport> => probeEnvironment());
   const log = deps.logger ?? defaultLog;
   const exists = deps.exists ?? ((p: string): boolean => fs.existsSync(p));
+  // 与 probe 的 auto 门槛同源（见 plan.ts 的 resolvePkexec）：没有 pkexec 就弹不出授权框，
+  // 直接给手工三步，不要让用户白等一轮再失败
+  if (!resolvePkexec(exists)) {
+    return {
+      ok: false,
+      reason: "这台机器没有系统授权组件（polkit / pkexec），无法在应用内完成——请按下面的命令自己执行",
+      manualCommand,
+    };
+  }
   const installer = "installer" in deps
     ? (deps.installer ?? null)
     : ((): Installer | null => {

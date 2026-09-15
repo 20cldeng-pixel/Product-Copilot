@@ -15,8 +15,9 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  autoFixFor, readDistro, resolveInstaller, manualInstallCommand, distroHint,
-  usernsFixAvailable, usernsManualCommand, windowsInstallCommand, type Installer,
+  autoFixFor, distroHint, distroManualInstallCommand, hasDistroManualCommand, manualInstallCommand,
+  readDistro, resolveInstaller, resolvePkexec, usernsFixAvailable, usernsManualCommand,
+  windowsInstallCommand, type Installer,
 } from "./plan";
 import { findBashOnWindows } from "../background-shell/registry";
 import { packagedSrtVersion, srtWinSpawn } from "../sandbox/srt-win";
@@ -158,12 +159,20 @@ const APPARMOR_HINT =
   "系统默认策略不允许 bubblewrap 创建隔离空间（Ubuntu 24.04 起的默认行为）。"
   + "用 deb 安装时已自动处理过，这里仍显示说明那一步没成功；其余安装形态执行一次下面三条命令即可（不必重启）。";
 
+/**
+ * 机器上没有 pkexec（polkit 缺失：WSL、精简镜像、无 polkit 的桌面）时的说明。
+ * 必须说清"为什么没有一键按钮"——否则按钮凭空消失，用户只会以为功能坏了。
+ */
+const NO_PKEXEC_DETAIL =
+  "这台机器没有系统授权组件（polkit / pkexec），应用内无法自动安装——请把下面的命令复制到终端执行";
+
 /** 「被系统策略拦住」的修法：能一键修的给 auto，否则只给官方三步命令（两条路都留着） */
-function blockedFix(installer: Installer | null): EnvItem["fix"] {
+function blockedFix(installer: Installer | null, exists: (p: string) => boolean): EnvItem["fix"] {
   return {
     // 应用内一键修复：三条**绝对路径单命令**经 pkexec 执行（改系统安全配置，故必须由系统弹框授权，
-    // 不是静默执行）。不可用时（缺 install/apparmor_parser、无包管理器、profile 已在）只留手工指引。
-    ...(usernsFixAvailable(installer) ? { auto: { strategy: "usernsProfile" as const } } : {}),
+    // 不是静默执行）。不可用时（缺 install/apparmor_parser、无 pkexec、无包管理器、profile 已在）
+    // 只留手工指引。
+    ...(usernsFixAvailable(installer, exists) ? { auto: { strategy: "usernsProfile" as const } } : {}),
     manual: {
       command: usernsManualCommand(),
       url: "https://documentation.ubuntu.com/server/how-to/security/apparmor",
@@ -179,9 +188,15 @@ function blockedFix(installer: Installer | null): EnvItem["fix"] {
  * 只读、不改任何状态；失败留痕、绝不抛错（探测本身不能把主流程带崩）。
  */
 export async function probeEnvironment(
-  deps: { probe?: (spec: BinarySpec) => ProbeOutcome; platform?: string } = {},
+  deps: {
+    probe?: (spec: BinarySpec) => ProbeOutcome;
+    platform?: string;
+    /** 文件存在性（注入用）：pkexec 与 userns 一键修复的可用性都靠它判定，测试里不能碰真实文件系统 */
+    exists?: (p: string) => boolean;
+  } = {},
 ): Promise<EnvReport> {
   const platform = deps.platform ?? process.platform;   // 可注入：Windows 分支要能在任意宿主上被测试
+  const exists = deps.exists ?? ((p: string) => fs.existsSync(p));
   const distro = readDistro();
   const items: EnvItem[] = [];
   const probe = deps.probe ?? ((spec: BinarySpec) => probeBinary(spec.candidates, spec.args));
@@ -193,14 +208,22 @@ export async function probeEnvironment(
 
   if (platform === "linux") {
     const installer = resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] });
+    // 一键通道的**唯一前提**：机器上真有能弹系统授权的 pkexec（见 plan.ts 的 resolvePkexec）。
+    // 没有它就只给手工命令——否则按钮点了必失败，还把"缺 polkit"误报成"权限不够"。
+    const pkexec = resolvePkexec(exists);
     const manual = (ids: EnvItemId[]): string | undefined =>
-      manualInstallCommand(ids, installer) ?? undefined;
+      manualInstallCommand(ids, installer) ?? distroManualInstallCommand(distro, ids) ?? undefined;
 
     const results = LINUX_BINARIES.map((spec) => ({ spec, out: probe(spec) }));
     let bwrapOk = false;
     for (const { spec, out } of results) {
       if (spec.id === "bwrap" && out.status === "ok") bwrapOk = true;
       const status: EnvItemStatus = out.status;
+      const auto = autoFixFor(spec.id); // 包名以 plan 白名单为唯一来源
+      const detail = [
+        out.status === "unknown" ? "已安装但无法启动——可能是权限问题或安装不完整（不是没装）" : "",
+        status !== "ok" && !pkexec ? NO_PKEXEC_DETAIL : "",
+      ].filter(Boolean).join("；");
       items.push({
         id: spec.id,
         label: spec.label,
@@ -208,11 +231,9 @@ export async function probeEnvironment(
         status,
         impact: spec.impact,
         ...(out.status === "ok" ? { version: out.version } : {}),
-        ...(out.status === "unknown"
-          ? { detail: "已安装但无法启动——可能是权限问题或安装不完整（不是没装）" }
-          : {}),
+        ...(detail ? { detail } : {}),
         fix: {
-          ...(autoFixFor(spec.id) ? { auto: autoFixFor(spec.id)! } : {}), // 包名以 plan 白名单为唯一来源
+          ...(auto && pkexec ? { auto } : {}),
           ...(status === "ok" ? {} : { manual: { command: manual([spec.id]) } }),
         },
       });
@@ -233,13 +254,14 @@ export async function probeEnvironment(
         id: "userns", label: "隔离能力（用户命名空间）", required: true,
         status: ok ? "ok" : "blocked",
         impact: USERNS_IMPACT,
-        ...(ok ? {} : { detail: APPARMOR_HINT }),
-        fix: ok ? {} : blockedFix(installer),
+        ...(ok ? {} : { detail: pkexec ? APPARMOR_HINT : `${APPARMOR_HINT}${NO_PKEXEC_DETAIL}` }),
+        fix: ok ? {} : blockedFix(installer, exists),
       });
     }
 
-    // 非 apt/dnf/pacman/zypper → 不猜命令，补一句发行版提示
-    if (!distro.autoInstallable) {
+    // 非 apt/dnf/pacman/zypper 且我们**没有**核过包名的现成命令（如 NixOS 有）→ 补一句发行版提示。
+    // 有命令时不补：那句"未识别的发行版…请用你的包管理器"会和下面可复制的命令互相打架。
+    if (!distro.autoInstallable && !hasDistroManualCommand(distro)) {
       const hint = distroHint(distro.id);
       for (const item of items) if (item.status !== "ok") item.detail = item.detail ? `${item.detail}；${hint}` : hint;
     }

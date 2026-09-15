@@ -129,6 +129,21 @@ export function buildPackageArgv(
   return [pkexecPath, installer.path, ...installer.args, ...packages];
 }
 
+/** pkexec 的绝对路径候选（由 polkit 提供） */
+const PKEXEC_CANDIDATES = ["/usr/bin/pkexec", "/bin/pkexec"];
+
+/**
+ * 返回可用的 pkexec 绝对路径；机器上没有则 null。
+ *
+ * **为什么必须探测它（2026-09-15 补）**：上面那条 argv 把 `/usr/bin/pkexec` 写死，而界面此前只看
+ * 「包在白名单里」就给「一键安装 / 一键修复」。可 WSL、精简镜像、没装 polkit 的桌面上这个文件压根
+ * 不存在——用户点了必然失败，还会以为是自己的权限问题；而这类机器**其实有 sudo，手工命令一贴就成**。
+ * 所以判据要落到"这台机器上到底有没有能弹授权的那个程序"，而不是"发行版是不是我们认识的"。
+ */
+export function resolvePkexec(exists: (p: string) => boolean = fs.existsSync): string | null {
+  return PKEXEC_CANDIDATES.find((p) => exists(p)) ?? null;
+}
+
 // ── userns 放行（AppArmor profile）：应用内一键修复用 ────────────────────────────
 //
 // 背景：Ubuntu 24.04+ 的 AppArmor 默认禁止非特权进程创建 user namespace。官方做法是加载
@@ -205,6 +220,7 @@ export function usernsFixAvailable(
   exists: (p: string) => boolean = fs.existsSync,
 ): boolean {
   if (usernsProfileInstalled(exists)) return false; // 已装好还报 blocked → 不是这一层的问题
+  if (!resolvePkexec(exists)) return false;         // 没有能弹授权的 pkexec → 只能照手工三步自己来
   if (!usernsCopyArgv("/x", exists) || !usernsLoadArgv(exists)) return false;
   return resolveUsernsProfileSource(exists) !== null || usernsInstallSourceArgv(installer) !== null;
 }
@@ -257,6 +273,37 @@ export function manualInstallCommand(ids: readonly string[], installer: Installe
 export function windowsInstallCommand(version?: string): string {
   const spec = version ? `@anthropic-ai/sandbox-runtime@${version}` : "@anthropic-ai/sandbox-runtime";
   return `npx --yes ${spec} windows-install`;
+}
+
+/**
+ * 少数「不走包管理器白名单」的发行版的手工安装命令（**只展示、不代执行**）。
+ *
+ * 为什么只写 NixOS：命令里的包名必须**逐个核过**（与本文件白名单同一条纪律：核不到就不写，
+ * 继续退给 distroHint 的包名提示）。已核（2026-09-15 实查）：nixpkgs 的 `bubblewrap` / `socat` /
+ * `ripgrep` 三个 by-name 位置都在（`pkgs/by-name/{bu,so,ri}/…`）。
+ * 刻意**不列 Alpine（apk）**：那三个包 Alpine 确实都有，但 Electron 本身是 glibc 程序，
+ * 原版 Alpine（musl）上根本跑不起来 EasyMint，列出来是误导。
+ */
+const DISTRO_MANUAL_COMMAND: Record<string, (packages: readonly string[]) => string> = {
+  nixos: (packages) => `nix profile install ${packages.map((p) => `nixpkgs#${p}`).join(" ")}`,
+};
+
+/** 该发行版是否有「核过包名」的手工命令（界面据此决定还要不要再补一句泛泛的包名提示） */
+export function hasDistroManualCommand(distro: { id: string; idLike?: string[] }): boolean {
+  return Boolean(DISTRO_MANUAL_COMMAND[distro.id] ?? DISTRO_MANUAL_COMMAND[distro.idLike?.[0] ?? ""]);
+}
+
+/** 该发行版的手工安装命令；没有（未核过包名）或条目里含非包类项（如 userns）→ null */
+export function distroManualInstallCommand(
+  distro: { id: string; idLike?: string[] },
+  ids: readonly string[],
+): string | null {
+  const make = DISTRO_MANUAL_COMMAND[distro.id] ?? DISTRO_MANUAL_COMMAND[distro.idLike?.[0] ?? ""];
+  if (!make) return null;
+  // id 可能是渲染层传来的任意串（执行层拿到的是未校验的 string[]）：查不到白名单就整批拒绝
+  const packages = ids.map((id) => PACKAGE_OF[id as EnvItemId]).filter((p): p is string => Boolean(p));
+  // 只要有一个条目不是"装个包"能解决的（例如 userns 要改系统安全配置），整批不给命令
+  return packages.length > 0 && packages.length === ids.length ? make(packages) : null;
 }
 
 /** 各发行版的"没有包管理器时的兜底指引"（只展示，不执行） */
