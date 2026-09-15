@@ -1435,20 +1435,30 @@ select.input {
  * 用户原话"把轨道的线彻底去掉"，于是往复本身是唯一的视觉主体（这是装饰性动画，不是进度条）。
  * 节奏 1.8s/单程（一次往返约 3.6s）。 */
 .env-sweep-glow {
+  /* 亮色下 accent 是饱和绿（HSL 142°/76%）——4px 的细光带用它偏"扎眼"，故**只降饱和度**
+   * （用户 2026-09-15 更正："不是改透明度，是改饱和度"）：色相仍取 142，与主题同族，
+   * 只是 S 降到 42%、L 提到 52%。不用 color-mix(..., #fff)——那会同时大幅提亮，看着像"洗白"。 */
+  --sweep-color: #51b877;
   animation: progressIndeterminate 1.8s ease-in-out infinite alternate;
-  /* 两端渐隐 —— 把"拖尾"从运动错觉变成形状本身（用户 2026-09-15 要求：让末端看着更细长）。
-   * 不能改用 `background-color`（如 JSX 里的 bg-accent）：本行用 background 简写会与它抢同一处，
-   * 一旦实色胜出，渐变透明的两端会露出实色、拖尾就没了。故此处只由本规则给背景。 */
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--color-accent) 22%,
-    var(--color-accent) 78%,
-    transparent
-  );
+  /* 绿底上内嵌一道白芯（用户："能否在绿色上内嵌一点白色，看起来像发光一样"）：
+   * 竖直方向 transparent → 白 → transparent，只在中线有白，像灯管的亮芯。
+   * 拆成 background-color + background-image，白芯强度可被单独调（演示页按此结构分档）。 */
+  background-color: var(--sweep-color);
+  background-image: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.7) 50%, transparent);
+  /* 两端渐隐（把"拖尾"从运动错觉变成形状本身，用户 2026-09-15 要求）。
+   * 改用 mask 而非背景里的水平渐变，是因为白芯是**二维**的：竖直的 white 与水平的 fade
+   * 没法用一条 linear-gradient 表达。mask 一次裁出水平渐隐，绿底与白芯同时被裁，观感与原来一致。
+   * （曾试过 box-shadow / drop-shadow 做"黑晕"，用户 2026-09-15 明确去掉，不要再加。） */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+}
+
+[data-theme="dark"] .env-sweep-glow {
+  /* 暗色下 accent 本就是浅灰（#d4d4d4），无需降饱和；白芯留着，在深底上等于一条内高光 */
+  --sweep-color: var(--color-accent);
 }
 @media (prefers-reduced-motion: reduce) {
-  /* 降级：不来回走，但居中留一条光带（"在忙"由下方阶段文案承担） */
+  /* 降级：不来回走，但居中留一条光带（"正在工作"这件事由"只显示标题 + 动画"这层表达） */
   .env-sweep-glow { animation: none; left: 50%; transform: translateX(-50%); }
 }
 

@@ -324,13 +324,14 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
       {/* 安装动画：**只有这一条动画，不配任何文字**（用户 2026-09-15："不要显示具体的在安装什么
           依赖，一个标题，一个动画"，随后又点名去掉了阶段文案 —— 所以既没有依赖名，也没有"正在…"那行）。
           形状：硬边、4px 厚 × 46% 长、两端渐隐、**无轨道**（装饰性动画，不是进度条）。
-          容器同时是裁剪框（`overflow-hidden` 让光带从两端出入干净），故它就等于光带高度。
+          容器就是裁剪框（`overflow-hidden` 让光带从两端出入干净），高度与光带一致。
           主进程仍在发 `env:progress` 阶段事件（preload 也仍暴露 onProgress），只是界面不再显示。 */}
       {working && (
         <div className="mt-4">
           <div className="relative h-1 w-full overflow-hidden">
-            {/* 背景（含两端渐隐的"拖尾"）在 index.css 的 .env-sweep-glow 里，故此处不能加 bg-accent。
-                也不能加 -translate-y-1/2 之类：动画 keyframes 写的是 transform: translateX，会抢同一属性。 */}
+            {/* 颜色、白芯与两端渐隐都在 index.css 的 .env-sweep-glow 里（那里用 mask 裁水平渐隐），
+                故此处不能加 bg-accent。也不能加 -translate-y-1/2 之类：动画 keyframes 写的是
+                transform: translateX，会抢同一属性。`rounded-[50%]` 给光带一个胶囊轮廓。 */}
             <div className="env-sweep-glow absolute inset-y-0 left-0 w-[46%] rounded-[50%]" />
           </div>
         </div>
