@@ -42,8 +42,9 @@ interface PinState {
   movePin: (sessionId: string, pinId: string, x: number, y: number) => void;
   resizePin: (sessionId: string, pinId: string, width: number, height: number) => void;
   bringToFront: (sessionId: string, pinId: string) => void;
-  /** 折叠为贴纸：minimized + edge，y=-1 表示未单独定位（渲染层按堆叠槽位） */
-  minimizePin: (sessionId: string, pinId: string, edge: "left" | "right") => void;
+  /** 折叠为贴纸：minimized + edge。传 y=贴纸沿边缘的高度（拖动吸附时以当前位置为准）；
+      不传则 y=-1，渲染层按同边堆叠槽位定位（供旧数据/无位置来源的调用） */
+  minimizePin: (sessionId: string, pinId: string, edge: "left" | "right", y?: number) => void;
   /** 展开为卡片：minimized 清除，edge 清除，设置卡片位置 */
   expandPin: (sessionId: string, pinId: string, x: number, y: number) => void;
   migrateSession: (oldSid: string, newSid: string) => void;
@@ -131,12 +132,12 @@ export const usePinStore = create<PinState>((set, get) => ({
     get().persistPins(sessionId);
   },
 
-  minimizePin: (sessionId, pinId, edge) => {
+  minimizePin: (sessionId, pinId, edge, y) => {
     set((s) => ({
       pinsBySession: {
         ...s.pinsBySession,
         [sessionId]: (s.pinsBySession[sessionId] || []).map((p) =>
-          p.id === pinId ? { ...p, minimized: true, edge, y: -1 } : p
+          p.id === pinId ? { ...p, minimized: true, edge, y: y ?? -1 } : p
         ),
       },
     }));

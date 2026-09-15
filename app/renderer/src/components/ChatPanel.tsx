@@ -2226,7 +2226,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
                       && (anchorMsgId === msg.id
                         || (anchorMsgId === undefined && vi.index === messages.length - 1 && msg.role === "ai")) ? (
                       <div className="flex gap-4 items-start" style={{ padding: "0 var(--s8)" }}>
-                        <div style={{ width: 34, flexShrink: 0 }} />
+                        <div style={{ width: 40, flexShrink: 0 }} />
                         <DelegationProgress delegations={delegationList} />
                       </div>
                     ) : null}
@@ -2237,7 +2237,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
                       if (!cards || cards.length === 0) return null;
                       return (
                         <div className="flex gap-4 items-start mt-1" style={{ padding: "0 var(--s8)" }}>
-                          <div style={{ width: 34, flexShrink: 0 }} />
+                          <div style={{ width: 40, flexShrink: 0 }} />
                           <div className="min-w-0 space-y-1">
                             {cards.map((card) => (
                               <FlowErrorCardView key={`flow-err-${card.id}`} card={card} onRetry={handleRetryError} onDismiss={handleDismissError} />
@@ -2311,7 +2311,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
                   onMouseMove 仅作滑块弹性的鼠标跟踪源 */}
               <div
                 ref={roleSliderRef}
-                className="group relative flex items-center rounded-full bg-glass-track border border-glass-track-border p-1 backdrop-blur-[20px] backdrop-saturate-[1.4]"
+                className="group relative flex items-center rounded-full bg-glass-track p-1 backdrop-blur-[20px] backdrop-saturate-[1.4]"
                 onMouseMove={handleTrackMove}
                 onMouseLeave={() => setSliderStretch({ x: 1, y: 1 })}
               >
@@ -2533,9 +2533,10 @@ const MemoChatMessage = memo(function MemoChatMessage({ msg, streaming, userBubb
           style={{ padding: "0 var(--s8)" }}
           onContextMenu={(e) => onContextMenu(msg, e)}
         >
-          <div style={{ width: 34, flexShrink: 0 }} />
+          <div style={{ width: 40, flexShrink: 0 }} />
           <div className="relative w-fit max-w-[75%] min-w-0 my-1" onMouseEnter={showActions} onMouseLeave={scheduleHideActions}>
-            <div className="msg-bubble-system rounded-[var(--radius-lg)] rounded-bl-[4px] border border-border bg-surface-elevated overflow-hidden">
+            {/* 无描边(用户 2026-09-15):本气泡无投影,靠 bg-surface-elevated 与聊天区底色的层差分区 */}
+            <div className="msg-bubble-system rounded-[var(--radius-lg)] rounded-bl-[4px] bg-surface-elevated overflow-hidden">
               {/* 头部:系统图标 + kind 标签(区别于 assistant 的 Mint 头像气泡);指令型整行可点展开/收起 */}
               <button
                 type="button"

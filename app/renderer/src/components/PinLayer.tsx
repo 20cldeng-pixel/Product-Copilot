@@ -9,7 +9,7 @@ const EMPTY_PINS: Pin[] = [];
 const TAB_COLORS = ["bg-sky-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-teal-500", "bg-orange-500", "bg-indigo-500"] as const;
 const CARD_COLORS = ["bg-sky-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-teal-500", "bg-orange-500", "bg-indigo-500"] as const;
 
-const TAB_W = 20;
+const TAB_W = 15;
 const TAB_H = 40;
 const EXT_W = 160;
 
@@ -75,10 +75,13 @@ function PinCard({ pin, sessionId, layerRef, onMinimize, colorIdx }: PinCardProp
       const startClientY = e.clientY;
       const startPinX = pin.x;
       const startPinY = pin.y;
+      // 吸附只做一次：吸附后卡片即被卸载成贴纸，但 pointer capture 失效前还会派发几次
+      // pointermove——重复 minimizePin 会用后续的 y 覆盖贴纸位置（现象=吸附后跳一下）
+      let snapped = false;
 
       const onMove = (ev: PointerEvent) => {
         const layerEl = layerRef.current;
-        if (!layerEl) return;
+        if (!layerEl || snapped) return;
         // 左右可移出窗口边缘隐藏(露出 HIDDEN_SLIVER 可拖回)；上锁死不出界(y≥0)；下贴底(现状)
         const HIDDEN_SLIVER = 20;
         const cardW = pin.width || CARD_W;
@@ -92,9 +95,12 @@ function PinCard({ pin, sessionId, layerRef, onMinimize, colorIdx }: PinCardProp
         const layerRect = layerEl.getBoundingClientRect();
         const pointerX = ev.clientX - layerRect.left;
         if (pointerX <= 8 && ev.movementX < 0) {
-          usePinStore.getState().minimizePin(sessionId, pin.id, "left");
+          snapped = true;
+          // 贴纸落在便签当前高度（跟手），不再用固定堆叠槽位
+          usePinStore.getState().minimizePin(sessionId, pin.id, "left", ny);
         } else if (pointerX >= layerRect.width - 8 && ev.movementX > 0) {
-          usePinStore.getState().minimizePin(sessionId, pin.id, "right");
+          snapped = true;
+          usePinStore.getState().minimizePin(sessionId, pin.id, "right", ny);
         } else {
           usePinStore.getState().movePin(sessionId, pin.id, nx, ny);
         }
@@ -401,7 +407,7 @@ export function PinLayer({ sessionId }: PinLayerProps): JSX.Element {
     store.persistPins(sessionId);
   }, [pins, sessionId]);
 
-  // 折叠为贴纸：吸附到最近边缘（左右距近者）
+  // 折叠为贴纸：吸附到最近边缘（左右距近者），高度沿用卡片当前位置（与拖动吸附同一口径）
   const handleMinimize = useCallback((pinId: string) => {
     const el = layerRef.current;
     if (!el) return;
@@ -409,11 +415,13 @@ export function PinLayer({ sessionId }: PinLayerProps): JSX.Element {
     if (!pin) return;
     const cardW = pin.width || CARD_W;
     const edge: "left" | "right" = pin.x < el.clientWidth - pin.x - cardW ? "left" : "right";
-    usePinStore.getState().minimizePin(sessionId, pinId, edge);
+    usePinStore.getState().minimizePin(sessionId, pinId, edge, pin.y);
   }, [sessionId]);
 
   return (
-    <div ref={layerRef} className="absolute inset-0 pointer-events-none z-float overflow-hidden">
+    // z-dialog：高过 ChatPanel 内的常规工作区浮层（输入历史按钮 z-float=40），
+    // 但仍低于历史抽屉/弹窗（同为 z-dialog，DOM 在其后）/下拉/Toast——便签不该压住弹窗
+    <div ref={layerRef} className="absolute inset-0 pointer-events-none z-dialog overflow-hidden">
       {pins.map((pin, i) => {
         const colorIdx = pin.colorIdx ?? (i % 8);
         return (

@@ -100,7 +100,10 @@ export function ColorPickerPanel({ value, onChange, onClose, anchorRect, anchorE
   const svRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<"sv" | "hue" | null>(null);
-  const hsv = hexToHsv(value);
+  // HSV 以本地 state 作拖动源,不每帧从 hex 反推:
+  // hex 表达不了「纯黑对应的色相与饱和度」(v=0 时 h/s 任意),拖到平面右下角会得到 #000000,
+  // 反推回来 s 归零 → 指示点从右下角跳回左下角(色相条同理,拖到 s=0/v=0 时 h 归零跳回最左)。
+  const [hsv, setHsv] = useState<Hsv>(() => hexToHsv(value));
   // 面板内容尺寸确定,初始定位即用;渲染后测量修正越界(见下方 layout effect)
   const [pos, setPos] = useState<{ left: number; top: number }>(() => ({
     left: anchorRect.left,
@@ -161,6 +164,14 @@ export function ColorPickerPanel({ value, onChange, onClose, anchorRect, anchorE
     setHexText(value);
   }, [value]);
 
+  // value 变化时同步本地 HSV,但仅当它不是当前本地 HSV 的产物时才同步:
+  // 拖动自己发出的 value 回流时与本地 HSV 一致,保留本地 h/s(hex 表达不了 v=0/s=0 的 h/s)。
+  // 点色板、改 hex 输入框、父组件改色等情况不一致,按 value 重新解析。
+  useEffect(() => {
+    const v = normalizeHex(value);
+    setHsv((prev) => (v && hsvToHex(prev.h, prev.s, prev.v) === v ? prev : hexToHsv(value)));
+  }, [value]);
+
   /** SV 平面拖选:s 横向(左白→右纯色),v 纵向(上明→下黑) */
   const pickSv = (clientX: number, clientY: number): void => {
     const el = svRef.current;
@@ -168,7 +179,9 @@ export function ColorPickerPanel({ value, onChange, onClose, anchorRect, anchorE
     const r = el.getBoundingClientRect();
     const x = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
     const y = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
-    onChange(hsvToHex(hsv.h, x, 1 - y));
+    const next: Hsv = { h: hsv.h, s: x, v: 1 - y };
+    setHsv(next);
+    onChange(hsvToHex(next.h, next.s, next.v));
   };
   /** 色相条拖选:0-360 横向 */
   const pickHue = (clientX: number): void => {
@@ -176,7 +189,9 @@ export function ColorPickerPanel({ value, onChange, onClose, anchorRect, anchorE
     if (!el) return;
     const r = el.getBoundingClientRect();
     const x = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    onChange(hsvToHex(x * 360, hsv.s, hsv.v));
+    const next: Hsv = { h: x * 360, s: hsv.s, v: hsv.v };
+    setHsv(next);
+    onChange(hsvToHex(next.h, next.s, next.v));
   };
 
   const startDrag = (kind: "sv" | "hue", e: RPointerEvent<HTMLDivElement>): void => {
@@ -219,7 +234,11 @@ export function ColorPickerPanel({ value, onChange, onClose, anchorRect, anchorE
         ref={svRef}
         className="relative h-24 rounded-[var(--radius-lg)] cursor-crosshair touch-none select-none overflow-hidden"
         style={{
-          background: `hsl(${hsv.h} 100% 50%)`,
+          // 底色必须用 backgroundColor(长属性),不可写成 background 简写:
+          // 同对象内的 backgroundImage 是 background 的子属性,而 React 更新 inline style 时
+          // 只重设「值发生变化」的那一项(react-dom setValueForStyles),拖色相时 background 重设
+          // 会把未变的 background-image 一并重置为 initial —— SV 平面退化成纯色块。
+          backgroundColor: `hsl(${hsv.h} 100% 50%)`,
           // 多层渐变:首层(黑)在最上、次层(白)在下——否则左缘 s=0 整列会被白盖住,失去纵向明度
           backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0), #000), linear-gradient(to right, #fff, rgba(255,255,255,0))",
         }}
