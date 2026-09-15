@@ -63,16 +63,25 @@ export function parseOsRelease(text: string): { id: string; versionId?: string; 
   };
 }
 
-export function readDistro(readFile: (p: string) => string = (p) => fs.readFileSync(p, "utf-8")): EnvDistro {
-  if (process.platform !== "linux") {
+export function readDistro(
+  readFile: (p: string) => string = (p) => fs.readFileSync(p, "utf-8"),
+  platform: NodeJS.Platform = process.platform,
+  exists: (p: string) => boolean = fs.existsSync,
+): EnvDistro {
+  if (platform !== "linux") {
     // macOS 用系统 Seatbelt、Windows 走 srt-sandbox，都没有"发行版包管理器"这一层
-    return { id: process.platform === "darwin" ? "macos" : "windows", autoInstallable: false };
+    return { id: platform === "darwin" ? "macos" : "windows", idLike: [], autoInstallable: false };
   }
   try {
     const parsed = parseOsRelease(readFile("/etc/os-release"));
-    return { id: parsed.id || "unknown", versionId: parsed.versionId, autoInstallable: resolveInstaller(parsed) !== null };
+    return {
+      id: parsed.id || "unknown",
+      idLike: parsed.idLike,
+      versionId: parsed.versionId,
+      autoInstallable: resolveInstaller(parsed, exists) !== null,
+    };
   } catch {
-    return { id: "unknown", autoInstallable: false };
+    return { id: "unknown", idLike: [], autoInstallable: false };
   }
 }
 

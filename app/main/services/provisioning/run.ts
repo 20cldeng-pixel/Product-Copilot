@@ -82,7 +82,7 @@ async function defaultInstallWin(): Promise<void> {
 /** 计划层：Linux 走包管理器白名单；Windows 走 srt 装配（手工指引取 srt 官方文案，不自己编） */
 async function computePlan(ids: readonly string[]): Promise<Plan> {
   if (process.platform === "win32") {
-    if (!ids.includes("winSandbox")) return { strategy: "winInstall", manualCommand: undefined };
+    if (!isWindowsInstallRequest(ids)) return { strategy: "pkg", argv: null };
     try {
       const srt = await import("@anthropic-ai/sandbox-runtime");
       return { strategy: "winInstall", manualCommand: srt.windowsInstallInstructions(undefined) };
@@ -91,12 +91,17 @@ async function computePlan(ids: readonly string[]): Promise<Plan> {
     }
   }
   const distro = readDistro();
-  const installer = resolveInstaller({ id: distro.id, idLike: [] });
+  const installer = resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] });
   return {
     strategy: "pkg",
     argv: buildInstallArgv(ids, installer),
     manualCommand: manualInstallCommand(ids, installer) ?? undefined,
   };
+}
+
+/** Windows 提权入口只接受唯一的固定条目，未知 ID 或混合请求一律拒绝。 */
+export function isWindowsInstallRequest(ids: readonly string[]): boolean {
+  return ids.length === 1 && ids[0] === "winSandbox";
 }
 
 /** 提权命令没用退出码表达失败时的通用兜底（srt 的装配抛异常） */
@@ -182,9 +187,14 @@ export async function installDependencies(
 
   onEvent({ phase: "verifying", index: total, total, message: "正在复核…" });
   const report = await probe();
-  const remaining = report.items.filter((i) => i.status !== "ok").map((i) => i.id);
+  const requested = new Set(ids);
+  const remaining = [...requested].filter((id) => report.items.find((i) => i.id === id)?.status !== "ok");
   if (remaining.length === 0) {
-    onEvent({ phase: "done", index: total, total, message: "环境已就绪" });
+    const hasOtherIssues = report.items.some((i) => i.status !== "ok");
+    onEvent({
+      phase: "done", index: total, total,
+      message: hasOtherIssues ? "所选组件已安装，请继续处理其余环境问题" : "环境已就绪",
+    });
     return { ok: true, report, exitCode };
   }
 

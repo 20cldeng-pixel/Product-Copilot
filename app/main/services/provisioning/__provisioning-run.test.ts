@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { fixUserns, installDependencies, outputTail, type InstallEvent } from "./run";
+import { fixUserns, installDependencies, isWindowsInstallRequest, outputTail, type InstallEvent } from "./run";
 import type { EnvItem, EnvReport } from "./types";
 
 /** 假子进程：close 在下一个微任务里触发，模拟 spawn→退出 */
@@ -88,6 +88,36 @@ describe("依赖安装执行层", () => {
     const child = spawnFn.mock.results[0]!.value as { kill: ReturnType<typeof vi.fn> };
     expect(child.kill).toHaveBeenCalled();
     expect(res.reason).toBe("安装已取消");
+  });
+
+  it("只复核本次请求：Windows 可选 Git Bash 缺失不把 winSandbox 安装判成失败", async () => {
+    const events: InstallEvent[] = [];
+    const res = await installDependencies(
+      ["winSandbox"],
+      (e) => events.push(e),
+      {
+        plan: { strategy: "winInstall" },
+        installWin: async () => {},
+        logger: () => {},
+        probe: async () => ({
+          items: [
+            { id: "winSandbox", label: "sandbox", required: true, status: "ok", fix: {} },
+            { id: "gitBash", label: "git bash", required: false, status: "missing", fix: {} },
+          ],
+          distro: { id: "windows", autoInstallable: false },
+          probedAt: 0,
+        }),
+      },
+    );
+    expect(res.ok).toBe(true);
+    expect(events.at(-1)?.message).toContain("其余环境问题");
+  });
+
+  it("Windows 提权安装请求只接受唯一的 winSandbox 白名单 ID", () => {
+    expect(isWindowsInstallRequest(["winSandbox"])).toBe(true);
+    expect(isWindowsInstallRequest(["gitBash"])).toBe(false);
+    expect(isWindowsInstallRequest(["anything"])).toBe(false);
+    expect(isWindowsInstallRequest(["winSandbox", "anything"])).toBe(false);
   });
 });
 

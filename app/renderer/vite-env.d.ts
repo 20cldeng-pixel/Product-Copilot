@@ -37,7 +37,7 @@ interface EnvItemShape {
 }
 interface EnvReportShape {
   items: EnvItemShape[];
-  distro: { id: string; versionId?: string; autoInstallable: boolean };
+  distro: { id: string; idLike?: string[]; versionId?: string; autoInstallable: boolean };
   probedAt: number;
 }
 interface EnvInstallResultShape {

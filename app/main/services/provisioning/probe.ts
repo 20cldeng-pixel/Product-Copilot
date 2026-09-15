@@ -173,7 +173,7 @@ export async function probeEnvironment(
   const probe = deps.probe ?? ((spec: BinarySpec) => probeBinary(spec.candidates, spec.args));
 
   if (process.platform === "linux") {
-    const installer = resolveInstaller({ id: distro.id, idLike: [] });
+    const installer = resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] });
     const manual = (ids: EnvItemId[]): string | undefined =>
       manualInstallCommand(ids, installer) ?? undefined;
 

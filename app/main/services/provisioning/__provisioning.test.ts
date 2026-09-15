@@ -44,6 +44,16 @@ describe("发行版识别", () => {
     expect(resolve("unknown-distro", ["debian"])?.kind).toBe("apt");
   });
 
+  it("readDistro 保留 ID_LIKE，供衍生发行版的执行阶段继续解析安装器", () => {
+    const distro = readDistro(
+      () => 'ID=elementary\nID_LIKE="ubuntu debian"\nVERSION_ID=8\n',
+      "linux",
+      (p) => p === "/usr/bin/apt-get",
+    );
+    expect(distro).toEqual({ id: "elementary", idLike: ["ubuntu", "debian"], versionId: "8", autoInstallable: true });
+    expect(resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] }, (p) => p === "/usr/bin/apt-get")?.kind).toBe("apt");
+  });
+
   it("非 Linux 平台没有包管理器这一层", () => {
     expect(readDistro().autoInstallable).toBe(false);
   });

@@ -44,6 +44,8 @@ export interface EnvItem {
 export interface EnvDistro {
   /** /etc/os-release 的 ID（ubuntu / debian / fedora / arch / opensuse…） */
   id: string;
+  /** /etc/os-release 的 ID_LIKE；衍生发行版据此复用对应包管理器。 */
+  idLike?: string[];
   versionId?: string;
   /** false = 没有可用的自动安装通道（不猜命令，只把命令展示给用户） */
   autoInstallable: boolean;
