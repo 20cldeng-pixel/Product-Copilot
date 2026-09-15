@@ -7,7 +7,10 @@ import type { CanUseToolOptions } from "./permission/agent-permission-service";
 const CWD = path.join(os.homedir(), "dev", "myproj");
 
 vi.mock("./session-cache", () => ({ readCache: () => ({ permissionMode: "full" }) }));
-vi.mock("./sandbox/manager", () => ({ ensureSandbox: async () => ({ ok: true }) }));
+vi.mock("./sandbox/manager", () => ({
+  ensureSandbox: async () => ({ ok: true }),
+  isSandboxBypassed: () => false,
+}));
 
 const check = new AgentPermissionService().createCanUseTool("sid-test", CWD);
 const opts = { signal: new AbortController().signal, toolUseID: "test" } as CanUseToolOptions;

@@ -5,7 +5,7 @@
  * 并把不可伪造的执行策略交给工具包装层。命令中的消息、正则和脚本文本不再扫描成路径。
  */
 
-import { ensureSandbox } from "../sandbox/manager";
+import { ensureSandbox, isSandboxBypassed } from "../sandbox/manager";
 import { readCache } from "../session-cache";
 import { parse as parseShell } from "shell-quote";
 import fs from "node:fs";
@@ -125,9 +125,11 @@ export class AgentPermissionService {
       }
 
       if (name === "install_dependency") {
-        const sandbox = await ensureSandbox(cwd);
-        if (!sandbox.ok) {
-          return deny("backend.sandbox_unavailable", "execute", "install_dependency", `安全执行后端不可用：${sandbox.reason}`);
+        if (!isSandboxBypassed()) {
+          const sandbox = await ensureSandbox(cwd);
+          if (!sandbox.ok) {
+            return deny("backend.sandbox_unavailable", "execute", "install_dependency", `安全执行后端不可用：${sandbox.reason}`);
+          }
         }
         return allow(bindExecutionOwner(createExecutionContext(cwd, mode), sid));
       }
@@ -142,9 +144,11 @@ export class AgentPermissionService {
         if (unsafeScript) {
           return deny("core.privileged_operation", "execute", unsafeScript, "执行包含提权或系统控制命令的本地脚本（完全访问也不允许）");
         }
-        const sandbox = await ensureSandbox(cwd);
-        if (!sandbox.ok) {
-          return deny("backend.sandbox_unavailable", "execute", firstCommand(command), `安全执行后端不可用：${sandbox.reason}`);
+        if (!isSandboxBypassed()) {
+          const sandbox = await ensureSandbox(cwd);
+          if (!sandbox.ok) {
+            return deny("backend.sandbox_unavailable", "execute", firstCommand(command), `安全执行后端不可用：${sandbox.reason}`);
+          }
         }
         return allow(bindExecutionOwner(createExecutionContext(cwd, mode), sid));
       }

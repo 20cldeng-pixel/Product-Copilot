@@ -8,7 +8,14 @@ import type { CanUseToolOptions } from "./permission/agent-permission-service";
 const CWD = path.join(os.homedir(), "dev", "myproj");
 
 vi.mock("./session-cache", () => ({ readCache: () => ({ permissionMode: "standard" }) }));
-vi.mock("./sandbox/manager", () => ({ ensureSandbox: async () => ({ ok: true }) }));
+const sandboxMock = vi.hoisted(() => ({
+  bypassed: false,
+  ensureSandbox: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("./sandbox/manager", () => ({
+  ensureSandbox: sandboxMock.ensureSandbox,
+  isSandboxBypassed: () => sandboxMock.bypassed,
+}));
 
 const check = new AgentPermissionService().createCanUseTool("sid-test", CWD);
 const opts = { signal: new AbortController().signal, toolUseID: "test" } as CanUseToolOptions;
@@ -37,6 +44,21 @@ describe("标准模式权限契约", () => {
         }));
         expect(result.executionPolicy?.environment.HOME).toBe(path.join(result.executionPolicy?.runtimeRoot ?? "", "home"));
       }
+    }
+  });
+
+  it("Linux 兜底已开启时不再要求先初始化已故障的沙盒", async () => {
+    sandboxMock.ensureSandbox.mockClear();
+    sandboxMock.bypassed = true;
+    try {
+      const shellResult = await bash("npm run build");
+      const dependencyResult = await check("install_dependency", { manager: "npm", packages: ["x"], scope: "project" }, opts);
+      expect(shellResult.behavior).toBe("allow");
+      expect(dependencyResult.behavior).toBe("allow");
+      expect((await bash("sudo apt install x")).behavior).toBe("deny");
+      expect(sandboxMock.ensureSandbox).not.toHaveBeenCalled();
+    } finally {
+      sandboxMock.bypassed = false;
     }
   });
 
