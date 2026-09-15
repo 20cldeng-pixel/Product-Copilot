@@ -345,6 +345,19 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
                     </button>
                   </div>
                 )}
+                {/* 官方页面（下载页 / 说明文档）：`fix.manual.url` 一直在 main 侧产生，此前**渲染层
+                    从不消费** —— Windows 缺 Git Bash 那条 fix 里只有 url、没有命令，等于界面上
+                    完全没有指引。外链形制跟项目其它处一致（`target="_blank" rel="noreferrer"`）。 */}
+                {item.status !== "ok" && item.fix.manual?.url && (
+                  <a
+                    href={item.fix.manual.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1.5 inline-block text-[length:var(--text-xs)] text-accent hover:underline"
+                  >
+                    {item.fix.manual.command ? "查看官方说明" : "前往下载"}
+                  </a>
+                )}
               </div>
             );
           })}

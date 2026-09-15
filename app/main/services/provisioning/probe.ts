@@ -186,6 +186,11 @@ export async function probeEnvironment(
   const items: EnvItem[] = [];
   const probe = deps.probe ?? ((spec: BinarySpec) => probeBinary(spec.candidates, spec.args));
 
+  // **macOS 分支刻意不存在**：沙盒用系统自带的 Seatbelt，没有任何外部依赖要装 —— 于是
+  // 下面两个平台分支都不进，`items` 保持空数组。面板据此显示"无需额外组件"，引导流程则
+  // 判为就绪并直接跳到下一步（这正是用户要的"检测没问题就直接跳"）。将来若 macOS 也需要
+  // 检查某项，别漏了这个分支。
+
   if (platform === "linux") {
     const installer = resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] });
     const manual = (ids: EnvItemId[]): string | undefined =>
@@ -284,15 +289,17 @@ export async function probeEnvironment(
 
     // Git Bash 是 bash 类工具的依赖；复用既有探测函数（避免两套候选路径各自漂移）
     const bash = findBashOnWindows();
-      items.push({
-        id: "gitBash",
-        label: "Git Bash（bash 工具依赖）",
-        required: false,
-        status: bash ? "ok" : "missing",
-        impact: "缺少它 bash 类命令跑不了（Mint 的 shell 与 git 工具依赖它）——不影响主要功能，可按需安装",
-        ...(bash ? { version: bash } : { detail: "未找到 Git Bash——bash 类命令无法执行" }),
-        fix: bash ? {} : { manual: { url: "https://git-scm.com/download/win" } },
-      });
+    items.push({
+      id: "gitBash",
+      label: "Git Bash（bash 工具依赖）",
+      required: false,
+      status: bash ? "ok" : "missing",
+      impact: "缺少它 bash 类命令跑不了（Mint 的 shell 与 git 工具依赖它）——不影响主要功能，可按需安装",
+      ...(bash ? { version: bash } : { detail: "未找到 Git Bash——bash 类命令无法执行" }),
+      // 这条 fix **只有 url、没有命令**（装它得去官网下载安装包），故渲染层必须能展示 url，
+      // 否则该条目在界面上完全没有可执行的指引 —— 见 EnvPanel 的"前往下载"链接
+      fix: bash ? {} : { manual: { url: "https://git-scm.com/download/win" } },
+    });
   }
 
   return { items, distro, probedAt: Date.now() };
