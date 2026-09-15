@@ -1440,16 +1440,19 @@ select.input {
    * 只是 S 降到 42%、L 提到 52%。不用 color-mix(..., #fff)——那会同时大幅提亮，看着像"洗白"。 */
   --sweep-color: #51b877;
   animation: progressIndeterminate 1.8s ease-in-out infinite alternate;
-  /* 绿底上内嵌一道白芯（用户："能否在绿色上内嵌一点白色，看起来像发光一样"），
-   * 且**只占绿线约 1/3 长、两端自然收细**（用户 2026-09-15 追加要求）。
-   * 用**径向**渐变一次拿到两个方向：水平半径 33% 决定"多长"、垂直半径 50% 让它只占中线，
-   * 而椭圆的固有形状让白芯自己在两端收细。
-   * （不能用竖直方向的 linear-gradient：那会横贯整条；两条 linear-gradient 放进 background-image
-   *  只会互相覆盖，不会相乘。）拆成 background-color + background-image，白芯可单独调。 */
+  /* 绿底上内嵌的"芯"：用**径向**渐变一次拿到两个方向 —— 水平半径 = 多长（只占中段）、
+   * 垂直半径 50% = 只占中线，而椭圆的固有形状让芯**自己在两端收细**（不必再叠锥形）。
+   * （不能用竖直的 linear-gradient：那会横贯整条；两条 linear-gradient 放进 background-image
+   *  只会互相覆盖，不会相乘。）拆成 background-color + background-image，长度/浓度可分开调。
+   * 亮色＝白芯（用户："在绿色上内嵌一点白色，看起来像发光一样"）；
+   * 暗色＝黑芯（用户 2026-09-15："以同样的方式给暗色下加个黑芯"）——故颜色走变量，随主题切。 */
+  --core-rgb: 255, 255, 255;
+  --core-w: 25%;       /* 芯的长度（水平半径占光带宽度的比例） */
+  --core: 0.5;         /* 芯的浓度 */
   background-color: var(--sweep-color);
   background-image: radial-gradient(
-    ellipse 33% 50% at 50% 50%,
-    rgba(255, 255, 255, 0.75),
+    ellipse var(--core-w) 50% at 50% 50%,
+    rgba(var(--core-rgb), var(--core)),
     transparent
   );
   /* 两端渐隐（把"拖尾"从运动错觉变成形状本身，用户 2026-09-15 要求）。
@@ -1461,8 +1464,10 @@ select.input {
 }
 
 [data-theme="dark"] .env-sweep-glow {
-  /* 暗色下 accent 本就是浅灰（#d4d4d4），无需降饱和；白芯留着，在深底上等于一条内高光 */
+  /* 暗色下 accent 本就是浅灰（#d4d4d4），无需降饱和；芯改为**黑**——
+   * 浅灰光带上一条暗芯，与亮色的"淡绿底 + 白芯"对称。 */
   --sweep-color: var(--color-accent);
+  --core-rgb: 0, 0, 0;
 }
 @media (prefers-reduced-motion: reduce) {
   /* 降级：不来回走，但居中留一条光带（"正在工作"这件事由"只显示标题 + 动画"这层表达） */
