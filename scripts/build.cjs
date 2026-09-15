@@ -103,8 +103,14 @@ module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerO
  *    只有**突增**（如 1MB→5MB）才说明有东西被误打包进来，那才是要查的
  */
 const SIZE_LIMIT = 1024 * 1024;
-/** 第三方清单只报 ≥ 该体积的包，避免把零碎小包刷成噪音 */
-const THIRD_PARTY_MIN = 8 * 1024;
+/**
+ * 第三方清单只报 ≥ 该体积的包（当前主进程产物约 815KB，32KB ≈ 4%）。
+ *
+ * 定过 8KB，结果把 `shell-quote`（9KB，`agent-permission-service` 的 shell 解析）报了出来：
+ * 它的体积收益不足 1%，却会让这行**每次构建都出现**——而常驻的告警一定会被无视，
+ * 那这条清单就没用了。宁可漏报小的零碎包，也要保住它的信号价值（清单为空 = 健康）。
+ */
+const THIRD_PARTY_MIN = 32 * 1024;
 
 /**
  * 构建后报告产物构成（两条互不干扰的规则）：
@@ -134,7 +140,7 @@ function reportBundle(results) {
         .sort((a, b) => b[1] - a[1]);
       if (inlined.length > 0) {
         console.log(
-          `\n[build] ${rel} 内联了第三方依赖（≥8KB，可考虑加进 EXTERNALS）：` +
+          `\n[build] ${rel} 内联了第三方依赖（≥${(THIRD_PARTY_MIN / 1024).toFixed(0)}KB，可考虑加进 EXTERNALS）：` +
             inlined.map(([name, bytes]) => `${name} ${(bytes / 1024).toFixed(0)}KB`).join("、"),
         );
       }
