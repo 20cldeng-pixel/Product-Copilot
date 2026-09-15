@@ -375,7 +375,9 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
           容器就是裁剪框（`overflow-hidden` 让光带从两端出入干净），高度与光带一致。
           主进程仍在发 `env:progress` 阶段事件（preload 也仍暴露 onProgress），只是界面不再显示。 */}
       {working && (
-        <div className="mt-4">
+        /* mt-[26px] = 原来的 mt-4(16px) + 用户 2026-09-15 要求的 10px。
+           注意它和标题之间还有 h1 的 mb-1(4px)，故实际间距 30px。 */
+        <div className="mt-[26px]">
           {/* 光带**全程在容器内往返**（用户 2026-09-15：「不要让动画线条消失，在一个背景内完整移动，
               不超出边界」）：行程与宽度都由 index.css 的 `@keyframes envSweep` 与 `.env-sweep-glow`
               负责（宽度也放在那边，因为行程是按它算的）。这里的 `overflow-hidden` 只是兜底，
