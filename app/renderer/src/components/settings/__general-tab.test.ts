@@ -32,7 +32,7 @@ vi.mock("../../stores/settings-store", () => {
 vi.mock("../ui/ConfirmDialog", () => ({ confirmDialog: async (): Promise<boolean> => true }));
 
 const { GeneralTab } = await import("./GeneralTab");
-const { EnvPanel, onboardingHint, nextAutoAction } = await import("../env/EnvPanel");
+const { EnvPanel, onboardingHint, nextAutoAction, workScreenVisible } = await import("../env/EnvPanel");
 const { EnvRetestButton } = await import("../env/EnvRetestButton");
 const { shouldPersistTavilyKey } = await import("./TavilyKeySection");
 
@@ -169,6 +169,37 @@ describe("进入环境检测页即自动安装（决策纯函数）", () => {
   it("先装包、装完仍被策略挡时才轮到 userns 自动修复（不会同一轮抢跑）", () => {
     expect(nextAutoAction({ ...s, installableCount: 1, fixableCount: 1 })).toBe("pkg");
     expect(nextAutoAction({ ...s, installableCount: 0, fixableCount: 1 })).toBe("userns");
+  });
+});
+
+describe("工作屏幕（只有标题 + 动画）的可见性 —— 修掉「跳转前闪一屏依赖列表」", () => {
+  const s = {
+    busy: false, handedOff: false, autoFix: true, willAutoLeave: true, hasProblem: false,
+  };
+
+  it("引导流程 + 无问题 + 宿主会自己跳走 → 持续可见（**最短停留走完也仍然是**）", () => {
+    // 这就是被修的缺陷：判据曾含 holdMin，它一走完工作屏幕就消失，而宿主还要 1.2s 才切步
+    // → 那段时间闪出一屏依赖列表（用户报："检测没问题，还是会进入手动检测页面闪一下才跳到供应商页面"）
+    expect(workScreenVisible(s)).toBe(true);
+  });
+
+  it("真在探测 / 安装 → 可见", () => {
+    expect(workScreenVisible({ ...s, busy: true })).toBe(true);
+  });
+
+  it("有问题（检测失败 / 缺必装项）→ 才让出位置，不让人对着动画干等", () => {
+    expect(workScreenVisible({ ...s, hasProblem: true })).toBe(false);
+  });
+
+  it("宿主没接管自动跳转（设置页；或用户自己「返回」再进来）→ 不可见，该显示状态与「下一步」", () => {
+    expect(workScreenVisible({ ...s, willAutoLeave: false })).toBe(false);
+    expect(workScreenVisible({ ...s, autoFix: false })).toBe(false);
+  });
+
+  it("已交回宿主的跳转窗口（1.2s）→ 仍可见，不留缝", () => {
+    expect(workScreenVisible({
+      busy: false, handedOff: true, autoFix: false, willAutoLeave: false, hasProblem: true,
+    })).toBe(true);
   });
 });
 

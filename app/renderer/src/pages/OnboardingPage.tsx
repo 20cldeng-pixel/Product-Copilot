@@ -68,9 +68,14 @@ export function OnboardingPage(): JSX.Element {
   // 延迟 1.2s 是为了让「运行环境已就绪」这句话被看见（面板副标题会同时改口为"正在进入下一步"）。
   const envAutoAdvanced = useRef(false);
   const envAdvanceTimer = useRef<number | null>(null);
+  /** 面板还要不要"就绪即自动离开"。**自动跳过一次后就不再传 onReady** ——
+   *  面板据此回落到普通态（显示依赖状态与「下一步」按钮），而不是挂着一个永不跳转的动画，
+   *  副标题也不会一直谎报"正在进入下一步"。 */
+  const [willAutoAdvance, setWillAutoAdvance] = useState(true);
   const handleEnvReady = useCallback((): void => {
     if (envAutoAdvanced.current) return;
     envAutoAdvanced.current = true;
+    setWillAutoAdvance(false);
     envAdvanceTimer.current = window.setTimeout(() => {
       // 用函数式更新并判当前步：这 1.2s 里用户可能已经按「返回」，直接 +1 会把他又推回来
       setCurrentStep((s) => (s === 1 ? s + 1 : s));
@@ -161,7 +166,12 @@ export function OnboardingPage(): JSX.Element {
                刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现。
                autoFix：进来就自动装（不再要求用户点「一键安装」）；就绪即自动进下一步 */
             <>
-              <EnvPanel ref={envPanel} variant="onboarding" autoFix onReady={handleEnvReady} />
+              <EnvPanel
+                ref={envPanel}
+                variant="onboarding"
+                autoFix
+                onReady={willAutoAdvance ? handleEnvReady : undefined}
+              />
               <div className="mt-3">
                 <EnvRetestButton panel={envPanel} />
               </div>

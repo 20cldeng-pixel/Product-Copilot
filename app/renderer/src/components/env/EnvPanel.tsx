@@ -49,6 +49,34 @@ export function onboardingHint(s: {
   return "检查完毕——运行环境已就绪，点下方「下一步」继续";
 }
 
+/**
+ * 「工作屏幕」（只有标题 + 动画，不显示依赖列表）是否可见。抽成纯函数以便单测。
+ *
+ * ⚠️ **判据里没有 `holdMin`**（最短停留），这是 2026-09-15 修掉的一个真缺陷：原来判的是
+ * `busy || holdMin`，最短停留一走完它就变假 —— 而此刻宿主还没把页面跳走（要等 1.2s 才切步），
+ * 于是那段时间**闪出一屏依赖列表**（用户报："检测没问题，还是会进入手动检测页面闪一下才跳到
+ * 供应商页面"）。所以引导流程里只要"没问题且宿主会自己离开"，工作屏幕就**一直持续到本步被卸载**。
+ *
+ * 三种"该露出列表"的情形各自成一因：
+ * - 有问题（检测失败 / 缺必装项）→ 立刻让位给提醒与建议操作，不让人对着动画干等
+ * - 宿主没接管自动跳转（设置页；或用户自己按「返回」又进来）→ 该正常显示状态与「下一步」
+ * - 已交回宿主（`handedOff`）仍算工作屏幕 —— 跳转前那 1.2s 不能留缝
+ */
+export function workScreenVisible(s: {
+  /** 真在探测/安装 */
+  busy: boolean;
+  /** 已就绪并交回宿主，宿主正在切页 */
+  handedOff: boolean;
+  /** 引导流程（只有它自动装、自动走） */
+  autoFix: boolean;
+  /** 宿主接管了"就绪即自动离开"（传了 onReady） */
+  willAutoLeave: boolean;
+  /** 有必须用户处理的事：检测失败，或缺必装项 */
+  hasProblem: boolean;
+}): boolean {
+  return s.busy || s.handedOff || (s.autoFix && s.willAutoLeave && !s.hasProblem);
+}
+
 /** 引导页"工作屏幕"（只有标题 + 动画）的最短停留：用户 2026-09-15"这个页面设置一个最小显示时间，
  *  至少显示 5 秒（不然我白做了）"。没有它，在本来就什么都不用装的机器上，探测几百毫秒就结束，
  *  动画一闪而过甚至来不及出现。 */
@@ -146,14 +174,18 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   /** 操作区是否有内容：设置页在"全部就绪"时不该留一行空白 */
   const hasActions = installable.length > 0 || fixable.length > 0 || installing
     || sandboxOffAvailable || sandboxDisabled;
-  /** 检测/安装进行中只留「标题 + 动画」（用户 2026-09-15 定："不要显示具体的在安装什么依赖，
-   *  一个标题，一个动画"）。此时列出依赖名与状态既没意义、又抢动画的视线；真正要用户处理的情形
-   *  （缺组件、被系统策略拦）都只在这两件事做完之后才成立。 */
+  /** 真在探测/安装（与"工作屏幕是否可见"是两件事，见 workScreenVisible） */
   const busy = probing || installing;
-  /** 屏幕上是否处于"工作中"（只留标题 + 动画）：真在忙，或最短停留还没走完。
-   *  动画、隐藏依赖列表、抑制副标题都用它——**不能只看 busy**，否则探测一结束动画就没了、
-   *  屏幕上只剩一个空荡荡的标题（那时最短停留还剩好几秒）。 */
-  const working = busy || holdMin;
+  /** 有必须用户处理的事：检测失败，或缺必装项（可选项缺不挡路，不算） */
+  const hasProblem = probeFailed || requiredBroken > 0;
+  /** 宿主接管了"就绪即自动离开"（引导流程传 onReady）。用户自己「返回」再进来时宿主不再传它，
+   *  面板据此回落到普通态 —— 否则会挂着一个动画、"正在进入下一步"却永远不会跳。 */
+  const willAutoLeave = onReady !== undefined;
+  /** 只留「标题 + 动画」（用户 2026-09-15 定："不要显示具体的在安装什么依赖，一个标题，一个动画"）。
+   *  规则与三个例外见 workScreenVisible 的 docstring —— 那里也解释了为什么判据不含 holdMin。 */
+  const working = workScreenVisible({ busy, handedOff, autoFix, willAutoLeave, hasProblem });
+  /** 工作屏幕期间刻意静默（"一个标题，一个动画"）；交回宿主后才改口"正在进入下一步" */
+  const quiet = working && !handedOff;
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
@@ -214,12 +246,9 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
     return () => window.clearTimeout(timer);
   }, [autoFix]);
 
-  // 但有"必须用户处理"的事时不必等满（检测失败 / 缺必装项）——那该立刻让人看到怎么装，
-  // 让用户对着一个只为炫耀的动画干等 5 秒是说不过去的。
-  useEffect(() => {
-    if (working) return;
-    if (probeFailed || requiredBroken > 0) setHoldMin(false);
-  }, [working, probeFailed, requiredBroken]);
+  // 说明："有必须处理的就不等满"（检测失败 / 缺必装项）**不再需要一条 effect 去提前解除停留**——
+  // `working` 现在直接由 `hasProblem` 派生（有问题 → 不是工作屏幕 → 立刻显示提醒与操作）。
+  // 最短停留只用来决定"什么时候交回宿主"，不再参与"显示什么"。
 
   // ── 就绪即交回宿主（引导流程据此自动进入下一步）───────────────────────────────
   // 判据用**必装项**：可选项（如 Windows 的 Git Bash）没装不挡路，只在副标题里提一句。
@@ -254,11 +283,12 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
     }
   };
 
-  /** 步骤副标题：由纯函数决定"这一刻该不该有文字"（null = 不渲染，见其 docstring） */
-  const hint = variant === "onboarding"
+  /** 步骤副标题：由纯函数决定"这一刻该不该有文字"（null = 不渲染，见其 docstring）。
+   *  `quiet` 先挡一道：工作屏幕未交回宿主时只留标题 + 动画，任何文字都不抢它。 */
+  const hint = variant === "onboarding" && !quiet
     ? onboardingHint({
         hasReport: report !== null, probeFailed,
-        requiredBroken, optionalBroken, busy: working, handedOff,
+        requiredBroken, optionalBroken, busy, handedOff,
       })
     : null;
 
