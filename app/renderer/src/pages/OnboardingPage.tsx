@@ -5,6 +5,7 @@ import { useThemeStore } from "../stores/theme-store";
 import { ProviderForm } from "../components/settings/ProviderSettings";
 import { EnvPanel, type EnvPanelHandle } from "../components/env/EnvPanel";
 import { EnvRetestButton } from "../components/env/EnvRetestButton";
+import { TavilyKeySection } from "../components/settings/TavilyKeySection";
 import { WindowControls } from "../components/WindowControls";
 import type { ProviderConfig, ApiProvidersData } from "@shared/platform-presets";
 
@@ -92,88 +93,98 @@ export function OnboardingPage(): JSX.Element {
         ))}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 pb-8">
-        {currentStep === 0 ? (
-          /* ── Step 1: Welcome ── */
-          <div className="w-full max-w-[480px] flex flex-col items-center text-center">
-            {/* Logo：直接用图标本身（素材自带圆角口径），不套卡片容器——容器形状会在图标四角外露（形状套两层）、
-                且图标本体只占图片 80.5%，套容器后可见图标更小。与关于页（无容器、图标直接 80px）一致。
-                图标跟随主题取亮/暗版（与关于页、Dock 同一套素材） */}
-            <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="EasyMint" className="w-24 h-24 mb-6" />
+      {/* Content：外层必须可滚动（overflow-y-auto），否则 flex-1 项的 min-height:auto
+          会让超高内容把 footer 顶出视口，而 #app-shell 是 overflow:hidden —— 实测（1400×900 窗口、
+          表单展开态）：不加滚动时内容区高 869 > 可用空间 642，footer 被裁 227px、「进入工作台」
+          完全不可见；加上后 footer 稳定留在视口内，超高内容在内容区内部滚动。
+          内层用 flex-1，**不要用 min-h-full**：min-height:100% 在这个 flex 项父容器上解析不出来
+          （实测内层退化成内容高、内容贴顶），flex-1 + justify-center 才能既撑满又居中。 */}
+      <div className="flex-1 overflow-y-auto px-8 pb-8 flex flex-col">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          {currentStep === 0 ? (
+            /* ── Step 1: Welcome ── */
+            <div className="w-full max-w-[480px] flex flex-col items-center text-center">
+              {/* Logo：直接用图标本身（素材自带圆角口径），不套卡片容器——容器形状会在图标四角外露（形状套两层）、
+                  且图标本体只占图片 80.5%，套容器后可见图标更小。与关于页（无容器、图标直接 80px）一致。
+                  图标跟随主题取亮/暗版（与关于页、Dock 同一套素材） */}
+              <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="EasyMint" className="w-24 h-24 mb-6" />
 
-            <h1 className="text-2xl font-bold text-text-primary mb-2">EasyMint</h1>
-            <p className="text-sm text-text-secondary mb-1">
-              AI 驱动开发，简单的操作让想法变为现实
-            </p>
-            <p className="text-xs text-text-muted mb-8 leading-relaxed">
-              填写项目需求，Mint 自动拆解任务、选择技术栈、调度 Builder 编码、
-              Evaluator 验收，你只需要对话。
-            </p>
+              <h1 className="text-2xl font-bold text-text-primary mb-2">EasyMint</h1>
+              <p className="text-sm text-text-secondary mb-1">
+                AI 驱动开发，简单的操作让想法变为现实
+              </p>
+              <p className="text-xs text-text-muted mb-8 leading-relaxed">
+                填写项目需求，Mint 自动拆解任务、选择技术栈、调度 Builder 编码、
+                Evaluator 验收，你只需要对话。
+              </p>
 
-            <div className="flex flex-col gap-3 w-full">
-              <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
-                <p className="text-sm font-medium text-text-primary">AI 项目管理</p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Mint 自动分析需求、拆分任务、跟进进度
-                </p>
-              </div>
-              <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
-                <p className="text-sm font-medium text-text-primary">自动开发执行</p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Builder 编码 → Evaluator 验收，全自动循环
-                </p>
-              </div>
-              <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
-                <p className="text-sm font-medium text-text-primary">多供应商 API 支持</p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  内置 Anthropic、DeepSeek、MiMo、MiniMax 等供应商
-                </p>
+              <div className="flex flex-col gap-3 w-full">
+                <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
+                  <p className="text-sm font-medium text-text-primary">AI 项目管理</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Mint 自动分析需求、拆分任务、跟进进度
+                  </p>
+                </div>
+                <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
+                  <p className="text-sm font-medium text-text-primary">自动开发执行</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Builder 编码 → Evaluator 验收，全自动循环
+                  </p>
+                </div>
+                <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
+                  <p className="text-sm font-medium text-text-primary">多供应商 API 支持</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    内置 Anthropic、DeepSeek、MiMo、MiniMax 等供应商
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        ) : currentStep === 1 ? (
-          /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）──
-             刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现 */
-          <>
-            <EnvPanel ref={envPanel} variant="onboarding" />
-            <div className="mt-3">
-              <EnvRetestButton panel={envPanel} />
-            </div>
-          </>
-        ) : (
-          /* ── Step 3: Provider Setup ── */
-          <div className="w-full max-w-[540px]">
-            <h1 className="text-xl font-semibold text-center mb-1">
-              选择 AI 供应商
-            </h1>
-            <p className="text-text-secondary text-center text-sm mb-6">
-              选择一个平台并填写 API Key 即可开始使用
-            </p>
-            {savedCfg ? (
-              <div className="bg-surface-alt rounded-[var(--radius-lg)] p-4 space-y-4">
-                <div className="flex items-center gap-3 px-4 py-3 rounded-[var(--radius-lg)] bg-accent-soft">
-                  <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-text-primary font-medium truncate">{savedCfg.name}</span>
-                      <span className="text-[length:var(--text-2xs)] px-1.5 py-0.5 rounded-[var(--radius-lg)] bg-accent-high text-accent shrink-0">使用中</span>
-                    </div>
-                    <div className="text-[length:var(--text-11)] text-text-muted mt-0.5">
-                      模型 {savedCfg.models.length} 个 · {savedCfg.model}
+          ) : currentStep === 1 ? (
+            /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）──
+               刷新按钮由本页提供（面板自身不再渲染）：动作与设置页是同一份实现 */
+            <>
+              <EnvPanel ref={envPanel} variant="onboarding" />
+              <div className="mt-3">
+                <EnvRetestButton panel={envPanel} />
+              </div>
+            </>
+          ) : (
+            /* ── Step 3: Provider Setup ── */
+            <div className="w-full max-w-[540px]">
+              <h1 className="text-xl font-semibold text-center mb-1">
+                选择 AI 供应商
+              </h1>
+              <p className="text-text-secondary text-center text-sm mb-6">
+                选择一个平台并填写 API Key 即可开始使用
+              </p>
+              {savedCfg ? (
+                <div className="bg-surface-alt rounded-[var(--radius-lg)] p-4 space-y-4">
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-[var(--radius-lg)] bg-accent-soft">
+                    <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-text-primary font-medium truncate">{savedCfg.name}</span>
+                        <span className="text-[length:var(--text-2xs)] px-1.5 py-0.5 rounded-[var(--radius-lg)] bg-accent-high text-accent shrink-0">使用中</span>
+                      </div>
+                      <div className="text-[length:var(--text-11)] text-text-muted mt-0.5">
+                        模型 {savedCfg.models.length} 个 · {savedCfg.model}
+                      </div>
                     </div>
                   </div>
+                  <button
+                    className="em-hover-control w-full px-4 py-2 rounded-[var(--radius-lg)] text-text-secondary text-xs transition-all"
+                    onClick={() => setSavedCfg(null)}
+                  >重新配置</button>
                 </div>
-                <button
-                  className="em-hover-control w-full px-4 py-2 rounded-[var(--radius-lg)] text-text-secondary text-xs transition-all"
-                  onClick={() => setSavedCfg(null)}
-                >重新配置</button>
-              </div>
-            ) : (
-              <ProviderForm onSave={handleProviderSave} />
-            )}
-          </div>
-        )}
+              ) : (
+                <ProviderForm onSave={handleProviderSave} />
+              )}
+              {/* 联网能力（可选）：与供应商独立存储（settings.apiKeys）、失焦即生效，
+                  所以放在表单之外——不随「保存供应商配置」提交，也不需要第二个保存按钮 */}
+              <TavilyKeySection />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Footer */}
