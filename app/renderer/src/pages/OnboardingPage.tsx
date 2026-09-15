@@ -16,11 +16,12 @@ const STEPS = [
   { number: 3, title: "选择 AI 供应商" },
 ];
 
-/** 环境检测这一步（`currentStep === 1`）的专用布局参数：**隐藏上方的步骤指示器**，并把内容整体上移。
- *  用户 2026-09-15：「动画检测页面，不要显示上方的步骤标识，只显示标题和动画，然后整体上移 60px」。
- *  上移用内层的 `padding-bottom: 2 × 偏移` 实现——内层是 `justify-center`，底部多留 2 倍才会把内容
- *  中心抬高 1 倍。**不用 translate**：位移不参与布局，会把内容顶出滚动区（顶部从此再也滚不到）。 */
-const ENV_STEP_LIFT_PX = 60;
+/** 各步骤的「内容整体上移量」(px)，0 或缺省即保持居中。两处都是用户直接指定的观感：
+ *  - 欢迎页 80px（2026-09-15：「字体再小一号，整体上移80px」）
+ *  - 环境检测页 60px（同日：「…只显示标题和动画，然后整体上移60px」）
+ *  实现用内层的 `padding-bottom: 2 × 偏移`——内层是 `justify-center`，底部多留 2 倍才会把内容中心抬高 1 倍。
+ *  **不用 translate**：位移不参与布局，会把内容顶出滚动区（顶部从此再也滚不到）。 */
+const STEP_LIFT_PX: Record<number, number> = { 0: 80, 1: 60 };
 
 export function OnboardingPage(): JSX.Element {
   const navigate = useNavigate();
@@ -131,47 +132,30 @@ export function OnboardingPage(): JSX.Element {
           内层用 flex-1，**不要用 min-h-full**：min-height:100% 在这个 flex 项父容器上解析不出来
           （实测内层退化成内容高、内容贴顶），flex-1 + justify-center 才能既撑满又居中。 */}
       <div className="flex-1 overflow-y-auto px-8 pb-8 flex flex-col">
-        {/* 环境检测这一步整体上移（见 ENV_STEP_LIFT_PX）；其余步骤保持居中 */}
+        {/* 各步骤的内容整体上移量（见 STEP_LIFT_PX）；0 = 保持居中 */}
         <div
           className="flex-1 flex flex-col items-center justify-center"
-          style={currentStep === 1 ? { paddingBottom: ENV_STEP_LIFT_PX * 2 } : undefined}
+          style={{ paddingBottom: (STEP_LIFT_PX[currentStep] ?? 0) * 2 }}
         >
           {currentStep === 0 ? (
             /* ── Step 1: Welcome ── */
-            <div className="w-full max-w-[480px] flex flex-col items-center text-center">
+            <div className="flex flex-col items-center text-center">
               {/* Logo：直接用图标本身（素材自带圆角口径），不套卡片容器——容器形状会在图标四角外露（形状套两层）、
                   且图标本体只占图片 80.5%，套容器后可见图标更小。与关于页（无容器、图标直接 80px）一致。
                   图标跟随主题取亮/暗版（与关于页、Dock 同一套素材） */}
               <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="EasyMint" className="w-24 h-24 mb-6" />
 
               {/* 欢迎主文案（用户 2026-09-15 给的新文案，替换原来的标题 + 两段说明）。
-                  字号走新增档 `--text-3xl`(30px)：体系里原本最大是 `--text-2xl`(24px)，
-                  用户要求"字体大一些"，按设计规范「缺档位再补」补一档（UI元素库设计.md 表已同步）。
-                  行高用 `leading-tight`：30px 折两行时，默认行高会显得散。 */}
-              <h1 className="text-[length:var(--text-3xl)] leading-tight font-semibold text-text-primary mb-8">
+                  **一排展示、不换行**（用户要求）：无头实测这行在 24px/600 下宽 **698.5px**，而引导页
+                  内容可用宽约 **960px**（窗口最小宽 1024 − 两侧 px-8 共 64），留有余量 —— 故去掉原先的
+                  `max-w-[480px]` 约束并加 `whitespace-nowrap`。
+                  （字号历程：用户先要"大一些"→ 按规范补 30px 档，实测 873.5px 几乎占满；随后用户
+                  「字体再小一号」→ 回到 `--text-2xl`(24px)，那个 3xl 档因 0 引用已删。）
+                  若将来文案变长，会退化成内容区横向滚动（不裁字）。行高保持 tight，万一折行也不显散。
+                  下方原有三张能力卡已按用户要求（2026-09-15）删除。 */}
+              <h1 className="text-[length:var(--text-2xl)] leading-tight font-semibold text-text-primary whitespace-nowrap">
                 欢迎使用EasyMint，简单设置过后，进行开发你的第一个APP吧。
               </h1>
-
-              <div className="flex flex-col gap-3 w-full">
-                <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
-                  <p className="text-sm font-medium text-text-primary">AI 项目管理</p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    Mint 自动分析需求、拆分任务、跟进进度
-                  </p>
-                </div>
-                <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
-                  <p className="text-sm font-medium text-text-primary">自动开发执行</p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    Builder 编码 → Evaluator 验收，全自动循环
-                  </p>
-                </div>
-                <div className="px-4 py-3 rounded-[var(--radius-lg)] bg-surface-alt text-left">
-                  <p className="text-sm font-medium text-text-primary">多供应商 API 支持</p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    内置 Anthropic、DeepSeek、MiMo、MiniMax 等供应商
-                  </p>
-                </div>
-              </div>
             </div>
           ) : currentStep === 1 ? (
             /* ── Step 2: 环境准备（缺失依赖在这里装/引导，避免进工作台后命令全跑不了）──
