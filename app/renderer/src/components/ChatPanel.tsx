@@ -2311,7 +2311,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
                   onMouseMove 仅作滑块弹性的鼠标跟踪源 */}
               <div
                 ref={roleSliderRef}
-                className="group relative flex items-center rounded-full bg-glass-track p-1 backdrop-blur-[20px]"
+                className="group relative flex items-center rounded-full bg-glass-track border border-glass-track-border p-1 backdrop-blur-[20px] backdrop-saturate-[1.4]"
                 onMouseMove={handleTrackMove}
                 onMouseLeave={() => setSliderStretch({ x: 1, y: 1 })}
               >
