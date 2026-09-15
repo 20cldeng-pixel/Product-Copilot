@@ -16,9 +16,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   autoFixFor, readDistro, resolveInstaller, manualInstallCommand, distroHint,
-  usernsFixAvailable, usernsManualCommand, type Installer,
+  usernsFixAvailable, usernsManualCommand, windowsInstallCommand, type Installer,
 } from "./plan";
 import { findBashOnWindows } from "../background-shell/registry";
+import { packagedSrtVersion, srtWinSpawn } from "../sandbox/srt-win";
 import type { EnvItem, EnvItemId, EnvItemStatus, EnvReport } from "./types";
 
 /** 传下去会让被测程序行为异常的变量（本项目实际见过外部注入 NODE_OPTIONS） */
@@ -166,13 +167,14 @@ function blockedFix(installer: Installer | null): EnvItem["fix"] {
  * 只读、不改任何状态；失败留痕、绝不抛错（探测本身不能把主流程带崩）。
  */
 export async function probeEnvironment(
-  deps: { probe?: (spec: BinarySpec) => ProbeOutcome } = {},
+  deps: { probe?: (spec: BinarySpec) => ProbeOutcome; platform?: string } = {},
 ): Promise<EnvReport> {
+  const platform = deps.platform ?? process.platform;   // 可注入：Windows 分支要能在任意宿主上被测试
   const distro = readDistro();
   const items: EnvItem[] = [];
   const probe = deps.probe ?? ((spec: BinarySpec) => probeBinary(spec.candidates, spec.args));
 
-  if (process.platform === "linux") {
+  if (platform === "linux") {
     const installer = resolveInstaller({ id: distro.id, idLike: distro.idLike ?? [] });
     const manual = (ids: EnvItemId[]): string | undefined =>
       manualInstallCommand(ids, installer) ?? undefined;
@@ -223,12 +225,14 @@ export async function probeEnvironment(
     }
   }
 
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     // Windows 的一次性装配（sandbox 账户 + WFP 网络过滤）由 srt 自己的接口负责，装配时弹一次 UAC。
     // 探测也走 srt 的状态接口——不自己拼命令行判断，口径才不会漂。
+    // 注意：这类接口**必须显式传 srtWin**（srt 的 spawn 规格），不传会抛
+    // `no srt-win path configured` —— 详见 sandbox/srt-win.ts 的说明。
     try {
       const srt = await import("@anthropic-ai/sandbox-runtime");
-      const st = await srt.checkWindowsSandboxStatusAsync();
+      const st = await srt.checkWindowsSandboxStatusAsync({ srtWin: srtWinSpawn(srt) });
       const userOk = Boolean(st.user?.provisioned && st.user?.credPresent);
       // WFP 三态：installed / absent / cannot-read。**cannot-read 不是"没装"**——BFE 枚举需要管理员，
       // 非提权进程读不到；按 srt 的说明此时应以账户状态为准（同「探测失败 ≠ 未安装」这条铁律）。
@@ -245,8 +249,9 @@ export async function probeEnvironment(
           : { detail: `未安装：${missingPart}（安装时会弹一次系统授权窗口）` }),
         fix: ok ? {} : {
           auto: { strategy: "winInstall" },
-          // 手工指引直接用 srt 官方文案（含卸载与证书部分），不自己编
-          manual: { command: srt.windowsInstallInstructions(undefined) },
+          // 手工指引用我们自己的命令：srt 原文的包名是非作用域的（npm 上那是别人的包）且含散文，
+          // 界面按代码块整块复制 → 不可用。理由见 plan.ts 的 windowsInstallCommand()
+          manual: { command: windowsInstallCommand(packagedSrtVersion(srt)) },
         },
       });
     } catch {
@@ -256,7 +261,7 @@ export async function probeEnvironment(
         required: true,
         status: "unknown",
         detail: "检测失败（可能已安装）——不代表未安装，可点「重新检测」重试",
-        fix: { manual: { command: "npx --no-install @anthropic-ai/sandbox-runtime windows-install" } },
+        fix: { manual: { command: windowsInstallCommand() } },
       });
     }
 

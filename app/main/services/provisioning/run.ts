@@ -19,9 +19,10 @@ import { spawn } from "node:child_process";
 import {
   APPARMOR_PROFILES_PACKAGE, buildInstallArgv, manualInstallCommand, readDistro, resolveInstaller,
   resolveUsernsProfileSource, usernsCopyArgv, usernsInstallSourceArgv, usernsLoadArgv,
-  usernsManualCommand, usernsProfileInstalled, type Installer,
+  usernsManualCommand, usernsProfileInstalled, windowsInstallCommand, type Installer,
 } from "./plan";
 import { cleanEnv, prependPathDirs, probeEnvironment, probePathDirs } from "./probe";
+import { packagedSrtVersion, srtWinSpawn } from "../sandbox/srt-win";
 import type { EnvReport } from "./types";
 
 export type InstallPhase = "preparing" | "installing" | "verifying" | "done" | "failed";
@@ -76,18 +77,20 @@ export function outputTail(s: string, n = 400): string {
 
 async function defaultInstallWin(): Promise<void> {
   const srt = await import("@anthropic-ai/sandbox-runtime");
-  await srt.installWindowsSandboxAsync();
+  // 必须传 srtWin（srt 的 spawn 规格）：不传时 srt 内部 `opts.srtWin ?? resolveSrtWin()` 会抛
+  // `no srt-win path configured` —— 见 sandbox/srt-win.ts
+  await srt.installWindowsSandboxAsync({ srtWin: srtWinSpawn(srt) });
 }
 
-/** 计划层：Linux 走包管理器白名单；Windows 走 srt 装配（手工指引取 srt 官方文案，不自己编） */
+/** 计划层：Linux 走包管理器白名单；Windows 走 srt 装配（手工指引见 plan.ts 的 windowsInstallCommand） */
 async function computePlan(ids: readonly string[]): Promise<Plan> {
   if (process.platform === "win32") {
     if (!isWindowsInstallRequest(ids)) return { strategy: "pkg", argv: null };
     try {
       const srt = await import("@anthropic-ai/sandbox-runtime");
-      return { strategy: "winInstall", manualCommand: srt.windowsInstallInstructions(undefined) };
+      return { strategy: "winInstall", manualCommand: windowsInstallCommand(packagedSrtVersion(srt)) };
     } catch {
-      return { strategy: "winInstall", manualCommand: "npx --no-install @anthropic-ai/sandbox-runtime windows-install" };
+      return { strategy: "winInstall", manualCommand: windowsInstallCommand() };
     }
   }
   const distro = readDistro();

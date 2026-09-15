@@ -1,11 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   APPARMOR_PROFILES_PACKAGE, buildInstallArgv, buildPackageArgv, formatCommand, manualInstallCommand,
   parseOsRelease, readDistro, resolveInstaller, resolveUsernsProfileSource, usernsCopyArgv,
   usernsFixAvailable, usernsLoadArgv, usernsManualCommand, usernsProfileInstalled,
-  type Installer,
+  windowsInstallCommand, type Installer,
 } from "./plan";
-import { prependPathDirs, probeBinary, type ProbeDeps } from "./probe";
+import { prependPathDirs, probeBinary, probeEnvironment, type ProbeDeps } from "./probe";
+
+/**
+ * srt 打桩：Windows 分支的回归测试用（真实模块是 ESM-only、且要 Windows 才跑得起来）。
+ * exe 路径做成可变属性 —— 测试先造好"包内 srt"的目录形状（含 package.json 版本），
+ * 再调 probeEnvironment，这样版本钉取逻辑也一并被覆盖。
+ */
+const srtHarness = vi.hoisted(() => ({ calls: [] as unknown[], exe: "C:\\none\\vendor\\srt-win\\x64\\srt-win.exe" }));
+vi.mock("@anthropic-ai/sandbox-runtime", () => ({
+  get VENDORED_SRT_WIN_EXE() { return srtHarness.exe; },
+  resolveSrtWin: (cfg: { path: string }) => ({ exe: cfg.path, prependArgs: ["--srt-win"] }),
+  checkWindowsSandboxStatusAsync: async (opts: unknown) => {
+    srtHarness.calls.push(opts);
+    return { user: { provisioned: false, credPresent: false }, wfp: { state: "absent" } };
+  },
+}));
 
 /** 与 plan.ts 的常量同源的钉子：命令与指引必须指向同一处 */
 const USERNS_DEST = "/etc/apparmor.d/bwrap-userns-restrict";
@@ -197,5 +215,67 @@ describe("userns 放行的一键修复：计划层（纯函数）", () => {
     ]);
     expect(buildPackageArgv([], apt)).toBeNull();
     expect(buildPackageArgv(["x"], null)).toBeNull();
+  });
+});
+
+/**
+ * 用户 2026-09-15 在 Windows 上实测：界面给的手动命令跑不起来
+ * （`npx --no-install @anthropic-ai/sandbox-runtime windows-install` →
+ *  npm 11 `canceled due to missing packages and no YES option`）。
+ * 这几条把"能整块复制到终端跑"的形态钉住。
+ */
+describe("Windows 手动安装命令", () => {
+  it("作用域包名 + 钉版本 + --yes，且是单行（界面整块当代码复制）", () => {
+    const cmd = windowsInstallCommand("0.0.75");
+    expect(cmd).toBe("npx --yes @anthropic-ai/sandbox-runtime@0.0.75 windows-install");
+    expect(cmd).not.toContain("\n");            // 混进散文后，复制到终端第一行就不是命令
+    expect(cmd).not.toContain("--no-install");  // npm 11 译为 `--yes false`，必失败（用户实测形态）
+  });
+
+  it("读不到包内版本时退化为 latest —— 但仍必须是作用域名", () => {
+    const cmd = windowsInstallCommand();
+    expect(cmd).toBe("npx --yes @anthropic-ai/sandbox-runtime windows-install");
+    expect(cmd).not.toContain("sandbox-runtime@");
+    // 非作用域的 `sandbox-runtime` 在 npm 上是别人的「Empty package」（维护者与本项目无关）——
+    // 照那种写法跑等于把陌生人的代码拉下来执行，故用正则钉住"必须带作用域前缀"
+    expect(cmd).not.toMatch(/npx\s+(--\S+\s+)*sandbox-runtime\s/);
+  });
+});
+
+/**
+ * Windows 分支的回归测试（本次真病的钉子）：srt 的 status / install 接口**必须传 `srtWin`**，
+ * 不传会抛 `no srt-win path configured` —— 那会让环境检测恒失败、一键安装恒失败，
+ * 而界面只看到"检测失败 + 兜底命令"（用户 2026-09-15 报的就是这个形态）。
+ */
+describe("Windows 环境探测（平台注入 + srt 打桩）", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    dirs.length = 0;
+    srtHarness.calls.length = 0;
+  });
+
+  /** 造出"包内 srt"的目录形状：`<root>/vendor/srt-win/x64/srt-win.exe` + 包根 package.json */
+  function packagedSrtFixture(version: string): string {
+    const root = mkdtempSync(path.join(os.tmpdir(), "em-srt-"));
+    dirs.push(root);
+    writeFileSync(path.join(root, "package.json"), JSON.stringify({ version }));
+    mkdirSync(path.join(root, "vendor", "srt-win", "x64"), { recursive: true });
+    return path.join(root, "vendor", "srt-win", "x64", "srt-win.exe");
+  }
+
+  it("状态探测带上 srtWin；手动命令是单行、钉住包内版本", async () => {
+    srtHarness.exe = packagedSrtFixture("9.9.9");
+
+    const report = await probeEnvironment({ platform: "win32" });
+    const item = report.items.find((i) => i.id === "winSandbox");
+
+    // ① 调用形态（漏传 srtWin 时这里会变成 [{}]，真机上则直接抛）
+    expect(srtHarness.calls).toEqual([{ srtWin: { exe: srtHarness.exe, prependArgs: ["--srt-win"] } }]);
+    // ② 结论与指引
+    expect(item?.status).toBe("missing");
+    expect(item?.detail).toContain("隔离账户未就绪");
+    expect(item?.fix.auto).toEqual({ strategy: "winInstall" });
+    expect(item?.fix.manual?.command).toBe("npx --yes @anthropic-ai/sandbox-runtime@9.9.9 windows-install");
   });
 });

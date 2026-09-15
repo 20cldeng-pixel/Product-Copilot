@@ -238,6 +238,27 @@ export function manualInstallCommand(ids: readonly string[], installer: Installe
   return argv ? formatCommand(argv) : null;
 }
 
+/**
+ * Windows 手动安装命令（srt 的一次性装配：`srt-sandbox` 隔离账户 + WFP 网络过滤，装时弹一次 UAC）。
+ *
+ * 为什么不用 srt 的 `windowsInstallInstructions()` 原文（2026-09-15 改）：
+ * ① 它给的包名是**非作用域的 `sandbox-runtime`** —— npm 上那个名字是别人的 "Empty package"
+ *    （维护者与本项目无关），照着跑等于把陌生人的代码拉下来执行；
+ * ② 它是「英文散文 + 命令」的多行文本，而界面把 `manual.command` **整块**当代码给用户复制
+ *    （`EnvPanel` 的 `<code>` + 复制按钮），连散文一起粘进终端第一行就不是命令。
+ *
+ * 另外两个必须是这个形态：
+ * - `--yes`：npx 在本地没有该包时会交互式询问。用户是"从设置页复制到终端"跑的，
+ *   遇到询问的观感就是"没反应/报错"——用户实测拿到的正是 npm 11 的
+ *   `npx canceled due to missing packages and no YES option`（此前字符串里写的是已废弃的
+ *   `--no-install`，npm 把它译成 `--yes false`，必失败）。
+ * - 钉版本：见 `packagedSrtVersion()` 的说明；传 undefined 时才退化为 latest。
+ */
+export function windowsInstallCommand(version?: string): string {
+  const spec = version ? `@anthropic-ai/sandbox-runtime@${version}` : "@anthropic-ai/sandbox-runtime";
+  return `npx --yes ${spec} windows-install`;
+}
+
 /** 各发行版的"没有包管理器时的兜底指引"（只展示，不执行） */
 export function distroHint(distroId: string): string {
   const name = path.basename(distroId || "linux");

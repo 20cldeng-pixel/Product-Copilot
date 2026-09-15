@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { buildExecutionPolicy, type PermissionMode } from "../permission/access-policy";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { wrapWithWindowsWorker } from "./windows-execution-manager";
+import { srtWinSpawn } from "./srt-win";
 
 /** Linux 沙盒系统依赖（EM 不代做系统安装——缺失时给安装指引，装好前自动降级） */
 const LINUX_SANDBOX_DEPS = ["bwrap", "socat", "rg"] as const;
@@ -112,7 +113,7 @@ async function platformFailureReason(e: Error): Promise<string | null> {
   if (process.platform === "win32") {
     try {
       const srt = await getSrt();
-      const st = await srt.checkWindowsSandboxStatusAsync();
+      const st = await srt.checkWindowsSandboxStatusAsync({ srtWin: srtWinSpawn(srt) });
       const userOk = Boolean(st?.user?.provisioned && st.user.credPresent);
       if (!userOk) {
         return `Windows 系统保护组件未安装（需一次性管理员安装，将弹出 UAC 授权）——安装指引见文档`;
@@ -147,7 +148,7 @@ export async function ensureSandbox(cwd: string): Promise<SandboxInitResult> {
     // srt-win 的文件允许项在 initialize 时写入 ACL。初始化必须在按会话隔离的
     // worker 内完成，主进程这里只检查系统组件，绝不能初始化共享实例。
     if (process.platform === "win32") {
-      const status = await srt.checkWindowsSandboxStatusAsync();
+      const status = await srt.checkWindowsSandboxStatusAsync({ srtWin: srtWinSpawn(srt) });
       if (!status.user.provisioned || !status.user.credPresent) {
         throw new Error("Windows 系统保护组件未安装");
       }
