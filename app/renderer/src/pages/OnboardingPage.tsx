@@ -16,6 +16,12 @@ const STEPS = [
   { number: 3, title: "选择 AI 供应商" },
 ];
 
+/** 环境检测这一步（`currentStep === 1`）的专用布局参数：**隐藏上方的步骤指示器**，并把内容整体上移。
+ *  用户 2026-09-15：「动画检测页面，不要显示上方的步骤标识，只显示标题和动画，然后整体上移 60px」。
+ *  上移用内层的 `padding-bottom: 2 × 偏移` 实现——内层是 `justify-center`，底部多留 2 倍才会把内容
+ *  中心抬高 1 倍。**不用 translate**：位移不参与布局，会把内容顶出滚动区（顶部从此再也滚不到）。 */
+const ENV_STEP_LIFT_PX = 60;
+
 export function OnboardingPage(): JSX.Element {
   const navigate = useNavigate();
   const isDark = useThemeStore((s) => s.effective) === "dark";
@@ -91,29 +97,32 @@ export function OnboardingPage(): JSX.Element {
       <div className="relative h-[35px] shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
         <WindowControls />
       </div>
-      {/* Step indicator */}
-      <div className="flex justify-center gap-3 pt-12 pb-2">
-        {STEPS.map((step, i) => (
-          <div key={step.number} className="flex items-center gap-3">
-            <div
-              className={`w-2 h-2 rounded-full transition-colors ${
-                i < currentStep
-                  ? "bg-accent"
-                  : i === currentStep
-                    ? "bg-accent ring-2 ring-accent-border"
-                    : "bg-text-muted"
-              }`}
-            />
-            {i < STEPS.length - 1 && (
+      {/* Step indicator —— **环境检测这一步整块不渲染**（用户 2026-09-15：这一步只留标题 + 动画）。
+          连带它那截 `pt-12` 的留白一起消失，内容区自然变高、内容上提。 */}
+      {currentStep !== 1 && (
+        <div className="flex justify-center gap-3 pt-12 pb-2">
+          {STEPS.map((step, i) => (
+            <div key={step.number} className="flex items-center gap-3">
               <div
-                className={`w-8 h-[2px] transition-colors ${
-                  i < currentStep ? "bg-accent" : "bg-text-muted"
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  i < currentStep
+                    ? "bg-accent"
+                    : i === currentStep
+                      ? "bg-accent ring-2 ring-accent-border"
+                      : "bg-text-muted"
                 }`}
               />
-            )}
-          </div>
-        ))}
-      </div>
+              {i < STEPS.length - 1 && (
+                <div
+                  className={`w-8 h-[2px] transition-colors ${
+                    i < currentStep ? "bg-accent" : "bg-text-muted"
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Content：外层必须可滚动（overflow-y-auto），否则 flex-1 项的 min-height:auto
           会让超高内容把 footer 顶出视口，而 #app-shell 是 overflow:hidden —— 实测（1400×900 窗口、
@@ -122,7 +131,11 @@ export function OnboardingPage(): JSX.Element {
           内层用 flex-1，**不要用 min-h-full**：min-height:100% 在这个 flex 项父容器上解析不出来
           （实测内层退化成内容高、内容贴顶），flex-1 + justify-center 才能既撑满又居中。 */}
       <div className="flex-1 overflow-y-auto px-8 pb-8 flex flex-col">
-        <div className="flex-1 flex flex-col items-center justify-center">
+        {/* 环境检测这一步整体上移（见 ENV_STEP_LIFT_PX）；其余步骤保持居中 */}
+        <div
+          className="flex-1 flex flex-col items-center justify-center"
+          style={currentStep === 1 ? { paddingBottom: ENV_STEP_LIFT_PX * 2 } : undefined}
+        >
           {currentStep === 0 ? (
             /* ── Step 1: Welcome ── */
             <div className="w-full max-w-[480px] flex flex-col items-center text-center">
