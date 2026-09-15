@@ -77,8 +77,13 @@ function windowsSandboxWorkerOptions(overrides = {}) {
 module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerOptions, reportOversize };
 
 /**
- * esbuild 会给 **≥ 1 MiB** 的产物加 ⚠️（实测边界：1023KB 无、1024KB 有）。它只报大小、
- * 不报来源——dev 里看到一个 `[1] app/main/dist/main.cjs 1.0mb ⚠️` 无从下手。
+ * esbuild 会给 **≥ 1 MiB** 的产物加 ⚠️。出处：esbuild `internal/logger/logger.go`
+ * `const sizeWarningThreshold = 1024 * 1024`，其上注释原文 "Show a warning icon next to output
+ * files that are 1mb or larger"。**纯展示层**——加个图标 + 把大小数字由青色改黄色
+ * （另在 Windows CMD 下不显示 emoji），既不拦截构建也不改产物；本仓库另经二分实测复核过边界
+ * （1023KB 无 / 1024KB 有）。
+ *
+ * 它只报大小、不报来源——dev 里看到一个 `[1] app/main/dist/main.cjs 1.0mb ⚠️` 无从下手。
  * 这里在构建后补一行"谁贡献的"，只在越线时输出（不越线完全静默）。
  *
  * 处置顺序：① 若大头是纯 JS 第三方依赖 → 加进 EXTERNALS（前提：在 dependencies 里，
