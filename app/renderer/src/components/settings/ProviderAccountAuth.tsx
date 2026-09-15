@@ -11,7 +11,9 @@ import type { ProviderAuthStatus } from "@shared/provider-auth";
 /** 账号登录的订阅说明（key = 供应商预设 id） */
 export const ACCOUNT_LOGIN_HINTS: Record<string, string> = {
   anthropic: "订阅用量按 token 计费，不占套餐额度",
-  "openai-codex": "需 ChatGPT Plus / Pro 订阅",
+  // 地区限制是实测结论：OpenAI Codex 换 token 会返回 403 unsupported_country_region_territory。
+  // 提前写在这里，免得用户走完浏览器授权才被拒
+  "openai-codex": "需 ChatGPT Plus / Pro 订阅；且需在 OpenAI 支持的国家/地区使用",
 };
 
 export interface ProviderAuthState {

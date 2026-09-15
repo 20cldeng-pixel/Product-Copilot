@@ -6,11 +6,29 @@ import type { ProviderAuthPromptOption, ProviderAuthUiEvent } from "@shared/prov
 /**
  * 供应商账号登录（OAuth）授权弹窗。
  *
- * SDK 的 AuthEvent 带英文原文，主进程只转发结构化事件、界面按 kind 自写中文文案；
- * 因此这里不展示 SDK 的任何 message/instructions。
+ * 过程中的 SDK 事件（AuthEvent 的英文原文）不展示：主进程只转发结构化事件、界面按 kind 自写中文文案。
+ * **例外是失败**——原始终端报错一律作为 detail 保留（见 failureReason），否则用户回报问题时无据可依。
  */
 
 type PromptKind = "text" | "secret" | "select" | "manual_code";
+
+/**
+ * 该输入步骤能不能提交空值。
+ *
+ * **只有 `text` 可以**：SDK 里唯一的 text 步骤是 GitHub Copilot 问企业版域名，且**留空是合法输入**
+ * （原文 `GitHub Enterprise URL/domain (blank for github.com)`，见 pi-ai `auth/oauth/github-copilot.js`）。
+ * 早先这里对所有步骤一律"空值不许提交"，于是**非企业版用户永远过不去那一步**（填别的又会被判非法域名）。
+ * 其余步骤（manual_code / secret）都是凭据类输入，空提交只会让流程报错，仍然拦住。
+ */
+export function submitGuardError(kind: PromptKind, raw: string): string | null {
+  if (raw.trim()) return null;
+  return kind === "text" ? null : "请先填写内容";
+}
+
+/** 输入步骤的补充说明（按 provider + 步骤类型）；没有则给通用文案 */
+const STEP_HINTS: Record<string, Partial<Record<PromptKind, string>>> = {
+  "github-copilot": { text: "非 GitHub 企业版直接留空即可（留空 = 使用 github.com）" },
+};
 
 interface PendingStep {
   promptType: PromptKind;
@@ -23,7 +41,7 @@ type Phase =
   | { kind: "browser"; url: string }
   | { kind: "device"; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number }
   | { kind: "success" }
-  | { kind: "error"; reason: string; detail?: string };
+  | ({ kind: "error" } & FailureView);
 
 interface OAuthLoginDialogProps {
   providerId: string;
@@ -48,14 +66,44 @@ function promptTitle(kind: PromptKind): string {
   }
 }
 
-/** 失败原因：常见情形给中文结论，其余保留原文作细节（排查用） */
-function failureReason(raw: string | undefined): { reason: string; detail?: string } {
-  const msg = raw ?? "";
-  if (/abort|cancel/i.test(msg)) return { reason: "登录已取消" };
-  if (/timeout|timed out|expire/i.test(msg)) return { reason: "授权已超时，请重试" };
-  if (/fetch failed|ENOTFOUND|ECONN|EAI_AGAIN|network/i.test(msg)) return { reason: "网络连接失败，请检查网络后重试" };
-  if (/invalid_grant|\b401\b|\b403\b/.test(msg)) return { reason: "授权被拒绝，请重新登录" };
-  return { reason: "登录失败", detail: msg };
+interface FailureView {
+  reason: string;
+  /** 原始报错，一律保留（排查与回报问题都靠它） */
+  detail?: string;
+  /** 补救建议：说清下一步该做什么，而不是让人反复点「重试」 */
+  hint?: string;
+  /** 重试是否有意义。地区/政策类限制重试必然同样失败，此时不给「重试」按钮 */
+  retryable: boolean;
+}
+
+/**
+ * 失败原因：常见情形给中文结论，**原文一律附在 detail 里**。
+ * 只给结论会把线索丢掉——例如 invalid_grant（码已被用过/过期）与 401/403（凭据被拒）
+ * 都归到「授权被拒绝」，但处置完全不同；用户回报问题时也需要能照着念出原文。
+ *
+ * **判据顺序是语义的一部分**：地区限制同样带 `(403)`，若排在通用 401/403 之后，就会被归成
+ * 「授权被拒绝，请重新登录」并给出一个点了必然再失败的重试按钮（2026-09-15 实测踩到）。
+ */
+export function failureReason(raw: string | undefined): FailureView {
+  const msg = (raw ?? "").trim();
+  const view = (reason: string, extra: Partial<FailureView> = {}): FailureView =>
+    ({ reason, ...(msg ? { detail: msg } : {}), retryable: true, ...extra });
+  if (!msg) return { reason: "登录失败", retryable: true };
+  // 地区限制要排在通用 401/403 之前：它同样带 (403)，但属于**服务方政策**，重试永远不会好
+  // （实测：OpenAI Codex 换 token 返回 unsupported_country_region_territory）
+  if (/unsupported_country_region_territory|region, or territory not supported/i.test(msg)) {
+    return view("当前所在地区不受支持，无法完成账号登录", {
+      hint: "这是服务方的地区政策。若本机有代理 / VPN，请确认它已开启（程序会跟随系统代理）；否则可在「AI 供应商」里改用 API Key 方式接入其它供应商。",
+      retryable: false,
+    });
+  }
+  if (/abort|cancel/i.test(msg)) return view("登录已取消");
+  if (/timeout|timed out|expire/i.test(msg)) return view("授权已超时，请重试");
+  if (/fetch failed|ENOTFOUND|ECONN|EAI_AGAIN|network/i.test(msg)) return view("网络连接失败，请检查网络后重试");
+  if (/accountId/i.test(msg)) return view("账号信息不完整，无法完成登录");
+  if (/credential store/i.test(msg)) return view("登录成功但凭据写入失败，请重试");
+  if (/invalid_grant|\b401\b|\b403\b/.test(msg)) return view("授权被拒绝，请重新登录");
+  return view("登录失败");
 }
 
 function Spinner(): JSX.Element {
@@ -133,13 +181,12 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
         }
         // 取消是用户主动动作，界面已在卸载，不切失败态
         if (r.canceled) return;
-        const { reason, detail } = failureReason(r.error);
-        setPhase({ kind: "error", reason, detail });
+        setPhase({ kind: "error", ...failureReason(r.error) });
       })
       .catch((e: unknown) => {
         if (!alive) return;
         runningRef.current = false;
-        setPhase({ kind: "error", reason: "登录失败", detail: e instanceof Error ? e.message : String(e) });
+        setPhase({ kind: "error", reason: "登录失败", detail: e instanceof Error ? e.message : String(e), retryable: true });
       });
 
     return () => {
@@ -160,10 +207,11 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
   const dismiss = useCallback(() => onCloseRef.current(), []);
 
   const submit = useCallback(
-    (value: string) => {
+    (value: string, kind: PromptKind) => {
       const v = value.trim();
-      if (!v) {
-        toast("请先填写内容");
+      const guard = submitGuardError(kind, v);
+      if (guard) {
+        toast(guard);
         return;
       }
       void window.electronAPI.provider.authInput(requestId, v).then((accepted) => {
@@ -196,6 +244,14 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
     );
   }, []);
 
+  // 步骤说明：优先按 provider 定制的（如 Copilot 的企业版域名可留空），否则给通用一句
+  const stepHint = step?.promptType === "manual_code"
+    ? "授权后浏览器地址栏的内容整段粘贴即可。"
+    : step
+      ? STEP_HINTS[providerId]?.[step.promptType]
+        ?? (step.promptType === "text" ? "可留空：留空表示使用默认值" : undefined)
+      : undefined;
+
   const stepForm = step && (
     <div className="mt-3">
       <label className="text-xs text-text-secondary block mb-1.5">{promptTitle(step.promptType)}</label>
@@ -205,7 +261,7 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
             <button
               key={o.id}
               type="button"
-              onClick={() => submit(o.id)}
+              onClick={() => submit(o.id, step.promptType)}
               className="w-full text-left px-3 py-2 rounded-[var(--radius-lg)] bg-surface-alt em-hover-control text-xs text-text-primary transition-colors"
             >
               <span className="block">{o.label}</span>
@@ -222,13 +278,13 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
             placeholder={step.placeholder ?? ""}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") submit(input); }}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(input, step.promptType); }}
           />
-          <button type="button" onClick={() => submit(input)} className="shrink-0 h-8 px-4 rounded-[var(--radius-lg)] btn-accent text-xs font-medium">完成</button>
+          <button type="button" onClick={() => submit(input, step.promptType)} className="shrink-0 h-8 px-4 rounded-[var(--radius-lg)] btn-accent text-xs font-medium">完成</button>
         </div>
       )}
-      {step.promptType === "manual_code" && (
-        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">授权后浏览器地址栏的内容整段粘贴即可。</p>
+      {stepHint && (
+        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">{stepHint}</p>
       )}
     </div>
   );
@@ -241,7 +297,8 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
         </div>
 
         <div className="px-5 pb-4">
-          {phase.kind === "starting" && (
+          {/* 有输入步骤时不显示"正在发起授权…"：那行字会让人以为流程卡住（Copilot 第一步就是填域名） */}
+          {phase.kind === "starting" && !step && (
             <div className="flex items-center gap-2 text-xs text-text-secondary">
               <Spinner />
               正在发起授权…
@@ -283,6 +340,7 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
             <div>
               <p className="text-xs text-danger">{phase.reason}</p>
               {phase.detail && <p className="text-[length:var(--text-2xs)] text-text-muted mt-1 break-all">{phase.detail}</p>}
+              {phase.hint && <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">{phase.hint}</p>}
             </div>
           )}
 
@@ -298,12 +356,18 @@ export function OAuthLoginDialog({ providerId, providerLabel, onClose }: OAuthLo
 
         <div className="flex items-center justify-end gap-2 px-5 pb-3">
           {phase.kind === "error" ? (
-            <>
+            phase.retryable ? (
+              <>
+                <button type="button" onClick={dismiss}
+                  className="h-8 px-4 rounded-[var(--radius-lg)] text-text-secondary text-xs hover:bg-surface-hover transition-colors">取消</button>
+                <button type="button" onClick={() => setRequestId(newRequestId())}
+                  className="h-8 px-4 rounded-[var(--radius-lg)] btn-accent text-xs font-medium">重试</button>
+              </>
+            ) : (
+              /* 不可能成功的失败（地区限制等）不给「重试」：点了只是重复一次同样的拒绝 */
               <button type="button" onClick={dismiss}
-                className="h-8 px-4 rounded-[var(--radius-lg)] text-text-secondary text-xs hover:bg-surface-hover transition-colors">取消</button>
-              <button type="button" onClick={() => setRequestId(newRequestId())}
-                className="h-8 px-4 rounded-[var(--radius-lg)] btn-accent text-xs font-medium">重试</button>
-            </>
+                className="h-8 px-4 rounded-[var(--radius-lg)] btn-accent text-xs font-medium">知道了</button>
+            )
           ) : (
             <button type="button" onClick={dismiss} disabled={phase.kind === "success"}
               className="h-8 px-4 rounded-[var(--radius-lg)] text-text-secondary text-xs hover:bg-surface-hover transition-colors disabled:opacity-40">取消</button>
