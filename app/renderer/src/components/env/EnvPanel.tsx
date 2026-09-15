@@ -223,23 +223,6 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
     if (okToOff) setSandboxDisabled(true);
   };
 
-  // 阶段 → 进度百分比（不确定态用脉冲条，不假装知道百分比）。
-  // 有 index/total 时按步数推进——一键修复是多步（写配置 + 加载），一直停在同一个值会显得卡住。
-  const pct = ((): number => {
-    if (result?.ok) return 100;
-    if (!progress) return 0;
-    switch (progress.phase) {
-      case "preparing": return 8;
-      case "installing": {
-        const step = progress.total > 0 ? progress.index / progress.total : 1;
-        return Math.min(85, 8 + Math.round(step * 70));
-      }
-      case "verifying": return 90;
-      case "done": return 100;
-      default: return 100;
-    }
-  })();
-
   const statusText = (s: EnvItemShape["status"]): { text: string; cls: string } => {
     switch (s) {
       case "ok": return { text: "可用", cls: "text-text-secondary" };
@@ -307,11 +290,19 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
         })}
       </div>
 
-      {/* 进度：阶段化，不假装精确百分比 */}
+      {/* 进度：只表达"在忙"，不假装精确百分比（真正的进展由下面那行阶段文案说）。
+          用户 2026-09-15 定稿：光带**不柔化**（硬边）且**比轨道框细**（4px，见下），
+          底衬轨道是一条与光带垂直居中的 1px 细线（`bg-divider`）——往复本身是唯一的视觉主体。 */}
       {installing && (
         <div className="mt-3">
-          <div className="h-1 w-full rounded-full bg-surface-hover overflow-hidden">
-            <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
+          <div className="relative h-1.5 w-full overflow-hidden">
+            {/* 细线轨道：1px，与光带垂直居中对齐 */}
+            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-divider" />
+            {/* 光带：4px 厚 × 46% 宽（上下各留 1px，故 `top-px` 即居中；长度 2026-09-15 用户要求整体 +20%）。
+                这里用 top-px 而非 -translate-y-1/2 —— 动画的 keyframes 写的是 transform: translateX，
+                再叠一个 translate-y 工具类会与之抢同一个属性（谁赢取决于生成顺序）。
+                背景（含两端渐隐的"拖尾"）在 index.css 的 .env-sweep-glow 里，故此处不能加 bg-accent。 */}
+            <div className="env-sweep-glow absolute left-0 top-px h-1 w-[46%] rounded-[50%]" />
           </div>
           <p className="mt-1.5 text-[length:var(--text-xs)] text-text-muted">
             {progress?.message ?? "正在准备安装…"}

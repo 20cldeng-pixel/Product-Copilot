@@ -1421,6 +1421,37 @@ select.input {
   animation: progressIndeterminate 2s ease-in-out infinite;
 }
 
+/* 环境检测的「来回往复」柔光带（2026-09-15 用户指定：参考输入卡片的「顶部滑动」光效观感）。
+ * 与输入卡片那套的区别（用户明确要求，别照搬）：
+ *  - **不用 canvas / Worker**：那套是为长会话帧率（主线程繁忙时降采样），这里是几秒钟的短动效，
+ *    纯 CSS 更简单、也不掉帧；
+ *  - **形状不一样**：卡片那条贴着上边框、底部是平的；这里是**上下对称 + 左右两端收细**的透镜形
+ *    （`rounded-[50%]` 让两端自然收细），因为它没有"贴着某条边"的语义。
+ * 位移复用上面的 progressIndeterminate（-100% → 250%，两端都完全移出轨道），
+ * 只把方向改成 `alternate` —— 即"来回往复"；时长比扫描条慢一点，观感更柔和。
+ *
+ * 2026-09-15 定稿（用户看过演示页后）：**光带不柔化**（去掉 `blur-[1px]`，硬边），且**比轨道框细**
+ * （6px 的裁剪框里放 4px 厚的光带，上下各留 1px）；底衬轨道退成**与光带垂直居中的 1px 细线**
+ * （`bg-divider`）——于是"往复"本身是唯一的视觉主体。节奏 1.8s/单程（一次往返约 3.6s）。
+ * 光带与轨道的尺寸都在 EnvPanel 的 className 里，改这里只调运动。 */
+.env-sweep-glow {
+  animation: progressIndeterminate 1.8s ease-in-out infinite alternate;
+  /* 两端渐隐 —— 把"拖尾"从运动错觉变成形状本身（用户 2026-09-15 要求：让末端看着更细长）。
+   * 不能改用 `background-color`（如 JSX 里的 bg-accent）：本行用 background 简写会与它抢同一处，
+   * 一旦实色胜出，渐变透明的两端会露出实色、拖尾就没了。故此处只由本规则给背景。 */
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-accent) 22%,
+    var(--color-accent) 78%,
+    transparent
+  );
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 降级：不来回走，但居中留一条光带（"在忙"由下方阶段文案承担） */
+  .env-sweep-glow { animation: none; left: 50%; transform: translateX(-50%); }
+}
+
 /* ── Scan / Onboarding ────────────────────────────── */
 
 
