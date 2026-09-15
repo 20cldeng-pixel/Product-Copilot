@@ -9,7 +9,7 @@
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 const esbuild = require("esbuild");
-const { mainOptions, preloadOptions, windowsSandboxWorkerOptions } = require("./build.cjs");
+const { mainOptions, preloadOptions, windowsSandboxWorkerOptions, reportOversize } = require("./build.cjs");
 
 const root = path.join(__dirname, "..");
 const node = process.execPath;
@@ -17,11 +17,13 @@ const electronCli = path.join(root, "node_modules", "electron", "cli.js");
 
 async function main() {
   // ── 1+2. build main + preload（构建配置见 build.cjs，与生产构建共用同一份）──
-  await Promise.all([
-    esbuild.build(mainOptions({ logLevel: "info" })),
-    esbuild.build(preloadOptions({ logLevel: "info" })),
-    esbuild.build(windowsSandboxWorkerOptions({ logLevel: "info" })),
+  const results = await Promise.all([
+    esbuild.build(mainOptions({ logLevel: "info", metafile: true })),
+    esbuild.build(preloadOptions({ logLevel: "info", metafile: true })),
+    esbuild.build(windowsSandboxWorkerOptions({ logLevel: "info", metafile: true })),
   ]);
+  // 产物 ≥1MiB 时补一行"谁贡献的"（esbuild 的 ⚠️ 只说大小，不说来源）
+  reportOversize(results);
 
   // ── 3. 启动 electron(cli.js 内部解析真实二进制并 spawn) ──
   const child = spawn(node, [electronCli, "."], { stdio: "inherit", cwd: root });
