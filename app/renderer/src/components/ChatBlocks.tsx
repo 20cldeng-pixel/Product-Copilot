@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import type { StreamEntry } from "./StreamPanel";
 import { inferLang, tokenizeLines } from "../lib/diff-highlight";
 import { MARKDOWN_PROSE_CLASS, renderMarkdownToHtml } from "../lib/markdown";
+import { fadeTailChars, splitTailText, TAIL_FADE_CHARS } from "../lib/tail-fade";
 import { useTabStore } from "../stores/tab-store";
 import { useViewerStore } from "../stores/viewer-store";
 import { isImagePath } from "@shared/image-files";
@@ -241,9 +242,13 @@ const LANG_LABELS: Record<string, string> = {
 //  - 流式尾块:rAF 帧合并 + 已渲染前缀冻结,每帧只 parse 新增的开放尾部(不再每帧全文重 parse)
 //    完成态输出与静态全文 parse 一致(冻结边界=段落边界/闭合围栏,不切断跨段 markdown 结构)
 
-/** markdown 单段 HTML 渲染(parse 按 content 字符串缓存);管线与编辑器预览共用(见 lib/markdown) */
-const MarkdownHtml = memo(function MarkdownHtml({ content }: { content: string }): JSX.Element {
-  const html = useMemo(() => renderMarkdownToHtml(content), [content]);
+/** markdown 单段 HTML 渲染(parse 按 content 字符串缓存);管线与编辑器预览共用(见 lib/markdown)。
+ *  fadeTail > 0 时把末尾这几个可见字符包成渐隐 span(流式尾块专用,见 fadeTailChars)。 */
+const MarkdownHtml = memo(function MarkdownHtml({ content, fadeTail }: { content: string; fadeTail?: number }): JSX.Element {
+  const html = useMemo(() => {
+    const raw = renderMarkdownToHtml(content);
+    return fadeTail ? fadeTailChars(raw, fadeTail) : raw;
+  }, [content, fadeTail]);
   // 对象必须 memo：React 判定 dangerouslySetInnerHTML 变没变比的是对象身份，不是 __html 字符串
   // （react-dom 的 props diff 用 !== 比对象），字面量每次渲染都是新对象 → 每次都重写 innerHTML
   // → 内部 DOM 整体重建。内容没变时重建纯属浪费，还会打断内部状态（选中、动画、图片加载结果）。
@@ -315,11 +320,12 @@ function splitMarkdownParts(text: string, streaming: boolean): MdRawPart[] {
   return parts;
 }
 
-/** 单段渲染成元素(key 由调用方保证稳定唯一) */
-function renderMdPart(p: MdRawPart, key: string): JSX.Element {
+/** 单段渲染成元素(key 由调用方保证稳定唯一)。fadeChars 只对 html 段有意义——
+ *  流式尾块的最后一段传进来，让它的末尾几个字符渐隐 */
+function renderMdPart(p: MdRawPart, key: string, fadeChars?: number): JSX.Element {
   return p.type === "code"
     ? <CodeBlock key={key} language={p.lang}>{p.content}</CodeBlock>
-    : <MarkdownHtml key={key} content={p.content} />;
+    : <MarkdownHtml key={key} content={p.content} fadeTail={fadeChars} />;
 }
 
 /** 在 [from, text.length) 里找最靠后的「可安全冻结」前缀终点。
@@ -368,7 +374,7 @@ function findStableEnd(text: string, from: number): number {
 interface StreamCache { covered: number; coveredText: string; els: JSX.Element[]; }
 interface StreamDisp { text: string; els: JSX.Element[]; }
 
-function buildStreamDisp(text: string, cache: StreamCache | null, prefix: string): { disp: StreamDisp; cache: StreamCache } {
+function buildStreamDisp(text: string, cache: StreamCache | null, prefix: string, tail?: boolean): { disp: StreamDisp; cache: StreamCache } {
   // 内容帧快照原则上只增(累计全文);若回退/改写(非纯追加)→ 前缀缓存失效,整体重建
   const reset = !cache || !text.startsWith(cache.coveredText);
   const covered0 = reset ? 0 : cache.covered;
@@ -385,15 +391,20 @@ function buildStreamDisp(text: string, cache: StreamCache | null, prefix: string
   // 内容保留,与新建的尾部叠加,表现为同一句话逐帧累积(逐字重复)。
   const dispEls = [...els];
   const tailParts = splitMarkdownParts(text.slice(covered), true);
-  tailParts.forEach((p, idx) => dispEls.push(renderMdPart(p, `${prefix}-t${idx}`)));
+  tailParts.forEach((p, idx) => {
+    // 末尾渐隐只给**最后一段**：同一尾部里更靠前的段后面还有内容，不是"正在写的位置"。
+    // 若最后一段是未闭合围栏（code），renderMdPart 会忽略它——代码块不做字符级淡出
+    const fade = tail && idx === tailParts.length - 1 ? TAIL_FADE_CHARS : undefined;
+    dispEls.push(renderMdPart(p, `${prefix}-t${idx}`, fade));
+  });
   return { disp: { text, els: dispEls }, cache: { covered, coveredText: text.slice(0, covered), els } };
 }
 
 /** 流式尾块:rAF 帧合并(高频内容帧只在下一帧提交一次渲染)+ 已渲染前缀冻结 */
-function StreamingMarkdown({ text, prefix }: { text: string; prefix: string }): JSX.Element {
+function StreamingMarkdown({ text, prefix, tail }: { text: string; prefix: string; tail?: boolean }): JSX.Element {
   const cacheRef = useRef<StreamCache | null>(null);
   const [disp, setDisp] = useState<StreamDisp>(() => {
-    const built = buildStreamDisp(text, null, prefix);
+    const built = buildStreamDisp(text, null, prefix, tail);
     cacheRef.current = built.cache;
     return built.disp;
   });
@@ -402,22 +413,27 @@ function StreamingMarkdown({ text, prefix }: { text: string; prefix: string }): 
   latestRef.current = text;
   const rafRef = useRef(0);
   const pendingRef = useRef(false);
+  // tail 参与"要不要重渲染"的判断:它单独变化(尾块易主)时 text 未必变，
+  // 但末尾渐隐必须跟着搬走——否则渐隐会留在上一块已完成的内容上
+  const tailRef = useRef(tail);
 
   // 内容增长 → 合并到下一帧统一提交(同帧内多次增长只 parse 一次;rAF 延迟 ≤1 帧不可感知)
   useEffect(() => {
     if (pendingRef.current) return;
-    if (dispRef.current.text === latestRef.current) return;
+    if (dispRef.current.text === latestRef.current && tailRef.current === tail) return;
     pendingRef.current = true;
     rafRef.current = requestAnimationFrame(() => {
       pendingRef.current = false;
       const target = latestRef.current;
-      if (target === dispRef.current.text) return;
-      const built = buildStreamDisp(target, cacheRef.current, prefix);
+      if (target === dispRef.current.text && tailRef.current === tail) return;
+      tailRef.current = tail;
+      // text 未变时 cache 会命中:已冻结前缀原样复用,只重算尾部(渐隐跟着搬走)
+      const built = buildStreamDisp(target, cacheRef.current, prefix, tail);
       cacheRef.current = built.cache;
       dispRef.current = built.disp;
       setDisp(built.disp);
     });
-  }, [text, prefix]);
+  }, [text, prefix, tail]);
   // 卸载清理:虚拟列表行回收/流式结束时取消挂起 rAF(防泄漏/卸载后 setState)
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
@@ -430,12 +446,15 @@ const StaticMarkdown = memo(function StaticMarkdown({ text, prefix }: { text: st
   return <>{parts.map((p, i) => renderMdPart(p, `${prefix}-${i}`))}</>;
 });
 
-export function TextBlockView({ block, streaming }: { block: TextBlock; streaming?: boolean }): JSX.Element {
+/** 文本块。tail = 流式中且本块是消息尾块（正文正在逐字增长）：末尾几个可见字符渐隐
+ *  （见 lib/markdown 的 fadeTailChars）。判据必须用"尾块"而不是 streaming——同一条流式消息里
+ *  前面的正文块早已写完，它们同样走流式渲染，若按 streaming 加渐隐会让已完成的内容末端也发虚。 */
+export function TextBlockView({ block, streaming, tail }: { block: TextBlock; streaming?: boolean; tail?: boolean }): JSX.Element {
   const prefix = block.keyPrefix || "md";
   return (
     <div className={MARKDOWN_PROSE_CLASS}>
       {streaming
-        ? <StreamingMarkdown text={block.text} prefix={prefix} />
+        ? <StreamingMarkdown text={block.text} prefix={prefix} tail={tail} />
         : <StaticMarkdown text={block.text} prefix={prefix} />}
     </div>
   );
@@ -508,6 +527,12 @@ function ThinkingBlockView({ block, active }: { block: ThinkingBlock; active?: b
     }
   };
 
+  // 思考仍在增长(active)时,末尾几个可见字符渐隐——只给这几个字包一层 span。
+  // 只能做到"内容末尾"而不是"视口末尾":好在思考区有自动贴底跟随,末尾就是可见底边
+  const [thinkHead, thinkFade]: [string, string] = active
+    ? splitTailText(block.text, TAIL_FADE_CHARS)
+    : [block.text, ""];
+
   return (
     // 融入气泡式(非独立卡片):无外框——标题行中性灰文字,内容区左竖线 + 比气泡深一档底色
     <div className="mt-1.5 mb-1">
@@ -557,7 +582,7 @@ function ThinkingBlockView({ block, active }: { block: ThinkingBlock; active?: b
               maxHeight: "calc(var(--text-detail) * 9.75 + 12px)", // 6 行文字 + pre 上下 padding 12px
             }}
           >
-            <pre className="px-3 py-1.5 text-text-secondary font-mono whitespace-pre-wrap leading-[1.625]" style={{ fontSize: "var(--text-detail)" }}>{block.text}</pre>
+            <pre className="px-3 py-1.5 text-text-secondary font-mono whitespace-pre-wrap leading-[1.625]" style={{ fontSize: "var(--text-detail)" }}>{thinkHead}{thinkFade && <span className="stream-tail-fade">{thinkFade}</span>}</pre>
           </div>
         </div>
       </div>
@@ -1139,7 +1164,7 @@ function SingleToolCard({ item, streaming }: { item: ToolItem; streaming?: boole
 
 export function ChatBlockView({ block, streaming, isStreamingTail }: { block: Block; streaming?: boolean; isStreamingTail?: boolean }): JSX.Element | null {
   switch (block.kind) {
-    case "text": return <TextBlockView block={block} streaming={streaming} />;
+    case "text": return <TextBlockView block={block} streaming={streaming} tail={isStreamingTail} />;
     case "thinking": return <ThinkingBlockView block={block} active={isStreamingTail} />;
     case "tool-group": return <ToolGroupView block={block} streaming={streaming} />;
     case "system": return null;

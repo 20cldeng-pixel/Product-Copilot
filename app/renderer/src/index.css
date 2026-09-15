@@ -1318,6 +1318,32 @@ select.input {
   box-shadow: var(--msg-agent-shadow);
 }
 
+/* 流式尾部渐隐：气泡里**正在增长**的那一块（结论正文 / 思考内容）最后几个字渐隐，
+   末端半透明、略带沉下去的感觉——表示"这段还没写完"。只挂尾块（isStreamingTail / 思考的 active），
+   已完成的历史块与流式结束后的块都不带，否则整段都会发虚。
+
+   为什么是**字符级**：容器级 mask 按元素盒子的几何高度渐变（`calc(100% - 60px)` 那种），
+   能撑起"末端若干行"的整片淡出，却选中不到"最后几个字"。所以由 `fadeTailChars()` /
+   `splitTailText()`（lib/tail-fade.ts）把末尾几个可见字符包进本类，这里只给这一小段铺一道横向渐隐。
+
+   两个实现要点：
+   ① 用 `currentColor` 起头 → 颜色跟随上下文（正文 primary / 思考区 secondary）与主题，不必两套主题各写一份；
+   ② 必须用 `-webkit-text-fill-color: transparent`，不能写 `color: transparent`——后者会让 `currentColor`
+      也解析成透明，整道渐变直接消失。
+
+   参数（两处一起调才完整）：末端保留 **25%** 可见度（用户 2026-09-15 在对比 demo 里拍板，
+   历经 40% → 35% → 25%；再浅看不出、再深像被切断）＋ 覆盖字数 = `TAIL_FADE_CHARS`（= 4）。
+
+   两个**已知局限**（选它时已确认，不是缺陷）：末尾几字**跨行**时，每个折行片段各自重启这道渐变，
+   效果被削弱；这几个字**被选中**时看不到字形。要规避就换「逐字独立 + 各自 opacity」
+   （跨行安全、选中正常），代价是 DOM 多几个 span、数值为阶梯式。 */
+.stream-tail-fade {
+  background-image: linear-gradient(to right, currentColor 0%, color-mix(in srgb, currentColor 25%, transparent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* 消息头像 + 来源标签（对齐原型 .msg-avatar / .msg-from） */
 .msg-avatar {
   width: 34px; height: 34px; border-radius: var(--radius-lg); flex-shrink: 0;
