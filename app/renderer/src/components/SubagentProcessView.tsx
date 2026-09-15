@@ -151,10 +151,10 @@ export function SubagentProcessView({
   return (
     <Modal overlayClassName="bg-black/40" onClose={onClose}>
       <div
-        className="relative flex flex-col w-[80vw] h-[80vh] rounded-[var(--radius-lg)] border border-border bg-[var(--modal-fill)] shadow-2xl overflow-hidden"
+        className="relative flex flex-col w-[80vw] h-[80vh] rounded-[var(--radius-lg)] bg-[var(--modal-fill)] shadow-2xl overflow-hidden"
       >
         {/* 头部:spinner + 标题 + 状态 + 关闭（与内容/底部同为面板面，不设色块分区——对齐输出窗口与其他弹窗） */}
-        <div className="flex items-center gap-2 px-4 py-2.5">
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-surface-alt)]">
           <svg className="animate-spin text-accent shrink-0" width="13" height="13" viewBox="0 0 16 16" fill="none">
             <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
             <path d="M14 8a6 6 0 00-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

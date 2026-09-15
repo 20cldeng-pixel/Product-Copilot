@@ -116,7 +116,7 @@ export function OutputWindow({ command, label, running, logs, content, onStop, l
       onClose={onClose}
     >
       <div
-        className="output-window relative flex flex-col w-[80vw] h-[80vh] rounded-[var(--radius-lg)] border border-border bg-[var(--modal-fill)] shadow-2xl overflow-hidden"
+        className="output-window relative flex flex-col w-[80vw] h-[80vh] rounded-[var(--radius-lg)] bg-[var(--modal-fill)] shadow-2xl overflow-hidden"
         tabIndex={-1}
         // Cmd/Ctrl+A 只全选输出区内容(不选整个页面)
         onKeyDown={(e) => {
@@ -133,7 +133,7 @@ export function OutputWindow({ command, label, running, logs, content, onStop, l
         }}
       >
         {/* 头部:命令 + 状态 + 停止(onStop) + 日志路径(logPath) + 关闭 */}
-        <div className="flex items-center gap-2 px-4 py-2.5 shrink-0">
+        <div className="flex items-center gap-2 px-4 py-2.5 shrink-0 bg-[var(--color-surface-alt)]">
           {running && (
             <svg className="animate-spin text-accent shrink-0" width="13" height="13" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />

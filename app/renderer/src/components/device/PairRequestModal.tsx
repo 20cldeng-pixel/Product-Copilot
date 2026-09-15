@@ -26,8 +26,8 @@ export function PairRequestModal(): JSX.Element | null {
 
   return (
     <Modal overlayClassName="bg-black/40 modal-overlay" overlayClose={false} onClose={() => void rejectPair()}>
-      <div className="bg-[var(--modal-fill)] rounded-[var(--radius-lg)] border border-border shadow-2xl modal-card" style={{ width: 380 }}>
-        <div className="px-6 pt-5 pb-2">
+      <div className="bg-[var(--modal-fill)] rounded-[var(--radius-lg)] shadow-2xl modal-card" style={{ width: 380 }}>
+        <div className="px-6 pt-5 pb-2 bg-[var(--color-surface-alt)]">
           <h2 className="text-base font-semibold text-text-primary">连接请求</h2>
         </div>
         <div className="px-6 py-3">
@@ -43,7 +43,7 @@ export function PairRequestModal(): JSX.Element | null {
           </div>
           {error && <div className="text-[length:var(--text-11)] text-danger mt-3">{error}</div>}
         </div>
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 ">
           <button
             className="px-4 py-1.5 rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors text-sm"
             onClick={rejectPair}

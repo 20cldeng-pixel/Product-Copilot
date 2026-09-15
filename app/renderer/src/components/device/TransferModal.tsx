@@ -170,8 +170,8 @@ export function TransferModal({ open, deviceId, deviceName, onClose, onSent: _on
       overlayClassName="bg-black/40 modal-overlay"
       onClose={onClose}
     >
-      <div className="bg-[var(--modal-fill)] rounded-[var(--radius-lg)] border border-border shadow-2xl modal-card flex flex-col" style={{ width: 520 }}>
-        <div className="flex items-center justify-between px-6 pt-5 pb-2 shrink-0">
+      <div className="bg-[var(--modal-fill)] rounded-[var(--radius-lg)] shadow-2xl modal-card flex flex-col" style={{ width: 520 }}>
+        <div className="flex items-center justify-between px-6 pt-5 pb-2 shrink-0 bg-[var(--color-surface-alt)]">
           <h2 className="text-base font-semibold text-text-primary">迁移到 {deviceName}</h2>
           <button className="w-7 h-7 flex items-center justify-center rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors" onClick={onClose} disabled={transferring}>✕</button>
         </div>
@@ -291,7 +291,7 @@ export function TransferModal({ open, deviceId, deviceName, onClose, onSent: _on
           {error && <div className="text-[length:var(--text-11)] text-danger">{error}</div>}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 shrink-0">
           <button className="px-4 py-1.5 rounded-[var(--radius-lg)] text-text-secondary hover:bg-surface-hover transition-colors text-sm" onClick={onClose} disabled={transferring}>
             取消
           </button>

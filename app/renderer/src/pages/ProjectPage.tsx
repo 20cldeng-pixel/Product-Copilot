@@ -546,7 +546,7 @@ export function ProjectPage(): JSX.Element {
                 ))
               )}
               {/* 浏览文件夹入口 */}
-              <div className="border-t border-border mt-2 pt-2">
+              <div className="mt-2 pt-2">
                 <button
                   className="w-full text-left px-3 py-2.5 rounded-[var(--radius-lg)] text-sm text-text-secondary hover:bg-surface-hover transition-colors flex items-center gap-2"
                   onClick={handleBrowseFolder}
@@ -569,7 +569,7 @@ export function ProjectPage(): JSX.Element {
             <p className="text-sm text-text-primary font-medium">当前窗口已打开项目，要在哪里打开？</p>
             <div className="flex gap-3 justify-end">
               <button
-                className="px-5 py-2 rounded-[var(--radius-lg)] border border-border text-text-secondary text-sm hover:bg-surface-hover transition-colors"
+                className="px-5 py-2 rounded-[var(--radius-lg)] text-text-secondary text-sm hover:bg-surface-hover transition-colors"
                 onClick={async () => {
                   const t = windowChoiceTarget;
                   setWindowChoiceTarget(null);
@@ -605,7 +605,7 @@ export function ProjectPage(): JSX.Element {
             <p className="text-xs text-text-secondary">（移动到{window.electronAPI?.platform === "darwin" ? "废纸篓" : "回收站"}）</p>
             <div className="flex gap-3 justify-end">
               <button
-                className="px-5 py-2 rounded-[var(--radius-lg)] border border-border text-text-secondary text-sm hover:bg-surface-hover transition-colors"
+                className="px-5 py-2 rounded-[var(--radius-lg)] text-text-secondary text-sm hover:bg-surface-hover transition-colors"
                 onClick={() => setDeleteTarget(null)}
               >
                 取消
