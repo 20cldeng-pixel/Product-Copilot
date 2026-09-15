@@ -42,6 +42,11 @@ const EXTERNALS = [
   // 约占 bundle 225KB（22%）——是主进程里最大的第三方来源。纯 CJS、无原生扩展，
   // 外部化后运行时从 node_modules 加载（已核实其在 electron-builder 产物内）
   "bonjour-service",
+  // network-service 的 WebSocket 服务（直接 import）。此前是**幽灵依赖**：代码 import 它，
+  // package.json 却没声明，靠 @earendil-works/pi-ai → openai/@google/genai 的传递 ws 被 npm
+  // 扁平化到顶层才可用（pi 系列一改依赖树就会崩）。2026-09-15 已补进 dependencies 并 external 化
+  // ——122KB 是此前 bundle 里第二大第三方来源
+  "ws",
 ];
 
 function mainOptions(overrides = {}) {
@@ -74,7 +79,7 @@ function windowsSandboxWorkerOptions(overrides = {}) {
   };
 }
 
-module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerOptions, reportOversize };
+module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerOptions, reportBundle };
 
 /**
  * esbuild 会给 **≥ 1 MiB** 的产物加 ⚠️。出处：esbuild `internal/logger/logger.go`
@@ -98,21 +103,50 @@ module.exports = { EXTERNALS, mainOptions, preloadOptions, windowsSandboxWorkerO
  *    只有**突增**（如 1MB→5MB）才说明有东西被误打包进来，那才是要查的
  */
 const SIZE_LIMIT = 1024 * 1024;
+/** 第三方清单只报 ≥ 该体积的包，避免把零碎小包刷成噪音 */
+const THIRD_PARTY_MIN = 8 * 1024;
 
-function reportOversize(results) {
+/**
+ * 构建后报告产物构成（两条互不干扰的规则）：
+ *
+ * 1) **总是列出被打进 bundle 的第三方包**（≥ 8KB，含路径分组）。
+ *    这一条是为了取代"新增依赖时凭经验判断该不该 external"这种纸面纪律——判断依赖人的记忆，
+ *    而**漏判不会痛**（只是产物大一点），所以必然被忽略。反例即 2026-09-15 发现的 `ws`：
+ *    122KB 一直被打进 bundle，存在期间没人判断过（而且它当时还是幽灵依赖）。
+ *    external 化本身低风险且可回滚，所以正确姿势是**看见事实再决定**：清单为空即健康。
+ *    第一方代码（app/**）不计入。仅 electron 的 preload 通常不会命中。
+ *
+ * 2) 产物 ≥ 1 MiB 时补打贡献前三（为什么是这个阈值、以及各处置手段的实测收益，见上方注释）。
+ */
+function reportBundle(results) {
   for (const r of [].concat(results)) {
     if (!r?.metafile) continue;
     for (const [out, info] of Object.entries(r.metafile.outputs)) {
+      const rel = path.relative(ROOT, out);
+
+      const third = {};
+      for (const [f, v] of Object.entries(info.inputs)) {
+        const m = f.replace(ROOT + "/", "").match(/^node_modules\/(@[^/]+\/[^/]+|[^/]+)/);
+        if (m) third[m[1]] = (third[m[1]] || 0) + v.bytesInOutput;
+      }
+      const inlined = Object.entries(third)
+        .filter(([, bytes]) => bytes >= THIRD_PARTY_MIN)
+        .sort((a, b) => b[1] - a[1]);
+      if (inlined.length > 0) {
+        console.log(
+          `\n[build] ${rel} 内联了第三方依赖（≥8KB，可考虑加进 EXTERNALS）：` +
+            inlined.map(([name, bytes]) => `${name} ${(bytes / 1024).toFixed(0)}KB`).join("、"),
+        );
+      }
+
       if (info.bytes < SIZE_LIMIT) continue;
       const top = Object.entries(info.inputs)
         .sort((a, b) => b[1].bytesInOutput - a[1].bytesInOutput)
         .slice(0, 3)
         .map(([f, v]) => `${path.relative(ROOT, f)}  ${(v.bytesInOutput / 1024).toFixed(0)}KB`);
-      const mb = info.bytes / 1024 / 1024;
-      const limitMb = SIZE_LIMIT / 1024 / 1024;
       console.log(
-        `\n[build] ${path.relative(ROOT, out)} 已达 ${mb.toFixed(2)}MB，越过体积提示线 ${limitMb.toFixed(2)}MB` +
-          `（esbuild 自身在 ≥1MiB 时会给它加 ⚠️）。贡献前三：\n  ${top.join("\n  ")}`,
+        `\n[build] ${rel} 已达 ${(info.bytes / 1024 / 1024).toFixed(2)}MB，越过体积提示线` +
+          ` ${(SIZE_LIMIT / 1024 / 1024).toFixed(2)}MB（esbuild 自身在 ≥1MiB 时会给它加 ⚠️）。贡献前三：\n  ${top.join("\n  ")}`,
       );
     }
   }
@@ -126,7 +160,7 @@ if (require.main === module) {
     Promise.all([
       esbuild.build(mainOptions({ logLevel: "info", metafile: true })),
       esbuild.build(windowsSandboxWorkerOptions({ logLevel: "info", metafile: true })),
-    ]).then(reportOversize).catch((e) => {
+    ]).then(reportBundle).catch((e) => {
       console.error("[build] 构建失败:", e.message);
       process.exit(1);
     });
