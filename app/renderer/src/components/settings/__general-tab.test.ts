@@ -72,41 +72,48 @@ describe("「重新检测」全项目只有一处", () => {
   });
 });
 
-describe("引导步骤副标题：检查完就不再说「正在检查」", () => {
+describe("引导步骤副标题：检查完就不再说「正在检查」；忙时一个字都不出", () => {
   const hint = onboardingHint;
-  const base = { probing: false, probeFailed: false, hasReport: true, requiredBroken: 0, optionalBroken: 0, busy: false, handedOff: false };
+  const base = {
+    hasReport: true, probeFailed: false, requiredBroken: 0, optionalBroken: 0,
+    busy: false, handedOff: false,
+  };
 
-  it("探测进行中（含首帧还没拿到结果）→ 说正在检查", () => {
-    expect(hint({ ...base, probing: true, hasReport: false })).toContain("正在为你检查");
-    expect(hint({ ...base, hasReport: false })).toContain("正在为你检查");
+  it("检测/安装进行中 → 不显示任何文字（用户定：一个标题，一个动画）", () => {
+    expect(hint({ ...base, busy: true, requiredBroken: 2 })).toBeNull();
   });
 
-  it("无需依赖 → 提醒检查完毕 + 继续下一步，且**不再出现「正在为你检查」**", () => {
+  it("还没拿到结论（含探测在飞与首帧）→ 也不显示文字，别先说「正在为你检查」", () => {
+    expect(hint({ ...base, hasReport: false })).toBeNull();
+    expect(hint({ ...base, hasReport: false, busy: true })).toBeNull();
+  });
+
+  it("过渡文案已被彻底移除：「正在为你检查」「正在自动安装」在任何状态下都不出现", () => {
+    for (const s of [
+      { ...base, hasReport: false }, { ...base, busy: true },
+      { ...base, requiredBroken: 1 }, { ...base, handedOff: true }, base,
+    ]) {
+      expect(hint(s) ?? "").not.toContain("正在为你检查");
+      expect(hint(s) ?? "").not.toContain("正在自动安装");
+    }
+  });
+
+  it("无需依赖 → 提醒检查完毕 + 继续下一步", () => {
     const t = hint(base);
     expect(t).toContain("检查完毕");
     expect(t).toContain("下一步");
-    expect(t).not.toContain("正在为你检查");
   });
 
-  it("有必装项要装 → 说清有几项必须处理，同样不再说「正在检查」", () => {
+  it("有必装项要装 → 说清有几项必须处理", () => {
     const t = hint({ ...base, requiredBroken: 2 });
     expect(t).toContain("2 项");
     expect(t).toContain("必须处理");
-    expect(t).not.toContain("正在为你检查");
   });
 
   it("探测失败 → 不谎报「检查完毕」（那是「检测失败」，不是「没问题」）", () => {
     const t = hint({ ...base, probeFailed: true, hasReport: false });
     expect(t).toContain("检查没能完成");
     expect(t).not.toContain("检查完毕");
-    expect(t).not.toContain("正在为你检查");
-  });
-
-  it("自动安装中 → 说清在装什么、并提示授权窗口（别让用户以为卡住）", () => {
-    const t = hint({ ...base, busy: true, requiredBroken: 2 });
-    expect(t).toContain("正在自动安装");
-    expect(t).toContain("授权");
-    expect(t).not.toContain("正在为你检查");
   });
 
   it("就绪并已交回宿主 → 改口为「正在进入下一步」（否则看起来像卡住）", () => {

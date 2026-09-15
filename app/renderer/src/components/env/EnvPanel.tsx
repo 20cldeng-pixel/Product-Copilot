@@ -17,11 +17,13 @@ import { useSettingsStore } from "../../stores/settings-store";
  * 引导步骤的副标题文案。**检查完就不能继续说"正在检查"**（用户明确要求：
  * 无需依赖时提醒"检查完毕、继续下一步"）。抽成纯函数以便单测各状态。
  *
- * 2026-09-15 起还负责说明"现在在做什么"：自动安装中 / 已就绪正在跳下一步 / 必装项还差几项。
+ * **返回 null = 这一行根本不显示**：用户 2026-09-15 接连要求"一个标题，一个动画"、
+ * 去掉"正在安装系统组件…"、"正在为你检查…"也不要显示 —— 于是检测/安装进行中（`busy`）
+ * 以及还没拿到结论（`!hasResult`，含探测在飞与首帧）都不出文字。真正会显示文案的只剩
+ * "不忙且有结论"的少数情形，且多数是在请用户处理问题。
  */
 export function onboardingHint(s: {
-  probing: boolean;
-  probeFailed: boolean;
+  /** 探测已返回报告（拿到结论）——在有报告或已失败之前不显示任何文字 */
   hasReport: boolean;
   /** 必装项里还没就绪的（决定能不能继续往下走） */
   requiredBroken: number;
@@ -29,15 +31,15 @@ export function onboardingHint(s: {
   optionalBroken: number;
   /** 正在自动安装/修复 */
   busy: boolean;
+  /** 探测本身失败（≠ 没装） */
+  probeFailed: boolean;
   /** 面板已把"就绪"交回宿主（宿主随即自动进入下一步） */
   handedOff: boolean;
-}): string {
-  if (s.probing || (!s.hasReport && !s.probeFailed)) {
-    return "Mint 需要几个系统组件才能安全地执行命令，正在为你检查…";
-  }
+}): string | null {
+  // 没有结论（既没报告也没失败）也不显示：那一瞬是在探测，文案只会是"正在检查"这种过渡话
+  if (s.busy || (!s.hasReport && !s.probeFailed)) return null;
   if (s.probeFailed) return "检查没能完成——可点「重新检测」重试";
   if (s.handedOff) return "运行环境已就绪——正在进入下一步…";
-  if (s.busy) return "正在自动安装缺少的组件（若弹出系统授权窗口，请点允许）…";
   if (s.requiredBroken > 0) {
     return `还有 ${s.requiredBroken} 项必须处理——缺少它们时命令会被拦下，下面的说明写了怎么装`;
   }
@@ -46,6 +48,11 @@ export function onboardingHint(s: {
   }
   return "检查完毕——运行环境已就绪，点下方「下一步」继续";
 }
+
+/** 引导页"工作屏幕"（只有标题 + 动画）的最短停留：用户 2026-09-15"这个页面设置一个最小显示时间，
+ *  至少显示 5 秒（不然我白做了）"。没有它，在本来就什么都不用装的机器上，探测几百毫秒就结束，
+ *  动画一闪而过甚至来不及出现。 */
+const MIN_WORK_SCREEN_MS = 5000;
 
 /**
  * 「自动安装」的一次性决策（纯函数，便于单测）：返回这一轮该自动触发的动作。
@@ -95,11 +102,12 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   const [report, setReport] = useState<EnvReportShape | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
   const [probing, setProbing] = useState(false);
-  const [progress, setProgress] = useState<EnvProgressShape | null>(null);
   const [installing, setInstalling] = useState(false);
   const [result, setResult] = useState<EnvInstallResultShape | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [handedOff, setHandedOff] = useState(false);
+  /** 最短停留是否还没到（仅引导流程初始为 true，见 MIN_WORK_SCREEN_MS） */
+  const [holdMin, setHoldMin] = useState(autoFix);
   const sandboxDisabled = useSettingsStore((s) => s.sandboxDisabled);
   const setSandboxDisabled = useSettingsStore((s) => s.setSandboxDisabled);
 
@@ -123,12 +131,6 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   // 缓存的 fail-closed 会让用户以为白装了。
   useImperativeHandle(ref, () => ({ retest: (): void => { void refresh(true); } }), [refresh]);
 
-  // 安装进度：订阅主进程阶段事件（不看包管理器输出）
-  useEffect(() => {
-    const off = window.electronAPI.env.onProgress((ev) => setProgress(ev));
-    return off;
-  }, []);
-
   const items = report?.items ?? [];
   const broken = items.filter((i) => i.status !== "ok");
   /** 必装项未就绪（决定能否继续）vs 可选项未就绪（只提示）——引导页据此决定是"等"还是"往下走" */
@@ -148,12 +150,15 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
    *  一个标题，一个动画"）。此时列出依赖名与状态既没意义、又抢动画的视线；真正要用户处理的情形
    *  （缺组件、被系统策略拦）都只在这两件事做完之后才成立。 */
   const busy = probing || installing;
+  /** 屏幕上是否处于"工作中"（只留标题 + 动画）：真在忙，或最短停留还没走完。
+   *  动画、隐藏依赖列表、抑制副标题都用它——**不能只看 busy**，否则探测一结束动画就没了、
+   *  屏幕上只剩一个空荡荡的标题（那时最短停留还剩好几秒）。 */
+  const working = busy || holdMin;
 
   const install = async (): Promise<void> => {
     if (installable.length === 0) return;
     setInstalling(true);
     setResult(null);
-    setProgress(null);
     try {
       const res = await window.electronAPI.env.install(installable.map((i) => i.id));
       setResult(res);
@@ -162,7 +167,6 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
       setResult({ ok: false, reason: (e as Error).message });
     } finally {
       setInstalling(false);
-      setProgress(null);
     }
   };
 
@@ -170,7 +174,6 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   const fixUserns = async (): Promise<void> => {
     setInstalling(true);
     setResult(null);
-    setProgress(null);
     try {
       const res = await window.electronAPI.env.fixUserns();
       setResult(res);
@@ -179,7 +182,6 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
       setResult({ ok: false, reason: (e as Error).message });
     } finally {
       setInstalling(false);
-      setProgress(null);
     }
   };
 
@@ -205,14 +207,30 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
     void (action === "pkg" ? install() : fixUserns());
   });
 
+  // ── 最短停留（仅引导流程）────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!autoFix) return;
+    const timer = window.setTimeout(() => setHoldMin(false), MIN_WORK_SCREEN_MS);
+    return () => window.clearTimeout(timer);
+  }, [autoFix]);
+
+  // 但有"必须用户处理"的事时不必等满（检测失败 / 缺必装项）——那该立刻让人看到怎么装，
+  // 让用户对着一个只为炫耀的动画干等 5 秒是说不过去的。
+  useEffect(() => {
+    if (working) return;
+    if (probeFailed || requiredBroken > 0) setHoldMin(false);
+  }, [working, probeFailed, requiredBroken]);
+
   // ── 就绪即交回宿主（引导流程据此自动进入下一步）───────────────────────────────
-  // 判据用**必装项**：可选项（如 Windows 的 Git Bash）没装不挡路，只在副标题里提一句
+  // 判据用**必装项**：可选项（如 Windows 的 Git Bash）没装不挡路，只在副标题里提一句。
+  // 还要等过最短停留：否则"探一下就完事"的机器上，交回宿主 → 页面立刻跳走，动画等于没显示。
   useEffect(() => {
     if (!onReady || !report || probing || probeFailed) return;
     if (requiredBroken > 0) return;
+    if (holdMin) return;
     setHandedOff(true);   // 副标题据此改口为"正在进入下一步"，别让用户以为卡住了
     onReady();
-  }, [onReady, report, probing, probeFailed, requiredBroken]);
+  }, [onReady, report, probing, probeFailed, requiredBroken, holdMin]);
 
   const turnOffSandbox = async (): Promise<void> => {
     const okToOff = await confirmDialog({
@@ -236,21 +254,28 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
     }
   };
 
+  /** 步骤副标题：由纯函数决定"这一刻该不该有文字"（null = 不渲染，见其 docstring） */
+  const hint = variant === "onboarding"
+    ? onboardingHint({
+        hasReport: report !== null, probeFailed,
+        requiredBroken, optionalBroken, busy: working, handedOff,
+      })
+    : null;
+
   return (
     <div className={variant === "onboarding" ? "w-full max-w-[540px]" : ""}>
       {variant === "onboarding" && (
         <>
           <h1 className="text-xl font-semibold text-center mb-1">准备运行环境</h1>
-          <p className="text-text-secondary text-center text-sm mb-6">
-            {onboardingHint({
-              probing, probeFailed, hasReport: report !== null,
-              requiredBroken, optionalBroken, busy: installing, handedOff,
-            })}
-          </p>
+          {/* 检测/安装进行中**连副标题也不显示**（用户 2026-09-15 逐条点名去掉了"正在为你检查…"
+              与阶段文案）：忙的时候只有标题 + 动画，任何文字都不抢它。 */}
+          {hint !== null && (
+            <p className="text-text-secondary text-center text-sm mb-6">{hint}</p>
+          )}
         </>
       )}
 
-      {!busy && (
+      {!working && (
         <div className="bg-surface-alt rounded-[var(--radius-lg)] overflow-hidden">
           {probeFailed && (
             <div className="px-4 py-3 text-xs text-danger">检测失败，可点「重新检测」重试</div>
@@ -296,20 +321,18 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
         </div>
       )}
 
-      {/* 进度：只表达"在忙"，不假装精确百分比（真正的进展由下面那行阶段文案说）。
-          用户 2026-09-15 定稿：光带**不柔化**（硬边）、4px 厚 × 46% 长，**底衬轨道彻底去掉**
-          （不再画任何线或色块）——于是"往复"是唯一的视觉主体，这是个装饰性动画，不是进度条。
-          容器同时是裁剪框（`overflow-hidden` 让光带从两端出入干净），故它就等于光带高度。 */}
-      {installing && (
-        <div className="mt-3">
+      {/* 安装动画：**只有这一条动画，不配任何文字**（用户 2026-09-15："不要显示具体的在安装什么
+          依赖，一个标题，一个动画"，随后又点名去掉了阶段文案 —— 所以既没有依赖名，也没有"正在…"那行）。
+          形状：硬边、4px 厚 × 46% 长、两端渐隐、**无轨道**（装饰性动画，不是进度条）。
+          容器同时是裁剪框（`overflow-hidden` 让光带从两端出入干净），故它就等于光带高度。
+          主进程仍在发 `env:progress` 阶段事件（preload 也仍暴露 onProgress），只是界面不再显示。 */}
+      {working && (
+        <div className="mt-4">
           <div className="relative h-1 w-full overflow-hidden">
             {/* 背景（含两端渐隐的"拖尾"）在 index.css 的 .env-sweep-glow 里，故此处不能加 bg-accent。
                 也不能加 -translate-y-1/2 之类：动画 keyframes 写的是 transform: translateX，会抢同一属性。 */}
             <div className="env-sweep-glow absolute inset-y-0 left-0 w-[46%] rounded-[50%]" />
           </div>
-          <p className="mt-1.5 text-[length:var(--text-xs)] text-text-muted">
-            {progress?.message ?? "正在准备安装…"}
-          </p>
         </div>
       )}
 
