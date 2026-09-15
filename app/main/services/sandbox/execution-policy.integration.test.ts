@@ -113,19 +113,23 @@ describe("执行策略真实 I/O", () => {
     expect(initialized).toEqual({ ok: true });
     const protectedFile = path.join(workspace, ".mcp.json");
     for (const mode of ["standard", "full"] as const) {
-      // 诊断（临时）：SRT_DEBUG 让 srt 把自己的 deny 处理决策打到 stderr（[SandboxDebug] 前缀）
-      process.env.SRT_DEBUG = "1";
       const { result, command, release } = await spawnSandboxed(
         `printf '%s' '{"mcpServers":{}}' > ${JSON.stringify(protectedFile)}`,
         mode,
       );
-      delete process.env.SRT_DEBUG;
 
-      const state = (): string => (fs.existsSync(protectedFile) ? `${fs.statSync(protectedFile).size}B` : "不存在");
-      console.log(`[diag] mode=${mode} 执行后=${state()} status=${result.status}`);
-      console.log(`[diag] stderr=${String(result.stderr).slice(0, 200).replace(/\n/g, " | ")}`);
-      const at = command.indexOf(".mcp.json");
-      console.log(`[diag] 命令中的 .mcp.json 片段: ${at >= 0 ? command.slice(Math.max(0, at - 150), at + 40) : "（命令里根本没提到 .mcp.json）"}`);
+      // 断言失败时自动留证据（正常路径无输出，不污染 CI 日志）。
+      // 来历：2026-09-15 调查 full 模式"命令成功"时，只有一句 status=0 无从下手，
+      // 最后靠 srt 的 SRT_DEBUG 才定位到它的 allowWrite 判定（详见 __srt-patch.test.ts）。
+      if (result.status === 0) {
+        const size = fs.existsSync(protectedFile) ? `${fs.statSync(protectedFile).size}B` : "不存在";
+        const at = command.indexOf(".mcp.json");
+        console.log(
+          `[diag] mode=${mode} 命令未被拒绝（status=0，文件=${size}）`
+          + `\n[diag] stderr=${String(result.stderr).slice(0, 200).replace(/\n/g, " | ")}`
+          + `\n[diag] 命令中的 .mcp.json 片段: ${at >= 0 ? command.slice(Math.max(0, at - 150), at + 40) : "（命令里根本没提到 .mcp.json）"}`,
+        );
+      }
 
       expect(result.status).not.toBe(0);
 
