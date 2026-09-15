@@ -125,8 +125,8 @@ describe("引导步骤副标题：检查完就不再说「正在检查」", () =
 
 describe("进入环境检测页即自动安装（决策纯函数）", () => {
   const s = {
-    autoFix: true, hasReport: true, probing: false, installing: false,
-    installableCount: 0, fixableCount: 0, done: new Set<"pkg" | "userns">(),
+    autoFix: true, hasReport: true, probeFailed: false, probing: false, installing: false,
+    sandboxDisabled: false, installableCount: 0, fixableCount: 0, done: new Set<"pkg" | "userns">(),
   };
 
   it("探测完且有可自动安装项 → 自动装（无需点击）", () => {
@@ -139,6 +139,15 @@ describe("进入环境检测页即自动安装（决策纯函数）", () => {
     expect(nextAutoAction({ ...s, installableCount: 2, probing: true })).toBeNull();
     expect(nextAutoAction({ ...s, installableCount: 2, installing: true })).toBeNull();
     expect(nextAutoAction({ ...s, installableCount: 2, autoFix: false })).toBeNull();
+  });
+
+  it("探测失败（报告是上一轮旧数据）→ 不按它动手，先让用户重测", () => {
+    expect(nextAutoAction({ ...s, installableCount: 2, probeFailed: true })).toBeNull();
+  });
+
+  it("用户已选择「关闭沙盒运行」→ 不替他弹系统授权框（按钮仍可手点）", () => {
+    expect(nextAutoAction({ ...s, installableCount: 2, sandboxDisabled: true })).toBeNull();
+    expect(nextAutoAction({ ...s, fixableCount: 1, sandboxDisabled: true })).toBeNull();
   });
 
   it("同一种动作**只自动跑一次** —— 用户拒绝授权框/装失败后不再自动弹，改由用户点", () => {

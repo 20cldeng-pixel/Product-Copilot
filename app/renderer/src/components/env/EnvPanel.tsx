@@ -53,17 +53,23 @@ export function onboardingHint(s: {
  * 跑过的动作记在 `done` 里——**失败/被用户拒绝授权框后不再自动重试**（否则会反复弹 UAC）；
  * 此时按钮仍在操作区，由用户决定何时再来。`installableCount === 0`（平台没有自动安装通道、
  * 或只能手工）时返回 null → 界面只剩自助命令，这正是"无法自动化才让用户点击"的落点。
+ *
+ * 两个"不该自动动手"的情形也在这里挡住：
+ * - `probeFailed`：报告是上一轮的旧数据，按它去装可能装错（先让用户重测）
+ * - `sandboxDisabled`：用户已明确选择"关闭沙盒运行"，不该再替他弹系统授权框（按钮仍可手点）
  */
 export function nextAutoAction(s: {
   autoFix: boolean;
   hasReport: boolean;
+  probeFailed: boolean;
   probing: boolean;
   installing: boolean;
+  sandboxDisabled: boolean;
   installableCount: number;
   fixableCount: number;
   done: ReadonlySet<"pkg" | "userns">;
 }): "pkg" | "userns" | null {
-  if (!s.autoFix || !s.hasReport || s.probing || s.installing) return null;
+  if (!s.autoFix || !s.hasReport || s.probeFailed || s.probing || s.installing || s.sandboxDisabled) return null;
   if (s.installableCount > 0) return s.done.has("pkg") ? null : "pkg";
   if (s.fixableCount > 0) return s.done.has("userns") ? null : "userns";
   return null;
@@ -186,7 +192,7 @@ export function EnvPanel({ variant = "settings", autoFix = false, onReady, ref }
   const autoDone = useRef<Set<"pkg" | "userns">>(new Set());
   useEffect(() => {
     const action = nextAutoAction({
-      autoFix, hasReport: report !== null, probing, installing,
+      autoFix, hasReport: report !== null, probeFailed, probing, installing, sandboxDisabled,
       installableCount: installable.length, fixableCount: fixable.length,
       done: autoDone.current,
     });
