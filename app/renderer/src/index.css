@@ -1440,11 +1440,18 @@ select.input {
    * 只是 S 降到 42%、L 提到 52%。不用 color-mix(..., #fff)——那会同时大幅提亮，看着像"洗白"。 */
   --sweep-color: #51b877;
   animation: progressIndeterminate 1.8s ease-in-out infinite alternate;
-  /* 绿底上内嵌一道白芯（用户："能否在绿色上内嵌一点白色，看起来像发光一样"）：
-   * 竖直方向 transparent → 白 → transparent，只在中线有白，像灯管的亮芯。
-   * 拆成 background-color + background-image，白芯强度可被单独调（演示页按此结构分档）。 */
+  /* 绿底上内嵌一道白芯（用户："能否在绿色上内嵌一点白色，看起来像发光一样"），
+   * 且**只占绿线约 1/3 长、两端自然收细**（用户 2026-09-15 追加要求）。
+   * 用**径向**渐变一次拿到两个方向：水平半径 33% 决定"多长"、垂直半径 50% 让它只占中线，
+   * 而椭圆的固有形状让白芯自己在两端收细。
+   * （不能用竖直方向的 linear-gradient：那会横贯整条；两条 linear-gradient 放进 background-image
+   *  只会互相覆盖，不会相乘。）拆成 background-color + background-image，白芯可单独调。 */
   background-color: var(--sweep-color);
-  background-image: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.7) 50%, transparent);
+  background-image: radial-gradient(
+    ellipse 33% 50% at 50% 50%,
+    rgba(255, 255, 255, 0.75),
+    transparent
+  );
   /* 两端渐隐（把"拖尾"从运动错觉变成形状本身，用户 2026-09-15 要求）。
    * 改用 mask 而非背景里的水平渐变，是因为白芯是**二维**的：竖直的 white 与水平的 fade
    * 没法用一条 linear-gradient 表达。mask 一次裁出水平渐隐，绿底与白芯同时被裁，观感与原来一致。
