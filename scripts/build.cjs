@@ -47,6 +47,10 @@ const EXTERNALS = [
   // 扁平化到顶层才可用（pi 系列一改依赖树就会崩）。2026-09-15 已补进 dependencies 并 external 化
   // ——122KB 是此前 bundle 里第二大第三方来源
   "ws",
+  // 系统代理支持（services/system-proxy.ts 的 ProxyAgent，动态 import）。约 2MB 纯 JS，
+  // 打进 bundle 会让 main.cjs 体积翻倍；同样先补进 dependencies 再 external 化。
+  // 动态 import 只在**检测到系统代理**时才执行，故不给启动加成本
+  "undici",
 ];
 
 function mainOptions(overrides = {}) {

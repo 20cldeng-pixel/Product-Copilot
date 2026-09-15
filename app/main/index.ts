@@ -3,6 +3,7 @@ import fs from "fs";
 import { app, BrowserWindow, shell, ipcMain, Menu, nativeTheme } from "electron";
 import path from "path";
 import { loadUserEnv } from "./utils/user-path";
+import { installSystemProxyFetch } from "./services/system-proxy";
 import { getResourcesDir } from "./utils/paths";
 import {
   startAutoUpdater,
@@ -264,6 +265,13 @@ app.whenReady().then(() => {
   // GUI 环境引导:提取用户完整环境(zsh -lic env,含 PATH/JAVA_HOME 等),
   // 供 bash/init.sh/运行面板/环境检查继承
   loadUserEnv();
+  // 让主进程的 HTTP 跟随系统代理：Node 原生 fetch 不读系统代理、也不读 HTTPS_PROXY（运行期设也无效），
+  // 于是会出现"浏览器授权页成功、程序内换 token 被地区拦截"的错位——详见 services/system-proxy.ts。
+  // 必须早于任何网络请求；检测不到代理时什么都不做。
+  {
+    const r = installSystemProxyFetch();
+    console.log(`[main] 系统代理: ${r.reason}${r.proxy ? `（${r.proxy}）` : ""}`);
+  }
   // 恢复上次打开的项目（仅在 setup 完成后）
   let startHash: string | undefined;
   const tempStore = new Store();
