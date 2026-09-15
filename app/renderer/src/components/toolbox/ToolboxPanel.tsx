@@ -40,7 +40,7 @@ export function ToolboxPanel({ open, onClose, onOpenDevicePanel }: ToolboxPanelP
   return (
     <div
       ref={ref}
-      className="absolute bottom-[54px] right-3 w-56 bg-surface-alt rounded-[var(--radius-lg)] border border-border shadow-lg overflow-hidden z-float"
+      className="absolute bottom-[54px] right-3 w-56 em-glass rounded-[var(--radius-lg)] shadow-lg overflow-hidden z-float"
     >
       <div className="px-4 py-2.5 text-xs font-medium text-text-primary border-b border-border">工具箱</div>
       <div className="p-1.5">
