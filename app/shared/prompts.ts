@@ -107,7 +107,7 @@ EasyMint 有三个角色协同开发：
 - 你（Mint）在对话中采集开放信息（细节功能/成本取舍/原型确认/技术取舍）——边聊边定
 - 表单已采集的信息随消息传给你，不要重复问，除非用户要改；你只补缺的开放信息
 
-**复杂度判定权在你（Mint）**：流程深度（原型/文档/编码）与**执行方式（你亲自实现还是委派子代理）**都由你按项目实际内容判定，**不由表单的场景或复杂度字段决定**。判定标准在 creation-guide skill（用 use_skill 加载）的「复杂度判定」表：极简直接编码 / 简单写需求+task / 中等及以上有 UI 则原型前置。
+**复杂度判定权在你（Mint）**：流程深度（原型/文档/编码）与**执行方式（你亲自实现还是委派子代理）**都由你按项目实际内容判定——表单不采集复杂度，判定只有你这一处。判定标准在 creation-guide skill（用 use_skill 加载）的「复杂度判定」表：极简直接编码 / 简单写需求+task / 中等及以上有 UI 则原型前置。
 
 **执行方式单独判，不要默认委派**：子代理的价值是**上下文隔离 + 无人值守批量推进**，不是"分工"。两问都指向委派才委派——① 中间产物进了主会话还用不用得到？用不到才委派；② 是不是一串任务、不用边做边等用户？是才委派。**极简 / 简单档默认你亲自实现**（主会话已握有全部上下文，拆出去反而多一轮交接）。场景是加权信号：兴趣创作 / 想法验证 / 学习实践 + 演示版/MVP → 更偏亲自；商业交付 / 实际使用 + 完整版 → 更偏委派。
 
@@ -334,14 +334,19 @@ Output shown to the user follows the user's language (see <language>).
 
 type ProductType = "web" | "desktop" | "mobile" | "cli" | "backend" | "library" | "miniprogram";
 export type DeployMode = "local" | "cloud" | "hybrid";
-type ComplexityLevel = "minimal" | "simple" | "medium" | "platform";
 export type AIIntegration = "none" | "assistant" | "agent" | "multi-agent";
 type StorageType = "sqlite" | "postgres" | "vector" | "none";
 
+/**
+ * 维度组合的输入——2026-09-16 起**没有「复杂度」这一维**。
+ *
+ * 原 ComplexityLevel / COMPLEXITY_OVERRIDES 已整个删除：流程深度的判定权在 Mint
+ * （creation-guide skill），而它残留的「平台型产品」规范因两个产生点都硬编码 medium
+ * 而永远触发不到。**不要再加回表单字段**——判定权只允许一处。
+ */
 export interface ProjectDimensions {
   product: ProductType;
   deploy: DeployMode;
-  complexity: ComplexityLevel;
   ai: AIIntegration;
   storage: StorageType;
   productUsesAI: boolean;
@@ -466,17 +471,6 @@ const STORAGE_OVERRIDES: Record<StorageType, ProfileOverride> = {
   },
 };
 
-// 复杂度档位不再注入流程决策（原型/文档/编码由 Mint 按 creation-guide skill 判定），
-// 仅 platform 保留产品级技术规范
-const COMPLEXITY_OVERRIDES: Record<ComplexityLevel, ProfileOverride> = {
-  minimal: {},
-  simple: {},
-  medium: {},
-  platform: {
-    initSteps: `项目为平台型产品。\n- 额外考虑：多租户架构、权限系统、计费系统、插件机制\n- docs/技术架构.md 需额外包含：扩展性设计、API 版本管理、数据隔离方案`,
-  },
-};
-
 // ── 组合引擎 ───────────────────────────────────────────
 
 function mergeProfile(base: ProjectProfile, ...overrides: ProfileOverride[]): ProjectProfile {
@@ -496,7 +490,6 @@ export function composeProfile(dims: ProjectDimensions): ProjectProfile {
   return mergeProfile(
     base,
     DEPLOY_OVERRIDES[dims.deploy],
-    COMPLEXITY_OVERRIDES[dims.complexity],
     dims.productUsesAI ? AI_OVERRIDES[dims.ai] : {},
     STORAGE_OVERRIDES[dims.storage],
   );
@@ -515,7 +508,6 @@ function inferDimensions(targets: string[]): ProjectDimensions {
   return {
     product,
     deploy: set.has("cloud") ? "cloud" : "local",
-    complexity: "medium",
     ai: "none",
     storage: "sqlite",
     productUsesAI: false,

@@ -237,12 +237,11 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
       }
       setCreateError(null);
 
-      // 复杂度判定权在 Mint（creation-guide skill），前端不硬编码流程深度——
-      // 这里只按中性值生成技术规范 platformSpec，原型/文档/编码流程由 Mint 判断
+      // 流程深度（原型/文档/编码）的判定权在 Mint（creation-guide skill），前端不参与——
+      // 这里只按 产品形态 / 部署 / AI / 存储 四个维度生成技术规范 platformSpec
       const dims: ProjectDimensions = {
         product: detectProfile(data.targets).id as any,
         deploy: (data.deployPlatform === "云端" ? "cloud" : data.deployPlatform === "混合" ? "hybrid" : "local") as DeployMode,
-        complexity: "medium",
         ai: data.aiIntegration,
         storage: data.deployPlatform === "云端" ? "postgres" : "sqlite",
         productUsesAI: data.aiIntegration !== "none",
