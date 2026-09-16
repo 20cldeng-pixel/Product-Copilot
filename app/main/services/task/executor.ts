@@ -16,12 +16,15 @@ import { createEnhancedEditTool } from "../enhanced-edit";
 import { getActiveModel, getModelRuntime } from "../pi-init";
 import { supportedThinkingLevelsOfSpec } from "../pi-init-static";
 import { getTemplate } from "../agent-templates";
+import { ensureDesignerTemplates } from "../designer-seed";
 import { resolveThinkingLevel } from "../../../shared/thinking-levels";
 import { PERMISSION_RULES_PROMPT } from "../prompt-sections";
 import { Store } from "../store";
 import { resolveHome } from "../../utils/paths";
 import { mapWithConcurrencyLimit, type ParallelResult } from "./parallel";
-import { ResultCollector } from "./collector";
+import { ResultCollector, extractAssistantText } from "./collector";
+import { judgeSubagentTerminal } from "./terminal";
+import { subagentModelCandidates } from "./model-resolution";
 import { finishDelegation } from "./registry";
 import { wrapToolWithPermission } from "../permission/wrap-tool";
 import { bridgeSessionEvents } from "../event-bridge";
@@ -83,16 +86,24 @@ export interface SubagentOptions {
   model?: string;
   /** 委派指定供应商(与 model 搭配) */
   provider?: string;
-  /** 父会话当前生效的思考等级(标准委派跟随主会话;模板委派仅作模板未配置时的回落) */
+  /** 父会话当前生效的思考等级（默认跟随主会话；模板设置仅作父会话未配置时的回落） */
   parentThinkingLevel?: string;
+  /** 父会话当前模型 id（默认跟随主会话；低于委派显式指定、高于模板/子agent默认/全局） */
+  parentModel?: string;
+  /** 父会话当前模型所属供应商（与 parentModel 搭配） */
+  parentProvider?: string;
   /** 主会话权限回调（跟随主会话权限模式：标准/完全访问 + 绝对禁区）；缺省不拦截 */
   canUseTool?: (toolName: string, input: Record<string, unknown>, options: any) => Promise<{ behavior: "allow" | "deny"; message?: string; updatedInput?: Record<string, unknown> }>;
 }
 
 /**
- * 子 Agent 思考等级：基础值（模板设置 > 父会话等级 > medium）再按子 Agent 模型能力自适应——
+ * 子 Agent 思考等级：基础值（父会话等级 > 模板设置 > medium）再按子 Agent 模型能力自适应——
  * 与主会话同一套「同等级 → 向下 → 向上」规则（shared/thinking-levels.ts），
  * 避免子 Agent 落到 SDK 默认的"向上优先"造成不一致。
+ *
+ * 父会话优先（2026-09-16 改）：模板的等级是**长驻人设**，父会话的等级是**用户此刻的选择**，
+ * 后者更该赢。此前模板优先，Mint-D 模板里的 max 会盖掉用户在主会话选的 high——
+ * 配合输出上限偏小的模型（推理与正文共用 max_tokens）就是必炸组合。
  */
 function adaptSubagentThinkingLevel(base: string, model: Awaited<ReturnType<typeof getActiveModel>>): ThinkingLevel {
   if (!model) return base as ThinkingLevel;
@@ -103,32 +114,29 @@ function adaptSubagentThinkingLevel(base: string, model: Awaited<ReturnType<type
   return resolveThinkingLevel(base, supported) as ThinkingLevel;
 }
 
-/** 解析子 Agent 模型:委派指定 > AgentTemplate > 子agent默认(settings) > 全局(需求 2/3) */
+/**
+ * 解析子 Agent 模型：按 subagentModelCandidates 的顺序取第一个可解析的，
+ * 都不行则回落到全局默认（默认/兜底降级在 getActiveModel 内处理）。
+ */
 async function resolveSubagentModel(opts: SubagentOptions): Promise<Awaited<ReturnType<typeof getActiveModel>>> {
   const runtime = await getModelRuntime(opts.store);
-  const tryGet = (provider?: string, model?: string): Awaited<ReturnType<typeof getActiveModel>> => {
-    if (!provider || !model) return null;
-    return runtime.getModel(provider, model) ?? null;
-  };
-  // 1. 委派指定(provider + model)
-  const m1 = tryGet(opts.provider, opts.model);
-  if (m1) return m1;
-  // 2. AgentTemplate(按 agent 名,模板的 provider/model)
-  if (opts.agent) {
-    const tpl = getTemplate(opts.agent);
-    if (tpl) {
-      const m2 = tryGet(tpl.provider, tpl.model);
-      if (m2) return m2;
-    }
-  }
-  // 3. 子 agent 默认模型(当前激活供应商配置的 subagentDefaultModel,task 委派用)
+  const tpl = opts.agent ? getTemplate(opts.agent) : undefined;
   const providers = opts.store.getSettings().apiProviders;
   const activeCfg = providers?.current ? providers.configs?.[providers.current] : undefined;
-  if (activeCfg?.presetId && activeCfg.subagentDefaultModel) {
-    const m3 = tryGet(activeCfg.presetId, activeCfg.subagentDefaultModel);
-    if (m3) return m3;
+  const candidates = subagentModelCandidates({
+    delegate: { provider: opts.provider, model: opts.model },
+    parent: { provider: opts.parentProvider, model: opts.parentModel },
+    template: { provider: tpl?.provider, model: tpl?.model },
+    subagentDefault: { provider: activeCfg?.presetId, model: activeCfg?.subagentDefaultModel },
+  });
+  for (const c of candidates) {
+    const m = runtime.getModel(c.provider, c.model);
+    if (m) {
+      // 记一行来源：子 Agent「用哪个模型」以前只能靠反查会话 jsonl，排错成本高
+      console.log(`[task] 子 Agent 模型来源=${c.source} ${c.provider}/${c.model}`);
+      return m;
+    }
   }
-  // 4. 全局默认(当前激活供应商的 model,默认/兜底降级在 getActiveModel 内处理)
   return getActiveModel(opts.store);
 }
 
@@ -156,6 +164,12 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
   opts.onProgress?.(progress);
 
   const resolvedPath = path.resolve(resolveHome(opts.cwd));
+
+  // designer 类模板：先把种子模板/品牌库播进项目。原先只有「主会话以 designer 启动」才播种，
+  // 走 task 委派 mint-designer 的子 Agent 会去翻一个不存在的 .easymint/templates/（白耗回合）
+  if (opts.agent && getTemplate(opts.agent)?.agentType === "designer") {
+    ensureDesignerTemplates(resolvedPath);
+  }
 
   const model = await resolveSubagentModel(opts);
   if (!model) {
@@ -244,8 +258,8 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
   try {
     const session = await createPiSession({
       cwd: resolvedPath, agentDir: opts.agentDir, model,
-      // 模板委派以模板设置为主；模板未配置时跟随主会话，再按子 Agent 模型能力自适应
-      thinkingLevel: adaptSubagentThinkingLevel((tplThinkingLevel as any) ?? opts.parentThinkingLevel ?? "medium", model),
+      // 默认跟随主会话思考等级（父会话未选过则回落模板设置 → medium），并按子 Agent 模型能力自适应
+      thinkingLevel: adaptSubagentThinkingLevel(opts.parentThinkingLevel ?? (tplThinkingLevel as any) ?? "medium", model),
       store: opts.store, systemPrompt, extraTools,
       sessionDir: opts.sessionDir,
       // 跟随主会话权限（standard/full + 禁区）；pi-session 对 extraTools 统一包装
@@ -303,6 +317,22 @@ async function executeAndCollect(
 
   let activeModel = progress.resolvedModel;
 
+  // ── 终态信号：最后一条 assistant 的结束原因 / 是否带终局文本 ──
+  // 用于判定「真完成 / 静默失败」——截断(max_tokens)与错误回合不会抛错，
+  // 只能从这里读到（机制说明见 task/terminal.ts 顶部注释）
+  let lastStopReason: string | undefined;
+  let lastErrorMessage: string | undefined;
+  let lastHasText = false;
+  const noteTerminal = (msg: {
+    stopReason?: string;
+    errorMessage?: string;
+    content?: Array<{ type?: string; text?: string }>;
+  }): void => {
+    lastStopReason = msg.stopReason;
+    lastErrorMessage = msg.errorMessage;
+    lastHasText = extractAssistantText(msg).trim().length > 0;
+  };
+
   // 中止传播：signal abort 时立即中止子会话（不能只依赖事件回调——
   // 子 Agent 等待模型输出时无事件到达，回调永远不会执行）
   const onAbort = () => {
@@ -335,6 +365,14 @@ async function executeAndCollect(
       });
     } catch { /* 转发失败不影响子 Agent 执行 */ }
 
+    // ── 终态信号（放在最前，避免被下方任何早退分支跳过）──
+    // agent_end 携带本轮全部消息，是最后一条 assistant 的权威来源；message_end 至少兜住
+    if (event.type === "agent_end" && Array.isArray((event as { messages?: unknown[] }).messages)) {
+      const msgs = (event as { messages: Array<{ role?: string }> }).messages;
+      const last = [...msgs].reverse().find((m) => m?.role === "assistant");
+      if (last) noteTerminal(last as Parameters<typeof noteTerminal>[0]);
+    }
+
     if (event.type === "tool_execution_start") {
       progress.currentTool = event.toolName;
       progress.toolCount++;
@@ -346,6 +384,7 @@ async function executeAndCollect(
     if (event.type === "message_end") {
       const msg = event.message as { role?: string; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } };
       if (msg.role === "assistant") {
+        noteTerminal(msg as Parameters<typeof noteTerminal>[0]);
         progress.requests++;
         if (msg.usage) {
           progress.tokens += (msg.usage.totalTokens ?? 0) || (msg.usage.inputTokens ?? 0) + (msg.usage.outputTokens ?? 0);
@@ -413,16 +452,34 @@ async function executeAndCollect(
   }
 
   const aborted = opts.signal?.aborted ?? false;
-  progress.status = aborted ? "aborted" : "completed";
+  // 终态判定：截断 / 报错 / 无终局总结都不能报「完成」（判据与实测分布见 task/terminal.ts）
+  const verdict = judgeSubagentTerminal({
+    aborted,
+    lastStopReason,
+    lastErrorMessage,
+    hasFinalText: lastHasText,
+    outputSchemaRequested: !!outputSchema,
+    yieldCount: yieldItems.length,
+  });
+  const status: AgentProgress["status"] = aborted || lastStopReason === "aborted"
+    ? "aborted"
+    : verdict.error ? "failed" : "completed";
+  progress.status = status;
   progress.durationMs = Date.now() - startMs;
   opts.onProgress?.(progress);
 
   return {
     index: progress.index, id, agent: agentLabel, task, title: opts.title, taskId: opts.taskId,
-    exitCode: aborted ? 1 : 0, output: text, stderr: "", truncated,
+    exitCode: status === "completed" ? 0 : 1,
+    // 硬失败且无终局文本时，收集到的只是被截断前的闲聊（如开场白）——原样输出会被
+    // 上层当成"结果"读，故清空，只留 error 说明
+    output: verdict.error && !lastHasText && !aborted ? "" : text,
+    stderr: verdict.error ?? "", truncated,
     durationMs: progress.durationMs,
     structuredOutput,
     aborted,
+    error: verdict.error,
+    warning: verdict.warning,
     tokens: progress.tokens,
     requests: progress.requests,
     contextTokens: progress.contextTokens,
@@ -439,8 +496,12 @@ export interface DelegationRuntime {
   agentDir: string;
   store: Store;
   concurrency?: number;
-  /** 主会话当前生效的思考等级（标准委派跟随；模板委派作回落） */
+  /** 主会话当前生效的思考等级（默认跟随；模板设置仅作父会话未配置时的回落） */
   parentThinkingLevel?: string;
+  /** 主会话当前模型（默认跟随；低于委派显式指定） */
+  parentModel?: string;
+  /** 主会话当前模型所属供应商 */
+  parentProvider?: string;
   /** 主会话权限回调（子 Agent 跟随主会话权限模式 + 绝对禁区）；缺省走旧只读包装 */
   canUseTool?: (toolName: string, input: Record<string, unknown>, options: any) => Promise<{ behavior: "allow" | "deny"; message?: string; updatedInput?: Record<string, unknown> }>;
   onProgress?: (progress: AgentProgress) => void;
@@ -486,6 +547,8 @@ export async function runSubagents(
       model: task.model,
       provider: task.provider,
       parentThinkingLevel: runtime.parentThinkingLevel,
+      parentModel: runtime.parentModel,
+      parentProvider: runtime.parentProvider,
       canUseTool: runtime.canUseTool,
     },
   }));

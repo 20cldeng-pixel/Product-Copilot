@@ -13,6 +13,11 @@ import { runSubagents } from "./executor";
 import { createDelegation, resolveParentSessionId, getRunningSummary, setTaskStatus } from "./registry";
 import { writeTaskStatus } from "./task-file";
 import { broadcast } from "../ipc-broadcast";
+import {
+  DESIGNER_TEMPLATE_FILES,
+  START_POINT_FREE,
+  START_POINT_TEMPLATE_PREFIX,
+} from "../../../shared/designer-templates";
 import type { TaskItem, BatchResult, AgentProgress, TaskStopSource } from "./types";
 
 export interface TaskToolContext {
@@ -23,8 +28,10 @@ export interface TaskToolContext {
   parentSessionId: string;
   /** 会话 chatId（进度广播按它过滤,前端只显示当前窗口的委派） */
   chatId?: string;
-  /** 懒取主会话当前生效的思考等级（标准委派跟随主会话；模板委派作回落） */
+  /** 懒取主会话当前生效的思考等级（子 Agent 默认跟随；模板设置仅作回落） */
   getParentThinkingLevel?: () => string | undefined;
+  /** 懒取主会话当前模型（子 Agent 默认跟随同一模型；低于委派显式指定的 model/provider） */
+  getParentModel?: () => { model?: string; provider?: string } | undefined;
   /** 主会话权限回调（子 Agent 跟随主会话权限模式 standard/full + 绝对禁区） */
   canUseTool?: (toolName: string, input: Record<string, unknown>, options: any) => Promise<{ behavior: "allow" | "deny"; message?: string; updatedInput?: Record<string, unknown> }>;
   /** 委派完成回调：结果注入主会话（agent-service 提供） */
@@ -68,6 +75,7 @@ function formatDelegationResult(result: BatchResult): string {
   for (const r of result.results) {
     const title = r.title || r.task.slice(0, 40);
     if (r.error) detail.push(`${title}: 错误 ${r.error}`);
+    if (r.warning) detail.push(`${title}: 注意 ${r.warning}`);
     if (r.output) detail.push(`${title}:\n${r.output.slice(0, 2000)}`);
     if (r.structuredOutput?.status === "valid" && r.structuredOutput.data) {
       detail.push(`结构化结果: ${JSON.stringify(r.structuredOutput.data)}`);
@@ -83,12 +91,19 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
 
   // 动态生成 agent 参数描述:列出所有可用模板(名称+职责+模型),Mint 可见可选
   const templates = listTemplates();
+  const designerTemplates = templates.filter((t) => t.agentType === "designer");
   const agentDesc = templates.length > 0
     ? "可选 Agent 模板:\n" + templates.map((t) => {
         const modelInfo = t.model ? `(${t.model})` : t.provider ? `(供应商:${t.provider})` : "";
         return `  - ${t.id}: ${t.name}——${t.description}${modelInfo ? " " + modelInfo : ""}`.trim();
       }).join("\n")
         + "\n选择适合任务的模板;省略则不指定模板,创建标准子 Agent(无模板人设)。"
+        // 设计类模板必须由委派方指定起点——子 Agent 不自选模板（选型是委派方的职责）
+        + (designerTemplates.length > 0
+          ? `\n设计类模板(${designerTemplates.map((t) => t.id).join("/")})委派时,prompt 里**必须写明起点**:`
+            + `\`${START_POINT_TEMPLATE_PREFIX}<文件名>\`(可用 ${DESIGNER_TEMPLATE_FILES.join(" / ")})`
+            + `或 \`${START_POINT_FREE}\`(附方向)。子 Agent 不会自己去挑模板。`
+          : "")
     : "可选模板名: builder(编码)、evaluator(验收)。";
 
   return defineTool({
@@ -105,6 +120,7 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
       "需要子 Agent 干活（写代码/验收/查资料/研究）时用 task 委派，不要自己动手（决策树 ① 的极简情况除外）",
       "通用任务（查资料、读代码、分析）省略 agent 参数，用默认白板子 Agent；特定角色（写代码→builder、验收→evaluator、UI 设计→mint-designer 等）才指定 agent",
       "开发类任务用 taskId 关联 task.json 任务，完成/失败自动回写状态，不要手动标记",
+      `UI 设计任务（agent=mint-designer）：prompt 里**必须写明起点**——\`${START_POINT_TEMPLATE_PREFIX}<文件名>\`（可选 ${DESIGNER_TEMPLATE_FILES.join(" / ")}）或 \`${START_POINT_FREE}\`（附设计方向）。模板是参考版式，选型是你的职责，子 Agent 不会自己挑，也不会去翻目录`,
     ],
     parameters: {
       type: "object" as const,
@@ -298,12 +314,15 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
         });
       };
 
+      const parentModel = ctx.getParentModel?.();
       runSubagents(record, {
         cwd: ctx.cwd,
         agentDir: ctx.agentDir,
         store: ctx.store,
         concurrency: (params.concurrency as number) || undefined,
         parentThinkingLevel: ctx.getParentThinkingLevel?.(),
+        parentModel: parentModel?.model,
+        parentProvider: parentModel?.provider,
         canUseTool: ctx.canUseTool,
         onProgress: broadcastProgress,
       }).catch(() => {});

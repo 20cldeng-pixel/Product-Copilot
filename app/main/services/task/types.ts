@@ -20,6 +20,8 @@ export interface SingleResult {
   structuredOutput?: StructuredSubagentOutput;
   durationMs: number;
   error?: string;
+  /** 不判失败、但必须让上层看见的降级项（如声明了 outputSchema 却没调 yield） */
+  warning?: string;
   aborted?: boolean;
   // omp 移植的生产字段
   tokens: number;

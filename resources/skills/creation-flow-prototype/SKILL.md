@@ -41,6 +41,11 @@ description: >-
 ## 调 Mint-D 出原型
 
 - 委派 Mint-D 设计师产出 HTML 原型（种子模板 + 品牌库 + :root 变量）
+- **起点由你指定，子 Agent 不自选**：prompt 里必须写明 `模板：<文件名>`（可选 `template-landing.html`
+  / `template-dashboard.html` / `template-form.html` / `template-detail.html`，参考版式用，位于项目
+  `.easymint/templates/`）或 `自由设计`（附明确的设计方向）。**不要只说"匹配模板"就撒手**——
+  子 Agent 会去翻目录、读多个模板做对比，白耗回合
+- 需求匹配不上任何一个模板时，明确写「自由设计」并给出方向
 - 要求视觉四件套：色板 / 字体角色 / 布局线框 / 签名元素（大胆只花一处，其余克制）
 - Mint-D 交付前必须做渲染正确性自查（从代码推理，不依赖截图）
 

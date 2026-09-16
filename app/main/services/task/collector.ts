@@ -16,8 +16,15 @@ interface AssistantMessageLike {
   content?: Array<{ type?: string; text?: string; thinking?: string }>;
 }
 
-/** 提取 assistant 消息的文本内容（content 块的 text 拼接） */
-function extractText(msg: AssistantMessageLike): string {
+/**
+ * 提取 assistant 消息的文本内容（content 块的 text 拼接）
+ *
+ * 导出给 executor 复用作终态判定——「有没有终局文本」必须与「收集到什么文本」同一个口径，
+ * 否则两处定义漂移会出现「判定说没文本、结果里却截到了文本」的自相矛盾。
+ */
+export function extractAssistantText(
+  msg: { content?: Array<{ type?: string; text?: string }> },
+): string {
   if (!Array.isArray(msg.content)) return "";
   const parts: string[] = [];
   for (const b of msg.content) {
@@ -52,7 +59,7 @@ export class ResultCollector {
   }
 
   private replace(msg: AssistantMessageLike): void {
-    const text = extractText(msg);
+    const text = extractAssistantText(msg);
     if (!text) return;
     const id = msg.id ?? "last";
     if (!this.byMsgId.has(id)) this.order.push(id);

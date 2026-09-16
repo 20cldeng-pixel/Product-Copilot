@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildBlocks, ChatBlockView } from "./ChatBlocks";
-import { ChatMessage, mapSessionMessages, piBlocksToEntries, mergeConsecutiveText } from "./chat-utils";
+import { ChatMessage, mapSessionMessages, piBlocksToEntries, mergeConsecutiveText, followDecision, USER_INPUT_WINDOW_MS } from "./chat-utils";
 import { useDelegationStore } from "../stores/delegation-store";
 import { Modal } from "./ui/Modal";
 import { UserMessageText } from "./UserMessageText";
@@ -32,22 +32,32 @@ export function SubagentProcessView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true); // 流式输出是否自动贴底(用户滚动时停止)
   const lastUserInputRef = useRef(0); // 最近一次用户输入时间(滚动意图判定窗口)
+  /** 内容高度观察器（实例复用；观察目标每帧重挂，见下方贴底 effect） */
+  const roRef = useRef<ResizeObserver | null>(null);
   const [awayFromBottom, setAwayFromBottom] = useState(false); // 回底按钮显示开关
+
+  const pinToBottom = (): void => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
 
   // 用户输入(wheel/touch/mousedown)标记——500ms 内的 scroll 变化视为用户滚动意图
   const handleUserInput = (): void => { lastUserInputRef.current = Date.now(); };
   const handleScroll = (): void => {
-    // 程序性贴底(无用户输入)不参与判定
-    if (Date.now() - lastUserInputRef.current > 500) return;
     const el = scrollRef.current; if (!el) return;
+    // 判定与聊天页 ChatPanel 完全一致：只看「用户输入后 500ms 内的变化」
+    // （详见 chat-utils 的 followDecision 注释——别再加"自己贴底"的保护窗口，那会吞掉用户滚动）
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = distFromBottom < 8;
-    autoScrollRef.current = atBottom; // 滚回底部恢复跟随,滚离底部停止
-    setAwayFromBottom(!atBottom);
+    const decision = followDecision({
+      distFromBottom,
+      msSinceUserInput: Date.now() - lastUserInputRef.current,
+    });
+    if (decision === undefined) return;
+    autoScrollRef.current = decision; // 滚回底部恢复跟随,滚离底部停止
+    setAwayFromBottom(!decision);
   };
   const scrollToBottom = (): void => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    pinToBottom();
     autoScrollRef.current = true;
     setAwayFromBottom(false);
   };
@@ -139,11 +149,31 @@ export function SubagentProcessView({
     return () => clearInterval(timer);
   }, [running, sessionFile]);
 
-  // 滚动贴底(仅用户没滚离底部时跟随——流式输出时用户可自由滚动查看历史)
+  // 滚动贴底(仅用户没滚离底部时跟随——流式输出时用户可自由滚动查看历史)。
+  // 除内容变更外还挂 ResizeObserver 观察各消息行：思考块/文本块的展开过渡(200ms)、
+  // Markdown 重排、图片解码都会在本次 commit **之后**继续长高——只按 msgs 贴底会越跟越远。
+  // 观察器实例只建一次（回调读的都是 ref，不随渲染变化），每帧只重挂观察目标。
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (!roRef.current) {
+      roRef.current = new ResizeObserver(() => {
+        if (!autoScrollRef.current) return;
+        // 用户正在操作（500ms 内有输入）时不抢滚动位置——比聊天页多这一道：
+        // 这是只读查看器，内容长高的补贴晚一帧没有代价，被用户滚动拖回来才是问题
+        if (Date.now() - lastUserInputRef.current <= USER_INPUT_WINDOW_MS) return;
+        pinToBottom();
+      });
+    }
+    const ro = roRef.current;
+    ro.disconnect();
+    for (const child of Array.from(el.children)) ro.observe(child);
+  }, [msgs]);
+  useEffect(() => () => { roRef.current?.disconnect(); }, []);
+
   useEffect(() => {
     if (!autoScrollRef.current) return;
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    pinToBottom();
   }, [msgs]);
 
   // Modal 经 createPortal 挂 body:弹窗渲染在输入卡片内,空态时气泡锚点容器有 transform

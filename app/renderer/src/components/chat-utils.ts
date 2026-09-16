@@ -217,3 +217,58 @@ export function getMsgCopyText(msg: ChatMessage): string {
   if (!msg.entries) return "";
   return msg.entries.filter((e) => e.kind === "text").map((e) => e.text).join("\n");
 }
+
+/**
+ * 流式贴底跟随的统一判定（子 Agent 输出窗、思考块内滚动区共用）——**对齐聊天页 ChatPanel 的滚动状态机**。
+ *
+ * 规则只有一条：**用户输入（滚轮/触摸/按下）后 500ms 内的 scroll 变化才算用户滚动意图**，
+ * 其余（程序性贴底、内容变高引起的滚动、夹紧）一律不参与判定 —— 因此不需要任何
+ * 「保护窗口」，也不会把自己的滚动误判成「用户滚离底部」而把跟随锁死。
+ *
+ * 反例（踩过）：曾额外加过「本组件贴底后 120ms 内的 scroll 不参与判定」。流式输出时
+ * 每帧都在贴底，这道窗口几乎永远命中 → **用户自己的滚动也被吞掉** → 跟随关不掉，
+ * 表现为「强制锁底、往上滚不动」。聊天页没有这道守卫，所以能贴底也能自由滚。
+ *
+ * @returns true=恢复跟随 / false=停止跟随 / undefined=不改变当前状态
+ */
+export const USER_INPUT_WINDOW_MS = 500;
+export const AT_BOTTOM_PX = 8;
+
+export function followDecision(input: {
+  /** 距容器底部的距离（scrollHeight - scrollTop - clientHeight） */
+  distFromBottom: number;
+  /** 距最近一次用户输入（滚轮/触摸/按下）的毫秒数 */
+  msSinceUserInput: number;
+}): boolean | undefined {
+  if (input.msSinceUserInput > USER_INPUT_WINDOW_MS) return undefined;
+  return input.distFromBottom < AT_BOTTOM_PX;
+}
+
+/** 流事件门卫：这个事件是否属于本面板的会话。
+ *
+ * 值必须传**实时值**（`currentChatRef.current` / 会话 id 的实时镜像），不能传订阅时的闭包变量——
+ * ChatPanel 的 onStream 订阅 effect 依赖数组是 `[]`（只订阅一次），闭包里捕获的 props 会永久停在
+ * 首次渲染：新建项目流程里消息是弹窗发的，本面板没有 sendMessage 结果可绑 currentChatRef，
+ * 若门卫读的是首次渲染时的 `existingSid`（undefined），属于它的流事件会被全部丢弃 → 聊天区永久空白。
+ */
+export function acceptStreamEvent(input: {
+  /** 本面板已绑定的 chatId（流事件带 chatId/runId，绑上后按它精确过滤） */
+  currentChatId: string | null;
+  /** 本面板绑定的会话 id（实时值；临时 `__new_*`/未绑定时为 undefined） */
+  ownSessionId: string | undefined;
+  eventRunId?: string;
+  eventChatId?: string;
+  eventSessionId?: string;
+}): boolean {
+  const { currentChatId, ownSessionId, eventRunId, eventChatId, eventSessionId } = input;
+  if (currentChatId) {
+    // 已绑定 chat → 无归属信息的裸事件一律丢（防跨窗口污染）
+    if (!eventRunId && !eventChatId) return false;
+    if (eventRunId && eventRunId !== currentChatId) return false;
+    if (eventChatId && eventChatId !== currentChatId) return false;
+    return true;
+  }
+  // 未绑定 chat → 只能按会话 id 认领；会话也未知时拒绝一切（宁可丢也不跨窗口串流）
+  if (ownSessionId) return !!eventSessionId && eventSessionId === ownSessionId;
+  return false;
+}

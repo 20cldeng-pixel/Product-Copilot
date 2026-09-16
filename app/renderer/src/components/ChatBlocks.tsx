@@ -7,6 +7,7 @@ import { useTabStore } from "../stores/tab-store";
 import { useViewerStore } from "../stores/viewer-store";
 import { isImagePath } from "@shared/image-files";
 import { intentFromInput } from "@shared/tool-intent";
+import { followDecision } from "./chat-utils";
 
 /** 从文件路径取文件名(tab 标题/标题行显示用) */
 function baseName(p: string): string {
@@ -476,6 +477,11 @@ function ThinkingBlockView({ block, active }: { block: ThinkingBlock; active?: b
   const boxRef = useRef<HTMLDivElement>(null);
   // 自动贴底跟随:用户滚离底部(dist>8)暂停,回底恢复(对齐 OutputWindow 交互)
   const autoScrollRef = useRef(true);
+  /** 最近一次用户输入时间(wheel/touch/按下)：只有用户真的滚过才允许改变跟随状态
+   *  （判定与聊天页一致，见 chat-utils 的 followDecision 注释——**不要**再加"自己贴底后
+   *  的保护窗口"：流式时每帧都在贴底，那道窗口会吞掉用户滚动，表现为"强制锁底滚不动"） */
+  const lastUserInputRef = useRef(0);
+  const markUserInput = (): void => { lastUserInputRef.current = Date.now(); };
 
   // body 挂载与 open 同步:展开立即挂载;收起等 0fr 过渡(200ms)播完再卸载(宽度随动画收窄)。
   // 手动展开需先挂载(0fr)下一帧再置 open——同帧置 1fr 无过渡,展开动画消失(见 toggle)
@@ -514,8 +520,14 @@ function ThinkingBlockView({ block, active }: { block: ThinkingBlock; active?: b
   const onScroll = (): void => {
     const el = boxRef.current;
     if (!el) return;
-    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    autoScrollRef.current = dist < 8;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // 判定与聊天页一致（chat-utils 的 followDecision）：用户输入后 500ms 内的变化才算滚动意图；
+    // 程序性贴底（无用户输入）不参与判定 —— 这样自己的滚动不会把跟随锁死
+    const decision = followDecision({
+      distFromBottom,
+      msSinceUserInput: Date.now() - lastUserInputRef.current,
+    });
+    if (decision !== undefined) autoScrollRef.current = decision;
   };
 
   const toggle = (): void => {
@@ -580,6 +592,9 @@ function ThinkingBlockView({ block, active }: { block: ThinkingBlock; active?: b
           <div
             ref={boxRef}
             onScroll={onScroll}
+            onWheel={markUserInput}
+            onTouchStart={markUserInput}
+            onMouseDown={markUserInput}
             className="overflow-y-auto overscroll-contain rounded-[var(--radius-lg)] mt-[5px] mb-[3px]"
             style={{
               background: "var(--thinking-body)",

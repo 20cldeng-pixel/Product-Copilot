@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { buildBlocks, ChatBlockView } from "./ChatBlocks";
-import { AttachItem, ChatMessage, piBlocksToEntries, mergeConsecutiveText, piEventToEntries, displayToolAction, mapSessionMessages, getMsgCopyText } from "./chat-utils";
+import { AttachItem, ChatMessage, piBlocksToEntries, mergeConsecutiveText, piEventToEntries, displayToolAction, mapSessionMessages, getMsgCopyText, acceptStreamEvent } from "./chat-utils";
 import { chatActions } from "../stores/chat-actions";
 import { confirmFullAccess } from "./permission-confirmation";
 import { resolveThinkingLevel } from "@shared/thinking-levels";
@@ -590,6 +590,12 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
   // steer 打断标记
   const steeringRef = useRef(false);
   const sidRef = useRef<string>(initialSid);
+  // 会话 id 的实时镜像：onStream / onChatSession 的订阅 effect 依赖数组是 []（只订阅一次），
+  // 闭包里的 existingSid 会永久停在首次渲染的值。面板「挂载后才拿到 sessionId」时（新建项目流程：
+  // 消息由弹窗发送，本面板没有 sendMessage 结果可绑 currentChatRef），门卫若读闭包值就会把
+  // 属于它的流事件全部丢弃 → 聊天区永久空白。故门卫一律读这个 ref。
+  const existingSidRef = useRef<string | undefined>(existingSid);
+  useEffect(() => { existingSidRef.current = existingSid; }, [existingSid]);
   // 当前会话的 pending ask（Mint 提问卡片，聊天区内嵌）
   const pendingAsk = useAskStore((s) => Object.values(s.asks).find((a) => a.sessionId === sid)) || null;
   // 按会话读压缩/摘要状态(须在 sidRef 声明后——useStatusStore selector 渲染期执行)
@@ -1272,7 +1278,13 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
         }
       if (cancelled) return; const snapshot = msgIdRef.current;
         let msgs = await window.electronAPI.conv.messages(existingSid, projectDir);
-        if (!cancelled && msgs.length === 0) { await new Promise((r) => setTimeout(r, 500)); if (cancelled) return; msgs = await window.electronAPI.conv.messages(existingSid, projectDir); }
+        // 历史为空 → 最多补 3 次（退避 400/800/1200ms）。新建项目/新建会话刚落盘时
+        // 会话列表可能还没看到该会话，一次 500ms 重试不够就永久空白（本 effect 不会自行重跑）
+        for (let attempt = 0; !cancelled && msgs.length === 0 && attempt < 3; attempt++) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          if (cancelled) return;
+          msgs = await window.electronAPI.conv.messages(existingSid, projectDir);
+        }
         if (!cancelled && msgs.length > 0 && msgIdRef.current <= snapshot) {
           const mapped = mapSessionMessages(msgs);
           // Restore image dataUrls from disk for history display (parallel)
@@ -1289,10 +1301,14 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
             }
           }
           if (loads.length > 0) await Promise.all(loads);
-          if (!cancelled && mapped.length > 0) { useChatStore.getState().loadSession(sid, mapped); msgIdRef.current = Math.max(...mapped.map((m) => m.id)); }
+          // 写入 key 用 existingSid（本 effect 的入参，恒为真值），**不能用 `sid` 状态**：
+          // 面板挂载后才拿到 sessionId 时（新建项目流程），effect 601 的 setSid 还没重渲染，
+          // 此刻 `sid` 仍是临时 `__new_*` key —— 历史会被写进一个随后没人读的 key，
+          // 聊天区永久空白（tab 有会话、有标题，却是空态）
+          if (!cancelled && mapped.length > 0) { useChatStore.getState().loadSession(existingSid, mapped); msgIdRef.current = Math.max(...mapped.map((m) => m.id)); }
           // 加载完成 → 恢复会话缓存的使用率（延迟到此时：避免加载期间输入卡片显示旧进度误导）
           if (!cancelled && pendingCtxRef.current) {
-            useStatusStore.getState().setCtxPct(sid, pendingCtxRef.current);
+            useStatusStore.getState().setCtxPct(existingSid, pendingCtxRef.current);
             pendingCtxRef.current = null;
           }
         }
@@ -1304,17 +1320,14 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
   useEffect(() => {
     const unsub = window.electronAPI.agent.onStream((event: StreamEvent) => {
       if (event.source === "worker") return;
-      if (currentChatRef.current) {
-        // Filter by chatId when known
-        if (!event.runId && !event.chatId) return;
-        if (event.runId && event.runId !== currentChatRef.current) return;
-        if (event.chatId && event.chatId !== currentChatRef.current) return;
-      } else if (existingSid) {
-        if (!event.sessionId || event.sessionId !== existingSid) return;
-      } else {
-        // 没有活跃 chat，也没有已知 session → 拒绝所有外部事件，防止跨窗口污染
-        return;
-      }
+      // 门卫读实时值（见 existingSidRef 声明处的说明），不看订阅时捕获的 existingSid
+      if (!acceptStreamEvent({
+        currentChatId: currentChatRef.current,
+        ownSessionId: existingSidRef.current,
+        eventRunId: event.runId,
+        eventChatId: event.chatId,
+        eventSessionId: event.sessionId,
+      })) return;
       // 打断后:只丢弃被打断回合的残留帧;通知(新注入)正常渲染,新回合(turn_start)开始 → 恢复渲染。
       // (原实现 return 丢弃一切——打断通知/总结回合全被吞,磁盘有而 UI 无)
       // 但打断后 1.5s 内到的 turn_start 是**被打断回合自己的残留**(SDK 在回合内每个工具批次/续跑

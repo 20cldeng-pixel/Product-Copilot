@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { BrowserWindow } from "electron";
-import { resolveHome, getResourcesDir } from "../utils/paths";
+import { resolveHome } from "../utils/paths";
 import { broadcast } from "./ipc-broadcast";
 import { Store } from "./store";
 import { resolveEffectivePrompt } from "./system-prompt-manager";
@@ -19,6 +19,7 @@ import { getActiveModel, resetModelRuntime } from "./pi-init";
 import { createPiSession, resumePiSession, listPiSessions } from "./pi-session";
 import { createTaskTool } from "./task/tool";
 import { createAgentTemplateTool } from "./task/tool";
+import { ensureDesignerTemplates } from "./designer-seed";
 import { createSkillTool, createManageSkillTool } from "./tools/skill-tool";
 import { createLearnTool, createSearchExperiencesTool } from "./tools/learn-tool";
 import { createRetireExperiencesTool } from "./tools/experience-tool";
@@ -699,8 +700,23 @@ export class AgentService {
         store: this.store,
         parentSessionId: sessionId,
         chatId,
-        // 标准委派跟随主会话思考等级（懒取：委派发生时读当前生效值；模板委派作回落）
-        getParentThinkingLevel: () => this.findActiveChat(sessionId)?.thinkingLevel,
+        // 默认跟随主会话思考等级（懒取：委派发生时读当前生效值；模板设置仅作回落）。
+        // 以会话真值 session.thinkingLevel 为准（与 broadcastThinkingLevel 同源），
+        // 取不到再回落 chat 缓存——否则新建会话早期缓存为空，会掉回模板的档位
+        getParentThinkingLevel: () => {
+          const chat = this.findActiveChat(sessionId);
+          const fromSession = (chat?.session as unknown as { thinkingLevel?: string } | null)?.thinkingLevel;
+          return fromSession ?? chat?.thinkingLevel;
+        },
+        // 默认跟随主会话模型（懒取）。以会话真值 session.model 为准（含热切后的模型），
+        // 取不到再回落 chat 缓存（currentModel 只在切模型路径上写，新建会话早期为空）
+        getParentModel: () => {
+          const chat = this.findActiveChat(sessionId);
+          const m = (chat?.session as unknown as { model?: { id?: string; provider?: string } } | null)?.model;
+          if (m?.id) return { model: m.id, provider: m.provider };
+          if (chat?.currentModel) return { model: chat.currentModel, provider: chat.provider };
+          return undefined;
+        },
         // 子 Agent 跟随主会话权限（standard/full + 绝对禁区）——委派写操作与主会话同边界
         canUseTool,
         // 委派收尾汇总 → 开回合让 Mint 自动响应总结(最后一条通知,无后续排队;
@@ -1336,25 +1352,8 @@ export class AgentService {
     if (isDesigner) {
       chat.agentType = "designer";
       if (resolvedPath) {
-        const resourcesDir = getResourcesDir();
-        const templateDir = path.join(resourcesDir, "em-html-editor");
-        const brandDir = path.join(resourcesDir, "brand-tokens");
-        const destTemplateDir = path.join(resolveHome(resolvedPath), ".easymint", "templates");
-        const destBrandDir = path.join(resolveHome(resolvedPath), ".easymint", "brand-tokens");
-        const templateFiles = [
-          "template-landing.html", "template-dashboard.html",
-          "template-form.html", "template-detail.html",
-        ];
-        try {
-          fs.mkdirSync(destTemplateDir, { recursive: true });
-          for (const f of templateFiles) {
-            const src = path.join(templateDir, f);
-            if (fs.existsSync(src)) fs.copyFileSync(src, path.join(destTemplateDir, f));
-          }
-          if (fs.existsSync(brandDir)) {
-            fs.cpSync(brandDir, destBrandDir, { recursive: true });
-          }
-        } catch (e) { console.warn("[agent] 复制模板/品牌文件失败:", (e as Error).message); }
+        // 种子模板/品牌库播种（与委派 designer 子 Agent 的入口共用同一函数）
+        ensureDesignerTemplates(resolvedPath);
       }
     }
 
