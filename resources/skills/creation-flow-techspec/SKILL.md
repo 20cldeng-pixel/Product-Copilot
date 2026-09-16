@@ -38,4 +38,4 @@ description: >-
 
 - 确认后落 task.json（首任务 = 按已确认原型实现 UI）
 - 环境就绪通过后调 show_confirm_dev 让用户确认开发（就绪标准③ = 依赖已安装、环境可构建）
-- 之后走 Builder/Evaluator 循环（EM 调度，不用固定流水线限死）
+- 之后按「执行方式判定」（见 creation-guide SKILL.md）推进：**中等及以上**委派 Builder/Evaluator 循环（EM 调度，不用固定流水线限死）；**极简/简单档由你直接实现**，自验通过后标记 done

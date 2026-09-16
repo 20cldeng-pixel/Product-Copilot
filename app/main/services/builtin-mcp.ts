@@ -57,7 +57,7 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
   // set_task_status
   tools.push(defineTool({
     name: "set_task_status", label: "更新任务状态",
-    description: "标记 task.json 任务的开始状态并实时刷新 UI。只在两个时机调用：① 调 Builder 前 → building；② Builder 完成、调 Evaluator 前 → evaluating。done / failed 由委派执行结果自动回写，不要手动标记。",
+    description: "标记 task.json 任务状态并实时刷新 UI。调用时机：① 委派前 → building；② 交 Evaluator 前 → evaluating；③ **你亲自实现并自验通过 → done**（亲自做的没有委派结果可回写，不标记进度条会停在 building）。委派实现的 done / failed 由系统自动回写，不要手动标记。",
     promptSnippet: "更新 task.json 任务状态并刷新 UI（building/evaluating）",
     parameters: {
       type: "object" as const,

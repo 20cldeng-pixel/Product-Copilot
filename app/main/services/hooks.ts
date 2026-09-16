@@ -24,10 +24,8 @@ export function validateTaskStatus(projectPath: string | undefined, taskId: stri
   const target = tasks.find((t) => String(t.id) === String(taskId));
   if (!target) return `未找到 id=${taskId} 的任务`;
 
-  // done: 由委派执行结果自动回写,不手动标记
-  if (newStatus === "done") {
-    return `任务 ${taskId} 的 done 状态由委派执行结果自动回写,无需手动标记。`;
-  }
+  // done: 允许手动标记——极简/简单档由 Mint 亲自实现，没有委派结果可回写，不手动标 done
+  // 会让进度条永远停在 building（委派实现的 done 由 executor 直接回写，不经过本函数）
   // building: 支持并行(多个任务可同时进行中,契合批量委派)
   // evaluating: 目标必须 building
   if (newStatus === "evaluating" && target.status !== "building") {
