@@ -700,15 +700,16 @@ export class AgentService {
         store: this.store,
         parentSessionId: sessionId,
         chatId,
-        // 默认跟随主会话思考等级（懒取：委派发生时读当前生效值；模板设置仅作回落）。
+        // 思考等级懒取：委派发生时读主会话当前生效值——这是子 Agent 等级的**唯一来源**
+        // （模板与委派参数都不再能配等级，见 task/model-resolution.ts）。
         // 以会话真值 session.thinkingLevel 为准（与 broadcastThinkingLevel 同源），
-        // 取不到再回落 chat 缓存——否则新建会话早期缓存为空，会掉回模板的档位
+        // 取不到再回落 chat 缓存——否则新建会话早期缓存为空，会读到空值
         getParentThinkingLevel: () => {
           const chat = this.findActiveChat(sessionId);
           const fromSession = (chat?.session as unknown as { thinkingLevel?: string } | null)?.thinkingLevel;
           return fromSession ?? chat?.thinkingLevel;
         },
-        // 默认跟随主会话模型（懒取）。以会话真值 session.model 为准（含热切后的模型），
+        // 主会话模型懒取——子 Agent 模型的**唯一来源**。以会话真值 session.model 为准（含热切后的模型），
         // 取不到再回落 chat 缓存（currentModel 只在切模型路径上写，新建会话早期为空）
         getParentModel: () => {
           const chat = this.findActiveChat(sessionId);

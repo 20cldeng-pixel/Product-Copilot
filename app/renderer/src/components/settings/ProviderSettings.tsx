@@ -93,8 +93,6 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
     return list;
   });
   // 官方模型的参数覆盖不再有 UI 写入点(管理区不可编辑官方模型);存量值保存时原样透传
-  // 该供应商的 task 子 Agent 默认模型(per-provider)
-  const [subagentDefaultModel, setSubagentDefaultModel] = useState<string>(initial?.subagentDefaultModel || "");
   // 自定义供应商字段
   const [baseUrl, setBaseUrl] = useState<string>((initial as any)?.baseUrl || "");
   const [apiType, setApiType] = useState<string>((initial as any)?.apiType || "anthropic-messages");
@@ -214,7 +212,6 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
       models: modelList,
       extraModels: extraModels.length > 0 ? extraModels : undefined,
       modelOverrides: initial?.modelOverrides,
-      subagentDefaultModel: subagentDefaultModel || undefined,
       createdAt: initial?.createdAt || Date.now(),
       baseUrl: isCustom ? baseUrl.trim() || undefined : undefined,
       apiType: isCustom ? apiType : undefined,
@@ -361,30 +358,17 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
         </div>
       )}
 
-      {/* 默认模型 + 子Agent默认模型:同一行——两者都是「这个供应商用哪个模型」 */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-text-secondary block mb-1.5">默认模型</label>
-          <Select
-            block
-            className="[&>button]:h-8 [&>button]:text-xs"
-            placeholder={!isCustom && officialModels === null ? "加载中…" : (availableModels.length === 0 ? "无可用模型" : "选择模型")}
-            value={model}
-            onChange={(v: string) => setModel(v)}
-            options={availableModels.map((m) => ({ value: m, label: labelOf(m) }))}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-text-secondary block mb-1.5">子Agent默认模型</label>
-          <Select
-            block
-            className="[&>button]:h-8 [&>button]:text-xs"
-            placeholder={availableModels.length === 0 ? "无可用模型" : "可选"}
-            value={subagentDefaultModel}
-            onChange={(v: string) => setSubagentDefaultModel(v)}
-            options={[{ value: "", label: "不指定（用默认模型）" }, ...availableModels.map((m) => ({ value: m, label: labelOf(m) }))]}
-          />
-        </div>
+      {/* 默认模型:这个供应商用哪个模型。子 Agent 的模型与思考等级跟随主会话,不在此配置 */}
+      <div>
+        <label className="text-xs text-text-secondary block mb-1.5">默认模型</label>
+        <Select
+          block
+          className="[&>button]:h-8 [&>button]:text-xs"
+          placeholder={!isCustom && officialModels === null ? "加载中…" : (availableModels.length === 0 ? "无可用模型" : "选择模型")}
+          value={model}
+          onChange={(v: string) => setModel(v)}
+          options={availableModels.map((m) => ({ value: m, label: labelOf(m) }))}
+        />
       </div>
       {availableModels.length > 0 && <p className="text-[length:var(--text-2xs)] text-text-muted -mt-2">共 {availableModels.length} 个模型可选</p>}
 
@@ -393,11 +377,9 @@ export const ProviderForm = forwardRef<ProviderFormHandle, ProviderFormProps>(
         isCustom={isCustom}
         officialModels={officialModels}
         defaultModel={model}
-        subagentDefaultModel={subagentDefaultModel}
         extraModels={extraModels}
         modelSupports={modelSupports}
         onDefaultModelChange={setModel}
-        onSubagentDefaultModelChange={setSubagentDefaultModel}
         onChange={(next) => { setExtraModels(next.extraModels); }}
       />
 

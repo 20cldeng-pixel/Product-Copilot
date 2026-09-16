@@ -546,9 +546,9 @@ interface ElectronAPI {
     onAuthEvent: (callback: (data: import("@shared/provider-auth").ProviderAuthEventMessage) => void) => () => void;
   };
   agentTemplates: {
-    list: () => Promise<{ id: string; name: string; description: string; prompt: string; model?: string; provider?: string; agentType: string; thinkingLevel?: string }[]>;
-    create: (input: { name: string; description: string; prompt: string; model?: string; provider?: string; agentType?: string; thinkingLevel?: string }) => Promise<{ id: string; name: string; description: string; prompt: string; model?: string; provider?: string; agentType: string; thinkingLevel?: string }>;
-    update: (id: string, input: { name?: string; description?: string; prompt?: string; model?: string; provider?: string; agentType?: string; thinkingLevel?: string }) => Promise<{ id: string; name: string; description: string; prompt: string; model?: string; provider?: string; agentType: string; thinkingLevel?: string }>;
+    list: () => Promise<{ id: string; name: string; description: string; prompt: string; agentType: string }[]>;
+    create: (input: { name: string; description: string; prompt: string; agentType?: string }) => Promise<{ id: string; name: string; description: string; prompt: string; agentType: string }>;
+    update: (id: string, input: { name?: string; description?: string; prompt?: string; agentType?: string }) => Promise<{ id: string; name: string; description: string; prompt: string; agentType: string }>;
     delete: (id: string) => Promise<void>;
   };
   app: {

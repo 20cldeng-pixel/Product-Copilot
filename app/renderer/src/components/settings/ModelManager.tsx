@@ -110,19 +110,16 @@ export interface ModelManagerProps {
   officialModels: OfficialModelInfo[] | null;
   /** 当前默认模型（SDK id）——仅用于改名/删除时的默认选择联动（数据层），列表展示不与它联动 */
   defaultModel: string;
-  /** 当前子 Agent 默认模型（SDK id）——改名/删除时同步，避免留下失效 id */
-  subagentDefaultModel: string;
   extraModels: Array<string | ExtraModelCapability>;
   /** 每行模型支持的思考档位（agent:getModelThinkingSupport）；null = 未知 */
   modelSupports: Record<string, string[] | null>;
   onDefaultModelChange: (sdkId: string) => void;
-  onSubagentDefaultModelChange: (sdkId: string) => void;
   onChange: (next: { extraModels: Array<string | ExtraModelCapability> }) => void;
 }
 
 export function ModelManager({
-  isCustom, officialModels, defaultModel, subagentDefaultModel, extraModels, modelSupports,
-  onDefaultModelChange, onSubagentDefaultModelChange, onChange,
+  isCustom, officialModels, defaultModel, extraModels, modelSupports,
+  onDefaultModelChange, onChange,
 }: ModelManagerProps): JSX.Element {
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
@@ -222,7 +219,6 @@ export function ModelManager({
         : [...extraModels, entry],
     });
     if (defaultModel === draft.editingId) onDefaultModelChange(id);
-    if (subagentDefaultModel === draft.editingId) onSubagentDefaultModelChange(id);
     closeEdit();
   };
 
@@ -233,7 +229,6 @@ export function ModelManager({
     onChange({ extraModels: extraModels.filter((e) => !removeRaws.has(e)) });
     const row = rows.find((r) => r.id === draft.editingId);
     if (row && defaultModel === row.id) onDefaultModelChange("");
-    if (row && subagentDefaultModel === row.id) onSubagentDefaultModelChange("");
     closeEdit();
   };
 
@@ -243,7 +238,7 @@ export function ModelManager({
     <div className="space-y-2">
       <label className="text-xs text-text-secondary block">自添加模型</label>
 
-      {/* 添加：唯一入口，一次一个，追加到列表（也出现在默认/子 Agent 下拉里） */}
+      {/* 添加：唯一入口，一次一个，追加到列表（也出现在默认模型下拉里） */}
       <div className="flex items-center gap-2">
         <input
           className="em-input em-input-compact flex-1 min-w-0 h-8 px-2.5 text-xs text-text-primary"

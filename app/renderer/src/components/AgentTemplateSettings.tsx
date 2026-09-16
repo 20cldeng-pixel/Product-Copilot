@@ -1,37 +1,18 @@
 import { useEffect, useState } from "react";
-import { Select } from "./Select";
-import { useSettingsStore } from "../stores/settings-store";
 import { confirmDialog } from "./ui/ConfirmDialog";
 
 interface Template {
-  id: string; name: string; description: string; prompt: string;
-  model?: string; provider?: string; agentType: string; thinkingLevel?: string;
+  id: string; name: string; description: string; prompt: string; agentType: string;
 }
 
-const THINKING_LEVELS: Array<{ value: string; label: string }> = [
-  { value: "off", label: "关闭(off)" },
-  { value: "minimal", label: "极简(minimal)" },
-  { value: "low", label: "低(low)" },
-  { value: "medium", label: "中(medium)" },
-  { value: "high", label: "高(high)" },
-  { value: "xhigh", label: "超高(xhigh)" },
-  { value: "max", label: "最大(max)" },
-];
-
-/** 完全锁定(不可修改,仅预览):Mint / Mint-D */
-const LOCKED_IDS = new Set(["mint", "mint-designer"]);
-/** 受限编辑(仅供应商/模型/思考等级):Builder / Evaluator */
-const RESTRICTED_IDS = new Set(["default-builder", "default-evaluator"]);
-const BUILTIN_IDS = new Set([...LOCKED_IDS, ...RESTRICTED_IDS]);
-
-function useProviderOptions(): Array<{ value: string; label: string }> {
-  const apiProviders = useSettingsStore((s) => s.apiProviders);
-  if (!apiProviders) return [];
-  return Object.values(apiProviders.configs ?? {}).map((cfg) => ({
-    value: cfg.presetId === "custom" ? cfg.id : cfg.presetId,
-    label: `${cfg.name}${cfg.presetId === "custom" ? "" : ""}`,
-  }));
-}
+/**
+ * 内置模板：不可修改、不可删除（与主进程 agent-templates.ts 的 BUILTIN_TEMPLATE_IDS 对应）。
+ *
+ * 原先 Builder / Evaluator 是「受限编辑」（只能改供应商 / 模型 / 思考等级）——
+ * 子 Agent 的运行配置已收敛为主会话唯一来源（2026-09-16 用户拍板），那三个字段不复存在，
+ * 受限编辑也就没有可编辑项，故四个内置模板统一为只读浏览。
+ */
+const BUILTIN_IDS = new Set(["mint", "mint-designer", "default-builder", "default-evaluator"]);
 
 /** Agent 模板设置(列表+编辑表单) */
 export function AgentTemplateSettings(): JSX.Element {
@@ -41,16 +22,14 @@ export function AgentTemplateSettings(): JSX.Element {
   const [loading, setLoading] = useState(true);
 
   const load = () => {
-    window.electronAPI.agentTemplates.list().then((ts) => {
-      setTemplates(ts.map((t) => ({ ...t, provider: (t as { provider?: string }).provider ?? "" })));
-    }).catch(() => {}).finally(() => setLoading(false));
+    window.electronAPI.agentTemplates.list()
+      .then((ts) => setTemplates(ts as Template[]))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
-  const handleSave = async (data: {
-    name: string; description: string; prompt: string;
-    provider?: string; model?: string; thinkingLevel?: string;
-  }) => {
+  const handleSave = async (data: { name: string; description: string; prompt: string }) => {
     if (!data.name.trim() || !data.prompt.trim()) return;
     if (editing) {
       await window.electronAPI.agentTemplates.update(editing.id, data);
@@ -68,10 +47,8 @@ export function AgentTemplateSettings(): JSX.Element {
     load();
   };
 
-  const providerOptions = useProviderOptions();
-
   if (adding || editing) {
-    return <TemplateForm initial={editing} onSave={handleSave} providerOptions={providerOptions} onCancel={() => { setEditing(null); setAdding(false); }} />;
+    return <TemplateForm initial={editing} onSave={handleSave} onCancel={() => { setEditing(null); setAdding(false); }} />;
   }
 
   return (
@@ -79,6 +56,9 @@ export function AgentTemplateSettings(): JSX.Element {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium text-text-secondary">Agent 模板</h3>
+          <p className="text-[length:var(--text-2xs)] text-text-muted mt-0.5">
+            模板只定义人设；所有子 Agent 的模型与思考等级跟随主会话。
+          </p>
         </div>
         <button onClick={() => setAdding(true)}
           className="shrink-0 whitespace-nowrap px-3 py-1 rounded-[var(--radius-lg)] text-accent text-xs font-medium hover:bg-accent-subtle transition-colors">
@@ -98,25 +78,18 @@ export function AgentTemplateSettings(): JSX.Element {
                 {tpl.id === "mint" && <span className="text-[length:var(--text-3xs)] px-1.5 py-0.5 rounded-full bg-accent-subtle text-accent shrink-0">默认</span>}
               </div>
               <div className="text-[length:var(--text-11)] text-text-secondary mt-0.5">{tpl.description}</div>
-              <div className="flex items-center gap-2 mt-1 text-[length:var(--text-2xs)] text-text-muted">
-                {tpl.provider && <span>供应商:{tpl.provider}</span>}
-                {tpl.model && <span>模型:{tpl.model}</span>}
-                {tpl.thinkingLevel && tpl.thinkingLevel !== "max" && <span>思考:{tpl.thinkingLevel}</span>}
-              </div>
             </div>
             <div className="flex gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
-              {LOCKED_IDS.has(tpl.id) ? (
-                // Mint/Mint-D:统一进入表单页浏览(只读,不可编辑)
+              {BUILTIN_IDS.has(tpl.id) ? (
+                // 内置模板：统一进入表单页只读浏览
                 <button onClick={() => setEditing(tpl)}
                   className="px-2 py-1 text-[length:var(--text-2xs)] rounded-[var(--radius-lg)] text-text-secondary hover:text-text-primary transition-colors">浏览</button>
               ) : (
                 <>
                   <button onClick={() => setEditing(tpl)}
                     className="px-2 py-1 text-[length:var(--text-2xs)] rounded-[var(--radius-lg)] text-text-secondary hover:text-text-primary transition-colors">编辑</button>
-                  {!BUILTIN_IDS.has(tpl.id) && (
-                    <button onClick={() => handleDelete(tpl.id)}
-                      className="px-2 py-1 text-[length:var(--text-2xs)] rounded-[var(--radius-lg)] text-text-secondary hover:text-danger transition-colors">删除</button>
-                  )}
+                  <button onClick={() => handleDelete(tpl.id)}
+                    className="px-2 py-1 text-[length:var(--text-2xs)] rounded-[var(--radius-lg)] text-text-secondary hover:text-danger transition-colors">删除</button>
                 </>
               )}
             </div>
@@ -127,54 +100,28 @@ export function AgentTemplateSettings(): JSX.Element {
   );
 }
 
-/** 模板编辑/新建表单 */
-function TemplateForm({ initial, onSave, onCancel, providerOptions }: {
+/**
+ * 模板编辑/新建表单 —— 只有人设三件套（名称 / 一句话描述 / 人格提示词）。
+ *
+ * 这里**不该再出现**供应商 / 模型 / 思考等级：子 Agent 的运行配置一律跟随主会话
+ * （2026-09-16 用户拍板「取消全部子 agent 的配置入口」）。若将来有人想加回来，
+ * 先想清楚"两处配置冲突时谁赢"——那正是这次被取消的原因。
+ */
+function TemplateForm({ initial, onSave, onCancel }: {
   initial: Template | null;
-  onSave: (data: { name: string; description: string; prompt: string; provider?: string; model?: string; thinkingLevel?: string }) => void;
+  onSave: (data: { name: string; description: string; prompt: string }) => void;
   onCancel: () => void;
-  providerOptions: Array<{ value: string; label: string }>;
 }): JSX.Element {
   const editMode = initial != null;
-  // 完全锁定(Mint/Mint-D):整表只读浏览
-  const locked = editMode && LOCKED_IDS.has(initial.id);
-  // 受限编辑(Builder/Evaluator):只允许改 供应商/模型/思考等级,名称/描述/prompt 不可改
-  const restricted = editMode && RESTRICTED_IDS.has(initial.id);
+  // 内置模板：整表只读浏览（它们的人设随版本内置，自定义请新建模板）
+  const locked = editMode && BUILTIN_IDS.has(initial.id);
   const [name, setName] = useState(initial?.name || "");
   const [desc, setDesc] = useState(initial?.description || "");
   const [prompt, setPrompt] = useState(initial?.prompt || "");
-  const [provider, setProvider] = useState(initial?.provider || "");
-  const [model, setModel] = useState(initial?.model || "");
-  const [thinkingLevel, setThinkingLevel] = useState(initial?.thinkingLevel || "medium");
-
-  // 供应商切换→加载该供应商的模型列表
-  const [providerModels, setProviderModels] = useState<string[]>([]);
-  const [loadingProviderModels, setLoadingProviderModels] = useState(false);
-  useEffect(() => {
-    if (!provider) { setProviderModels([]); return; }
-    // 自定义供应商(presetId==="custom")的 Pi provider id = config.id,用户输入;内置供应商直接查
-    const apiProviders = useSettingsStore.getState().apiProviders;
-    const cfg = apiProviders?.configs?.[provider];
-    const piProvider = cfg?.presetId === "custom" ? cfg.id : provider;
-    // 如果配置里有缓存的模型列表,直接用
-    if (cfg?.models?.length) {
-      setProviderModels(cfg.models);
-      return;
-    }
-    // 否则从 Pi 拉取
-    setLoadingProviderModels(true);
-    window.electronAPI.agent.getPiModels(piProvider).then((ms) => {
-      setProviderModels(ms.map((m) => m.id));
-    }).catch(() => setProviderModels([])).finally(() => setLoadingProviderModels(false));
-  }, [provider]);
 
   const handleSave = () => {
-    // 受限编辑:名称/描述/prompt 保持模板原值(仅提交 供应商/模型/思考等级)
-    if (restricted) {
-      onSave({ name: initial.name, description: initial.description, prompt: initial.prompt, provider: provider || undefined, model: model || undefined, thinkingLevel: thinkingLevel || undefined });
-      return;
-    }
     if (!name.trim() || !prompt.trim()) return;
-    onSave({ name: name.trim(), description: desc.trim(), prompt: prompt.trim(), provider: provider || undefined, model: model || undefined, thinkingLevel: thinkingLevel || undefined });
+    onSave({ name: name.trim(), description: desc.trim(), prompt: prompt.trim() });
   };
 
   return (
@@ -186,55 +133,25 @@ function TemplateForm({ initial, onSave, onCancel, providerOptions }: {
       {locked && (
         <div className="rounded-[var(--radius-lg)] bg-accent-subtle px-3 py-2.5 text-[length:var(--text-11)] text-text-secondary leading-relaxed">
           内置模板「<span className="text-text-primary font-medium">{initial.name}</span>」：系统内置，仅供浏览，不可修改。
-        </div>
-      )}
-      {restricted && (
-        <div className="rounded-[var(--radius-lg)] bg-accent-subtle px-3 py-2.5 text-[length:var(--text-11)] text-text-secondary leading-relaxed">
-          内置模板「<span className="text-text-primary font-medium">{initial.name}</span>」：名称、描述与人格提示词为系统内置，不可修改。仅可调整下方供应商 / 模型 / 思考等级。
+          子 Agent 的模型与思考等级<span className="text-text-primary">跟随主会话</span>，模板不承载运行配置。
         </div>
       )}
       <div>
         <label className="text-[length:var(--text-11)] text-text-secondary block mb-1 em-required">名称</label>
         <input className="em-input w-full h-8 px-2.5 text-xs text-text-primary disabled:opacity-60"
-          placeholder="如 测试员" value={name} onChange={(e) => setName(e.target.value)} disabled={locked || restricted} />
+          placeholder="如 测试员" value={name} onChange={(e) => setName(e.target.value)} disabled={locked} />
       </div>
       <div>
         <label className="text-[length:var(--text-11)] text-text-secondary block mb-1 em-required">一句话描述</label>
         <input className="em-input w-full h-8 px-2.5 text-xs text-text-primary disabled:opacity-60"
-          placeholder="如 专门写单元测试" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={locked || restricted} />
+          placeholder="如 专门写单元测试" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={locked} />
       </div>
       <div>
         <label className="text-[length:var(--text-11)] text-text-secondary block mb-1 em-required">人格/职责 prompt（系统提示词）</label>
         <textarea className="em-input w-full px-2.5 py-1.5 text-xs text-text-primary disabled:opacity-60"
           rows={4} placeholder="定义 Agent 的行为方式、专业领域、工作风格..."
-          value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={locked || restricted} />
+          value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={locked} />
       </div>
-      {!locked && (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[length:var(--text-11)] text-text-secondary block mb-1">供应商(可选)</label>
-              <Select block placeholder="留空用全局默认" value={provider} onChange={setProvider}
-                options={providerOptions} />
-            </div>
-            <div>
-              <label className="text-[length:var(--text-11)] text-text-secondary block mb-1">模型 id(可选)</label>
-              {providerModels.length > 0 ? (
-                <Select block placeholder={loadingProviderModels ? "加载中…" : "选择模型"} value={model} onChange={setModel}
-                  options={providerModels.map((m) => ({ value: m, label: m }))} />
-              ) : (
-                <input className="em-input w-full h-8 px-2.5 text-xs text-text-primary"
-                  placeholder="如 deepseek-v4-flash" value={model} onChange={(e) => setModel(e.target.value)} />
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-[length:var(--text-11)] text-text-secondary block mb-1">思考级别</label>
-            <Select block value={thinkingLevel} onChange={setThinkingLevel}
-              options={THINKING_LEVELS} />
-          </div>
-        </>
-      )}
       <div className="flex justify-end gap-2 pt-1">
         <button onClick={onCancel} className="px-3 py-1.5 rounded-[var(--radius-lg)] text-xs text-text-secondary hover:bg-surface-hover">{locked ? "关闭" : "取消"}</button>
         {!locked && (

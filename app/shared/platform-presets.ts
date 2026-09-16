@@ -57,8 +57,6 @@ export interface ProviderConfig {
   baseUrl?: string;
   /** 自定义供应商 API 类型(如 anthropic-messages,仅 presetId==="custom" 时有效) */
   apiType?: string;
-  /** 该供应商的 task 工具子 Agent 默认模型(委派子 Agent 未指定时用,从 models 选) */
-  subagentDefaultModel?: string;
   /** 凭据来源。缺省 = api_key(存量配置与不支持账号登录的供应商)。
    *  oauth 时 apiKey 必须为空——runtime override 的优先级高于 auth.json，
    *  存了 key 会让账号登录的凭据永远用不上 */

@@ -24,7 +24,7 @@ import { resolveHome } from "../../utils/paths";
 import { mapWithConcurrencyLimit, type ParallelResult } from "./parallel";
 import { ResultCollector, extractAssistantText } from "./collector";
 import { judgeSubagentTerminal } from "./terminal";
-import { subagentModelCandidates } from "./model-resolution";
+import { subagentModelChoice, subagentThinkingLevel } from "./model-resolution";
 import { finishDelegation } from "./registry";
 import { wrapToolWithPermission } from "../permission/wrap-tool";
 import { bridgeSessionEvents } from "../event-bridge";
@@ -80,30 +80,25 @@ export interface SubagentOptions {
   delegationId: string;
   /** 子会话 jsonl 路径记录(按 index 写入;前端查看 Agent 过程定位文件) */
   childSessionFiles: string[];
-  /** Agent 模板名(如 builder/evaluator;查模板的 model/provider 作为默认) */
+  /** Agent 模板名(如 builder/evaluator)——只取它的 prompt 作子 Agent 人格;模型与等级不来自模板 */
   agent?: string;
-  /** 委派指定模型(优先于模板/子agent默认/全局) */
-  model?: string;
-  /** 委派指定供应商(与 model 搭配) */
-  provider?: string;
-  /** 父会话当前生效的思考等级（默认跟随主会话；模板设置仅作父会话未配置时的回落） */
+  /** 主会话当前生效的思考等级——**唯一来源**(子 Agent 不再有任何等级配置) */
   parentThinkingLevel?: string;
-  /** 父会话当前模型 id（默认跟随主会话；低于委派显式指定、高于模板/子agent默认/全局） */
+  /** 主会话当前模型 id——**唯一来源**(委派参数/模板/供应商都不再能指定子 Agent 模型) */
   parentModel?: string;
-  /** 父会话当前模型所属供应商（与 parentModel 搭配） */
+  /** 主会话当前模型所属供应商（与 parentModel 搭配） */
   parentProvider?: string;
   /** 主会话权限回调（跟随主会话权限模式：标准/完全访问 + 绝对禁区）；缺省不拦截 */
   canUseTool?: (toolName: string, input: Record<string, unknown>, options: any) => Promise<{ behavior: "allow" | "deny"; message?: string; updatedInput?: Record<string, unknown> }>;
 }
 
 /**
- * 子 Agent 思考等级：基础值（父会话等级 > 模板设置 > medium）再按子 Agent 模型能力自适应——
- * 与主会话同一套「同等级 → 向下 → 向上」规则（shared/thinking-levels.ts），
+ * 把主会话的思考等级落到子 Agent 模型实际支持的档位——与主会话同一套
+ * 「同等级 → 向下 → 向上」规则（shared/thinking-levels.ts），
  * 避免子 Agent 落到 SDK 默认的"向上优先"造成不一致。
  *
- * 父会话优先（2026-09-16 改）：模板的等级是**长驻人设**，父会话的等级是**用户此刻的选择**，
- * 后者更该赢。此前模板优先，Mint-D 模板里的 max 会盖掉用户在主会话选的 high——
- * 配合输出上限偏小的模型（推理与正文共用 max_tokens）就是必炸组合。
+ * 等级从哪来见 subagentThinkingLevel：**只有主会话一个来源**。
+ * 不要在这里加档位判断或子 Agent 默认档——那正是 2026-09-16 被收敛掉的东西。
  */
 function adaptSubagentThinkingLevel(base: string, model: Awaited<ReturnType<typeof getActiveModel>>): ThinkingLevel {
   if (!model) return base as ThinkingLevel;
@@ -115,25 +110,22 @@ function adaptSubagentThinkingLevel(base: string, model: Awaited<ReturnType<type
 }
 
 /**
- * 解析子 Agent 模型：按 subagentModelCandidates 的顺序取第一个可解析的，
- * 都不行则回落到全局默认（默认/兜底降级在 getActiveModel 内处理）。
+ * 解析子 Agent 模型：**主会话当前模型是唯一来源**。
+ * 主会话尚未绑定（新建会话早期）或该模型在运行时查不到时，回落到全局默认
+ * （兜底降级在 getActiveModel 内处理）。
+ *
+ * 唯一来源的守卫在 model-resolution.ts —— 要新增来源，先改那里的单测。
  */
 async function resolveSubagentModel(opts: SubagentOptions): Promise<Awaited<ReturnType<typeof getActiveModel>>> {
-  const runtime = await getModelRuntime(opts.store);
-  const tpl = opts.agent ? getTemplate(opts.agent) : undefined;
-  const providers = opts.store.getSettings().apiProviders;
-  const activeCfg = providers?.current ? providers.configs?.[providers.current] : undefined;
-  const candidates = subagentModelCandidates({
-    delegate: { provider: opts.provider, model: opts.model },
+  const choice = subagentModelChoice({
     parent: { provider: opts.parentProvider, model: opts.parentModel },
-    template: { provider: tpl?.provider, model: tpl?.model },
-    subagentDefault: { provider: activeCfg?.presetId, model: activeCfg?.subagentDefaultModel },
   });
-  for (const c of candidates) {
-    const m = runtime.getModel(c.provider, c.model);
+  if (choice) {
+    const runtime = await getModelRuntime(opts.store);
+    const m = runtime.getModel(choice.provider, choice.model);
     if (m) {
       // 记一行来源：子 Agent「用哪个模型」以前只能靠反查会话 jsonl，排错成本高
-      console.log(`[task] 子 Agent 模型来源=${c.source} ${c.provider}/${c.model}`);
+      console.log(`[task] 子 Agent 模型来源=${choice.source} ${choice.provider}/${choice.model}`);
       return m;
     }
   }
@@ -186,6 +178,12 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
   }
   progress.resolvedModel = (model as any).id;
 
+  // 子 Agent 的思考等级 = 主会话当前等级（**唯一来源**），两个执行分支共用；
+  // 再经 adaptSubagentThinkingLevel 按子 Agent 模型能力自适应（模型不支持的档会自动降）。
+  // tpl 在这里取一次：模板只提供人格 prompt，不再提供任何运行配置。
+  const tpl = opts.agent ? getTemplate(opts.agent) : undefined;
+  const subagentThinkingBase = subagentThinkingLevel(opts.parentThinkingLevel);
+
   const tools = opts.readOnly
     ? await getReadOnlyTools(resolvedPath)
     : await (async () => {
@@ -235,8 +233,8 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
     const fullPrompt = opts.task + schemaHint + "\n\n" + PERMISSION_RULES_PROMPT;
     const session2 = await createPiSession({
       cwd: resolvedPath, agentDir: opts.agentDir, model,
-      // 标准委派跟随主会话思考等级（父会话未选过则 medium），并按子 Agent 模型能力自适应
-      thinkingLevel: adaptSubagentThinkingLevel(opts.parentThinkingLevel ?? "medium", model),
+      // 思考等级按模板归属解析（Mint/Mint-D 跟随主会话，其余默认 high），再按模型能力自适应
+      thinkingLevel: adaptSubagentThinkingLevel(subagentThinkingBase, model),
       store: opts.store, systemPrompt: fullPrompt, extraTools,
       sessionDir: opts.sessionDir,
       // 跟随主会话权限（standard/full + 禁区）；pi-session 对 extraTools 统一包装
@@ -249,17 +247,16 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
     return result2;
   }
 
-  // 解析模板 prompt/thinkingLevel:委派指定 agent → 用模板 prompt 作为子 agent system prompt
-  const tpl = opts.agent ? getTemplate(opts.agent) : undefined;
+  // 模板 prompt:委派指定 agent → 用模板 prompt 作为子 agent system prompt
+  // （tpl 与思考等级基础值已在函数早期解析，两个分支共用）
   const tplPrompt = tpl?.prompt;
-  const tplThinkingLevel = tpl?.thinkingLevel;
   const systemPrompt = (tplPrompt ? tplPrompt + "\n\n" : "") + opts.task + "\n\n在你完成所有工作后，请在最后一条消息中输出你的工作总结。\n\n" + PERMISSION_RULES_PROMPT;
 
   try {
     const session = await createPiSession({
       cwd: resolvedPath, agentDir: opts.agentDir, model,
-      // 默认跟随主会话思考等级（父会话未选过则回落模板设置 → medium），并按子 Agent 模型能力自适应
-      thinkingLevel: adaptSubagentThinkingLevel(opts.parentThinkingLevel ?? (tplThinkingLevel as any) ?? "medium", model),
+      // 思考等级按模板归属解析，并按子 Agent 模型能力自适应
+      thinkingLevel: adaptSubagentThinkingLevel(subagentThinkingBase, model),
       store: opts.store, systemPrompt, extraTools,
       sessionDir: opts.sessionDir,
       // 跟随主会话权限（standard/full + 禁区）；pi-session 对 extraTools 统一包装
@@ -496,9 +493,9 @@ export interface DelegationRuntime {
   agentDir: string;
   store: Store;
   concurrency?: number;
-  /** 主会话当前生效的思考等级（默认跟随；模板设置仅作父会话未配置时的回落） */
+  /** 主会话当前生效的思考等级（子 Agent 兜底：模板未配时才跟随） */
   parentThinkingLevel?: string;
-  /** 主会话当前模型（默认跟随；低于委派显式指定） */
+  /** 主会话当前模型（子 Agent 兜底：委派/模板/子agent默认都没配时才跟随） */
   parentModel?: string;
   /** 主会话当前模型所属供应商 */
   parentProvider?: string;

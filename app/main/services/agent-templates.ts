@@ -3,6 +3,10 @@
  *
  * Templates are stored in ~/.easymint/agent-templates.json
  * Injected into SDK's options.agents when a session starts.
+ *
+ * **模板只承载人设**：子 Agent 的模型与思考等级一律跟随主会话
+ * （2026-09-16 用户拍板「必须收敛到一处决定，取消全部子 agent 的配置入口」），
+ * 模板上没有任何运行配置字段。
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -13,29 +17,25 @@ import { BUILDER_AGENT_PROMPT, EVALUATOR_AGENT_PROMPT, DESIGNER_AGENT_PROMPT, MI
 
 // ── Types ──────────────────────────────────────────
 
+/**
+ * 这里**刻意没有** model / provider / thinkingLevel：子 Agent 的运行配置只有
+ * 「主会话」一个来源，所以不存在"模板配置 vs 主会话"的冲突。
+ * 旧版写进 json 的这三个字段由 seedDefaults 在启动时清理（见 DEPRECATED_TEMPLATE_FIELDS）。
+ */
 export interface AgentTemplate {
   id: string;
   name: string;
   description: string;
   prompt: string;
-  model?: string;
-  /** 供应商 piId(需求 3:模板指定供应商,与 model 搭配) */
-  provider?: string;
   /** 任意自定义角色类型(原限定 mint|builder|evaluator|designer,现已放开) */
   agentType: string;
-  /** 子 Agent 思考级别(默认 medium,executor 按此创建子 session) */
-  thinkingLevel?: string;
 }
 
 export interface AgentTemplateInput {
   name: string;
   description: string;
   prompt: string;
-  model?: string;
-  provider?: string;
   agentType?: string;
-  /** 可选:子 Agent 思考级别 */
-  thinkingLevel?: string;
 }
 
 // ── Storage ────────────────────────────────────────
@@ -75,26 +75,21 @@ export function createTemplate(input: AgentTemplateInput): AgentTemplate {
   return t;
 }
 
-/** 完全锁定(不可修改):Mint / Mint-D */
-const LOCKED_TEMPLATE_IDS = new Set(["mint", "mint-designer"]);
-/** 受限编辑(仅供应商/模型/思考等级):Builder / Evaluator */
-const RESTRICTED_TEMPLATE_IDS = new Set(["default-builder", "default-evaluator"]);
-const BUILTIN_TEMPLATE_IDS = new Set([...LOCKED_TEMPLATE_IDS, ...RESTRICTED_TEMPLATE_IDS]);
+/**
+ * 内置模板:不可修改、不可删除。
+ *
+ * Mint / Mint-D 一向完全锁定;Builder / Evaluator 原为「受限编辑」(仅允许改
+ * 供应商/模型/思考等级)——那三个字段随运行配置收敛而消失,受限编辑已无字段可编辑,
+ * 故四个内置统一为只读。要定制请新建自定义模板。
+ */
+const BUILTIN_TEMPLATE_IDS = new Set(["mint", "mint-designer", "default-builder", "default-evaluator"]);
 
 export function updateTemplate(id: string, input: Partial<AgentTemplateInput>): AgentTemplate {
   const templates = readAll();
   const idx = templates.findIndex((t) => t.id === id);
   if (idx === -1) throw new Error(`模板不存在: ${id}`);
-  // 内置模板权限:mint/mint-designer 完全不可改;builder/evaluator 仅允许 供应商/模型/思考等级
-  if (LOCKED_TEMPLATE_IDS.has(id)) {
-    throw new Error("系统内置模板(Mint/Mint-D)不可修改");
-  }
-  if (RESTRICTED_TEMPLATE_IDS.has(id)) {
-    const allowed: Partial<AgentTemplateInput> = {};
-    if (input.provider !== undefined) allowed.provider = input.provider;
-    if (input.model !== undefined) allowed.model = input.model;
-    if (input.thinkingLevel !== undefined) allowed.thinkingLevel = input.thinkingLevel;
-    input = allowed;
+  if (BUILTIN_TEMPLATE_IDS.has(id)) {
+    throw new Error("系统内置模板不可修改——如需定制请新建自定义模板");
   }
   templates[idx] = { ...templates[idx]!, ...input };
   writeAll(templates);
@@ -143,8 +138,23 @@ const DEFAULTS: AgentTemplate[] = [
  *  On seed, these are purged from the user's local store. */
 const REMOVED_DEFAULT_IDS = new Set(["default-orchestrator"]);
 
-/** 系统内置模板 id:Mint 始终强制内置(不可修改),其余内置模板用户可编辑(编辑版持久) */
+/** 系统内置模板 id:Mint 始终强制内置(不可修改,提示词随版本更新) */
 export const MINT_TEMPLATE_ID = "mint";
+
+/**
+ * 已废弃的模板字段:子 Agent 的模型/供应商/思考等级改为唯一跟随主会话后,
+ * 这些字段**不再被任何代码读取**。启动时一并清掉,免得 json 里留着让人以为它们生效
+ * (本机 mint-designer 就残留过一个永不生效的 thinkingLevel=max)。
+ *
+ * 用 as const 数组而不是直接写 delete 语句:将来再废弃字段时只改这一处。
+ */
+const DEPRECATED_TEMPLATE_FIELDS = ["model", "provider", "thinkingLevel"] as const;
+
+function stripDeprecatedFields(t: AgentTemplate): AgentTemplate {
+  const rec = { ...(t as unknown as Record<string, unknown>) };
+  for (const k of DEPRECATED_TEMPLATE_FIELDS) delete rec[k];
+  return rec as unknown as AgentTemplate;
+}
 
 export function seedDefaults(): void {
   const current = readAll();
@@ -157,18 +167,16 @@ export function seedDefaults(): void {
   for (const d of DEFAULTS) {
     const existing = current.find((t) => t.id === d.id);
     if (existing) {
-      // Mint 始终强制内置提示词;其他内置模板保留用户编辑版本
-      if (d.id === MINT_TEMPLATE_ID) {
-        synced.push({ ...existing, prompt: d.prompt, description: d.description });
-      } else {
-        synced.push(existing);
-      }
+      // Mint 始终强制内置提示词;其余内置模板保留用户看到的那份(它们本就不可改)
+      synced.push(d.id === MINT_TEMPLATE_ID
+        ? { ...existing, prompt: d.prompt, description: d.description }
+        : existing);
     } else {
       synced.push({ ...d });
     }
   }
 
-  writeAll(synced);
+  writeAll(synced.map(stripDeprecatedFields));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

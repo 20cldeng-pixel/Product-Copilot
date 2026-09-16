@@ -28,9 +28,9 @@ export interface TaskToolContext {
   parentSessionId: string;
   /** 会话 chatId（进度广播按它过滤,前端只显示当前窗口的委派） */
   chatId?: string;
-  /** 懒取主会话当前生效的思考等级（子 Agent 默认跟随；模板设置仅作回落） */
+  /** 懒取主会话当前生效的思考等级——子 Agent 等级的**唯一来源** */
   getParentThinkingLevel?: () => string | undefined;
-  /** 懒取主会话当前模型（子 Agent 默认跟随同一模型；低于委派显式指定的 model/provider） */
+  /** 懒取主会话当前模型——子 Agent 模型的**唯一来源**（委派方不再能指定模型） */
   getParentModel?: () => { model?: string; provider?: string } | undefined;
   /** 主会话权限回调（子 Agent 跟随主会话权限模式 standard/full + 绝对禁区） */
   canUseTool?: (toolName: string, input: Record<string, unknown>, options: any) => Promise<{ behavior: "allow" | "deny"; message?: string; updatedInput?: Record<string, unknown> }>;
@@ -92,11 +92,10 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
   // 动态生成 agent 参数描述:列出所有可用模板(名称+职责+模型),Mint 可见可选
   const templates = listTemplates();
   const designerTemplates = templates.filter((t) => t.agentType === "designer");
+  // 模板只有人设信息可展示——模型/思考等级一律跟随主会话，不再逐个标注
   const agentDesc = templates.length > 0
-    ? "可选 Agent 模板:\n" + templates.map((t) => {
-        const modelInfo = t.model ? `(${t.model})` : t.provider ? `(供应商:${t.provider})` : "";
-        return `  - ${t.id}: ${t.name}——${t.description}${modelInfo ? " " + modelInfo : ""}`.trim();
-      }).join("\n")
+    ? "可选 Agent 模板:\n" + templates.map((t) =>
+        `  - ${t.id}: ${t.name}——${t.description}`).join("\n")
         + "\n选择适合任务的模板;省略则不指定模板,创建标准子 Agent(无模板人设)。"
         // 设计类模板必须由委派方指定起点——子 Agent 不自选模板（选型是委派方的职责）
         + (designerTemplates.length > 0
@@ -133,14 +132,6 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
           type: "string" as const,
           description: "可选的 Agent 模板名(如 builder、evaluator),省略则创建标准子 Agent(无模板人设)",
         },
-        model: {
-          type: "string" as const,
-          description: "可选的模型 id(如 deepseek-v4-flash),委派子 Agent 用此模型(优先于模板/默认)",
-        },
-        provider: {
-          type: "string" as const,
-          description: "可选的供应商 piId(如 deepseek),与 model 搭配指定",
-        },
         description: {
           type: "string" as const,
           description: "任务简述（单任务模式），如「实现用户注册功能」",
@@ -165,8 +156,6 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
               description: { type: "string" as const },
               prompt: { type: "string" as const },
               agent: { type: "string" as const },
-              model: { type: "string" as const, description: "可选模型 id" },
-              provider: { type: "string" as const, description: "可选供应商 piId" },
               taskId: { type: "string" as const, description: "关联的 task.json 任务 id(完成/中止自动回写状态)" },
               outputSchema: { type: "object" as const },
             },
@@ -213,8 +202,6 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
             taskId: (t.taskId as string) || undefined,
             readOnly,
             outputSchema: (t.outputSchema as unknown) || undefined,
-            model: (t.model as string) || undefined,
-            provider: (t.provider as string) || undefined,
           });
         }
       } else {
@@ -231,8 +218,6 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
           taskId: (params.taskId as string) || undefined,
           readOnly,
           outputSchema: (params.outputSchema as unknown) || undefined,
-          model: (params.model as string) || undefined,
-          provider: (params.provider as string) || undefined,
         });
       }
 
@@ -379,9 +364,6 @@ export async function createAgentTemplateTool(): Promise<ToolDefinition> {
         name: { type: "string" as const, description: "模板显示名(如 测试员、代码审查员)" },
         description: { type: "string" as const, description: "一句话描述(如 专门写测试用)" },
         prompt: { type: "string" as const, description: "人格/职责 prompt(注入子 Agent system prompt,定义它的行为方式)" },
-        provider: { type: "string" as const, description: "可选供应商 piId(如 deepseek),省略则用全局默认" },
-        model: { type: "string" as const, description: "可选模型 id(如 deepseek-v4-flash),与 provider 搭配" },
-        thinkingLevel: { type: "string" as const, description: "可选思考级别(off/minimal/low/medium/high/xhigh/max),默认 medium" },
       },
       required: ["name", "description", "prompt"],
     },
@@ -392,10 +374,7 @@ export async function createAgentTemplateTool(): Promise<ToolDefinition> {
           name: String(params.name || ""),
           description: String(params.description || ""),
           prompt: String(params.prompt || ""),
-          model: params.model ? String(params.model) : undefined,
-          provider: params.provider ? String(params.provider) : undefined,
           agentType: "custom",
-          thinkingLevel: params.thinkingLevel ? String(params.thinkingLevel) : undefined,
         });
         return { content: [{ type: "text" as const, text: `Agent 模板已创建: ${tpl.id}\\n名称: ${tpl.name}\\n可通过 task 工具 agent="${tpl.id}" 选用。` }] };
       } catch (e) {

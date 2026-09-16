@@ -155,8 +155,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   agentTemplates: {
     list: () => ipcRenderer.invoke("agent-template:list"),
-    create: (input: { name: string; description: string; prompt: string; model?: string; provider?: string; agentType?: string; thinkingLevel?: string }) => ipcRenderer.invoke("agent-template:create", { input }),
-    update: (id: string, input: { name?: string; description?: string; prompt?: string; model?: string; provider?: string; agentType?: string; thinkingLevel?: string }) => ipcRenderer.invoke("agent-template:update", { id, input }),
+    // 模板只有人设字段——子 Agent 的模型/思考等级一律跟随主会话（2026-09-16 拍板收敛到一处）
+    create: (input: { name: string; description: string; prompt: string; agentType?: string }) => ipcRenderer.invoke("agent-template:create", { input }),
+    update: (id: string, input: { name?: string; description?: string; prompt?: string; agentType?: string }) => ipcRenderer.invoke("agent-template:update", { id, input }),
     delete: (id: string) => ipcRenderer.invoke("agent-template:delete", { id }),
   },
   task: {
