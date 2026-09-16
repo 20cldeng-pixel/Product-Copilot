@@ -26,8 +26,8 @@ const TOOL_LABELS: Record<string, string> = {
   read_agent_log: "读取日志", stop_agent: "停止 Agent",
   use_skill: "加载技能", manage_skill: "管理技能", learn: "沉淀经验",
   search_experiences: "搜索经验", retire_experiences: "退役经验", import_skill: "导入", import_mcp_server: "导入",
-  show_confirm_dev: "确认开发", show_new_project: "新建项目", refresh_tasks: "刷新任务",
-  set_task_status: "更新任务", rename_project: "重命名项目", show_prototype: "预览原型",
+  show_confirm_dev: "确认开发", refresh_tasks: "刷新任务",
+  set_task_status: "更新任务", show_prototype: "预览原型",
   list_issues: "查看 Issue", set_issue_status: "更新 Issue",
   web_fetch: "抓取网页", web_search: "搜索网页",
   todo_write: "更新步骤", todo_user: "用户待办",
@@ -61,8 +61,8 @@ function toolIconPaths(name: string): JSX.Element | null {
     case "mcp":
       return (<><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></>);
     // 项目类(folder-kanban)
-    case "show_confirm_dev": case "show_new_project": case "refresh_tasks": case "set_task_status":
-    case "rename_project": case "show_prototype":
+    case "show_confirm_dev": case "refresh_tasks": case "set_task_status":
+    case "show_prototype":
       return (<><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></>);
     // issue(bug)
     case "list_issues": case "set_issue_status":
