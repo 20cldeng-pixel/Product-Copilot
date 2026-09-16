@@ -358,11 +358,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on("agent:confirm-dev", handler);
       return () => ipcRenderer.removeListener("agent:confirm-dev", handler);
     },
-    onNewProject: (callback: () => void) => {
-      const handler = () => callback();
-      ipcRenderer.on("agent:new-project", handler);
-      return () => ipcRenderer.removeListener("agent:new-project", handler);
-    },
     onExit: (callback: (data: { runId: string; code: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { runId: string; code: number }) =>
         callback(data);

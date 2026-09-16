@@ -43,7 +43,6 @@ interface ChatPanelProps {
   tabId?: string;
   onSessionCreated?: (sessionId: string) => void;
   onActivity?: () => void;
-  onNewProject?: () => void;
 }
 
 /** 命令实时输出累积上限(超出保留尾部):巨型字符串会拖慢渲染,完整输出仍在模型上下文与日志 */
@@ -141,7 +140,7 @@ function fmtTokenCount(n: number): string {
 /** 压缩弹窗「写交接提示词」:让 Mint 总结当前会话,输出可复制的交接内容(不压缩) */
 const HANDOFF_PROMPT = "请总结当前会话的全部内容，并写一份交接提示词（包含项目状态、已完成的工作、当前进度、遇到的问题、下一步计划），以便在新会话中继续工作。请直接输出交接提示词内容，用中文。";
 
-export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesigner, onSessionCreated, onActivity, onNewProject }: ChatPanelProps): JSX.Element {
+export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesigner, onSessionCreated, onActivity }: ChatPanelProps): JSX.Element {
   const tempSidRef = useRef<string | null>(null);
   if (!existingSid && !tempSidRef.current) tempSidRef.current = `__new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const initialSid = existingSid ?? tempSidRef.current!;
@@ -1963,15 +1962,13 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
     if (!lastAi?.entries) return [];
     return lastAi.entries.filter((e) => e.kind === "tool_use");
   }, [messages]);
-  // 工具广播直连:Mint 调 show_confirm_dev/show_new_project 时立即显示(不受 busy 影响);
+  // 工具广播直连:Mint 调 show_confirm_dev 时立即显示(不受 busy 影响);
   // 点击按钮消费后从消息中移除 show_* 条目,推断分支不再命中(打断/回合结束不会复活)。
   // 消息推断(lastToolUses)保留作历史恢复兜底。
   const [confirmDevFlag, setConfirmDevFlag] = useState(false);
-  const [newProjectFlag, setNewProjectFlag] = useState(false);
   useEffect(() => {
     const off1 = window.electronAPI.agent.onConfirmDev(() => setConfirmDevFlag(true));
-    const off2 = window.electronAPI.agent.onNewProject(() => setNewProjectFlag(true));
-    return () => { off1(); off2(); };
+    return () => { off1(); };
   }, []);
   // 点击消费:清 flag + 从最后一条 AI 消息移除 show_* 工具条目(防止推断复活)
   const consumeShowTools = () => {
@@ -1986,7 +1983,6 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
     }
   };
   const showConfirmDev = confirmDevFlag || (!busy && lastToolUses.some((e) => (e as { name?: string }).name === "show_confirm_dev"));
-  const showNewProjectBtn = onNewProject && (newProjectFlag || (!busy && lastToolUses.some((e) => (e as { name?: string }).name === "show_new_project")));
 
   // ── 用户消息编辑重发(发送后打断 → 改原问题重发) ───────────────
   // 可编辑条件:回合已停止(busy=false)且页面最后一条是 user 消息(该消息刚被打断,无响应) ——
@@ -2250,16 +2246,6 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
                 );
               })}
             </div>
-            {showNewProjectBtn && (
-              <div className="flex justify-center pb-3">
-                <button
-                  onClick={() => { setNewProjectFlag(false); consumeShowTools(); onNewProject?.(); }}
-                  className="px-6 py-2.5 rounded-[var(--radius-lg)] btn-accent text-sm font-medium shadow-sm"
-                >
-                  新建项目
-                </button>
-              </div>
-            )}
             {showConfirmDev && (
               <div className="flex justify-center pb-3">
                 <button

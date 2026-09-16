@@ -299,7 +299,6 @@ interface ElectronAPI {
     onStream: (callback: (event: StreamEvent) => void) => () => void;
     onStderr: (callback: (data: { runId: string; data: string; timestamp: number }) => void) => () => void;
     onConfirmDev: (callback: () => void) => () => void;
-    onNewProject: (callback: () => void) => () => void;
     onExit: (callback: (data: { runId: string; code: number }) => void) => () => void;
     onDelegationProgress: (callback: (data: DelegationProgressEvent) => void) => () => void;
     onDelegationInit: (callback: (data: {

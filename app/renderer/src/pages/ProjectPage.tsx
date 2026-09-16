@@ -366,7 +366,6 @@ export function ProjectPage(): JSX.Element {
                     setSessionRefreshKey((k) => k + 1);
                   }}
                   onActivity={() => { setSessionRefreshKey((k) => k + 1); }}
-                  onNewProject={() => setShowNewProject(true)}
                 />
               </div>
             );

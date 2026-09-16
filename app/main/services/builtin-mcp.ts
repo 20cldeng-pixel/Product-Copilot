@@ -6,7 +6,6 @@
 
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { app } from "electron";
 import { broadcast } from "./ipc-broadcast";
 import { describeImage, webFetch, webSearch, isToolEnabled } from "./api-clients";
 import { validateTaskStatus } from "./hooks";
@@ -42,7 +41,6 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
 
   // UI 控制工具（始终注册）
   tools.push(defineTool(noArgTool("show_confirm_dev", "确认开发", "显示「确认开发」按钮。中等及以上项目就绪时调用。就绪标准：① task.json ≥1 个任务；② README.md 和 AGENTS.md 已写；③ 依赖已安装、环境可构建（按技术栈验证）；④ 需先完成原型并获用户确认的项目已确认（G4）。极简项目不建 task.json，直接开发不走此流程。", () => broadcast("agent:confirm-dev", {}))) as any);
-  tools.push(defineTool(noArgTool("show_new_project", "新建项目", "显示「新建项目」按钮。用户不在项目中且表达新建意图时调用。", () => broadcast("agent:new-project", {}))) as any);
   tools.push(defineTool(noArgTool("refresh_tasks", "刷新任务列表", "通知前端重新加载 task.json。", () => {
     if (!projectPath) return "当前无项目路径";
     broadcast("agent:task-status", { taskId: "", status: "pending", projectPath });
@@ -132,28 +130,6 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
         writeFileSync(p, JSON.stringify(data, null, 2), "utf-8");
         return { content: [{ type: "text" as const, text: `已更新：[${params.status === "fixed" ? "已修复" : "未修复"}] ${issue.title}` }] };
       } catch (e) { return { content: [{ type: "text" as const, text: `更新失败: ${(e as Error).message}` }] }; }
-    },
-  } as any) as any);
-
-  // rename_project
-  tools.push(defineTool({
-    name: "rename_project", label: "重命名项目",
-    description: "重命名当前项目。调用后告知用户即将重启。仅打包版本可用。",
-    promptSnippet: "重命名当前项目（将重启应用）",
-    parameters: {
-      type: "object" as const,
-      properties: { newName: { type: "string" as const } },
-      required: ["newName"],
-    },
-    async execute(_tid: any, params: any) {
-      if (!projectPath) return { content: [{ type: "text" as const, text: "当前无项目" }] };
-      if (!app.isPackaged) return { content: [{ type: "text" as const, text: "重命名功能仅在打包版本中可用" }] };
-      const { ProjectService } = await import("./project-service");
-      const { Store } = await import("./store");
-      const r = await new ProjectService(new Store()).rename(projectPath, params.newName);
-      if (!r.ok) return { content: [{ type: "text" as const, text: r.error || "重命名失败" }] };
-      app.relaunch(); app.quit();
-      return { content: [{ type: "text" as const, text: `项目已复制为「${params.newName}」，即将重启。` }] };
     },
   } as any) as any);
 
