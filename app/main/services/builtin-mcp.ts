@@ -46,7 +46,7 @@ export async function createProductTools(projectPath?: string): Promise<ToolDefi
     broadcast("agent:task-status", { taskId: "", status: "pending", projectPath });
     return "已通知前端刷新任务列表";
   })) as any);
-  tools.push(defineTool(noArgTool("show_prototype", "显示原型", "打开 EM HTML 编辑器预览原型。**「打开/预览」≠「验证渲染」**：用户要看原型时直接打开即可，不要用 Playwright 渲染/截图/起服务器——渲染正确性审查是从代码推理的步骤，与打开给用户看是两件事。", () => {
+  tools.push(defineTool(noArgTool("show_prototype", "显示原型", "打开 EM HTML 编辑器预览原型。**「打开/预览」≠「验证渲染」**：用户要看原型时直接打开即可；渲染正确性审查是交付前的另一步（见 creation-flow-prototype），不要夹带在这里做。", () => {
     if (!projectPath) return "当前无项目路径";
     broadcast("editor:open-prototype", { projectPath });
     return "原型已生成，编辑器窗口即将打开。";

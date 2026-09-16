@@ -14,6 +14,7 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { BUILDER_AGENT_PROMPT, EVALUATOR_AGENT_PROMPT, DESIGNER_AGENT_PROMPT, MINT_SYSTEM_PROMPT } from "../../shared/prompts";
+import { DESIGNER_TEMPLATE_FILES, START_POINT_FREE, START_POINT_TEMPLATE_PREFIX } from "../../shared/designer-templates";
 
 // ── Types ──────────────────────────────────────────
 
@@ -113,7 +114,11 @@ const DEFAULTS: AgentTemplate[] = [
   {
     id: "mint-designer",
     name: "Mint-D",
-    description: "UI 设计师。将需求转化为 HTML 原型页面，在编辑器中预览。",
+    description: "UI 设计师。将需求转化为 HTML 原型页面，在编辑器中预览。"
+      // 调用契约写在该模板自己身上：task 工具的模板清单由 id+名称+描述拼成，
+      // 这段因此会随清单带出、委派方（Mint）可见。task 工具**不特判任何业务角色**——
+      // 谁有特殊调用要求，谁在自己的描述里声明。
+      + `委派时必须写明起点：\`${START_POINT_TEMPLATE_PREFIX}<文件名>\`（可用 ${DESIGNER_TEMPLATE_FILES.join(" / ")}）或 \`${START_POINT_FREE}\`（附方向）——子 Agent 不自选版式，也不会去翻目录。`,
     prompt: DESIGNER_AGENT_PROMPT,
     agentType: "designer",
   },

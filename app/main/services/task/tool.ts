@@ -13,11 +13,6 @@ import { runSubagents } from "./executor";
 import { createDelegation, resolveParentSessionId, getRunningSummary, setTaskStatus } from "./registry";
 import { writeTaskStatus } from "./task-file";
 import { broadcast } from "../ipc-broadcast";
-import {
-  DESIGNER_TEMPLATE_FILES,
-  START_POINT_FREE,
-  START_POINT_TEMPLATE_PREFIX,
-} from "../../../shared/designer-templates";
 import type { TaskItem, BatchResult, AgentProgress, TaskStopSource } from "./types";
 
 export interface TaskToolContext {
@@ -89,20 +84,14 @@ function formatDelegationResult(result: BatchResult): string {
 export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefinition> {
   const defineTool = await getDefineToolFn();
 
-  // 动态生成 agent 参数描述:列出所有可用模板(名称+职责+模型),Mint 可见可选
+  // 动态生成 agent 参数描述:列出所有可用模板(id + 名称 + 描述),Mint 可见可选。
+  // 这里**不特判任何业务角色**——某模板特有的调用要求由该模板自己在 description 里声明
+  // （如 mint-designer 的"委派须写明起点"），随下面的清单一起带出。
   const templates = listTemplates();
-  const designerTemplates = templates.filter((t) => t.agentType === "designer");
-  // 模板只有人设信息可展示——模型/思考等级一律跟随主会话，不再逐个标注
   const agentDesc = templates.length > 0
     ? "可选 Agent 模板:\n" + templates.map((t) =>
         `  - ${t.id}: ${t.name}——${t.description}`).join("\n")
         + "\n选择适合任务的模板;省略则不指定模板,创建标准子 Agent(无模板人设)。"
-        // 设计类模板必须由委派方指定起点——子 Agent 不自选模板（选型是委派方的职责）
-        + (designerTemplates.length > 0
-          ? `\n设计类模板(${designerTemplates.map((t) => t.id).join("/")})委派时,prompt 里**必须写明起点**:`
-            + `\`${START_POINT_TEMPLATE_PREFIX}<文件名>\`(可用 ${DESIGNER_TEMPLATE_FILES.join(" / ")})`
-            + `或 \`${START_POINT_FREE}\`(附方向)。子 Agent 不会自己去挑模板。`
-          : "")
     : "可选模板名: builder(编码)、evaluator(验收)。";
 
   return defineTool({
@@ -123,7 +112,6 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
       "用于长任务与并行任务：需要独立上下文的长任务，或用 tasks 数组并行推进的多个独立子任务",
       "通用任务（查资料、读代码、分析）省略 agent 参数，用默认白板子 Agent；特定角色（写代码→builder、验收→evaluator、UI 设计→mint-designer 等）才指定 agent",
       "开发类任务用 taskId 关联 task.json 任务，完成/失败自动回写状态，不要手动标记",
-      `UI 设计任务（agent=mint-designer）：prompt 里**必须写明起点**——\`${START_POINT_TEMPLATE_PREFIX}<文件名>\`（可选 ${DESIGNER_TEMPLATE_FILES.join(" / ")}）或 \`${START_POINT_FREE}\`（附设计方向）。模板是参考版式，选型是你的职责，子 Agent 不会自己挑，也不会去翻目录`,
     ],
     parameters: {
       type: "object" as const,
