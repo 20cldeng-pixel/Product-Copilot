@@ -109,11 +109,9 @@ export function isSandboxBypassedForMode(mode?: PermissionMode): boolean {
  * - 两模式都禁止直接读取高度敏感凭据、禁止修改系统核心与安全控制面；
  * - 标准模式可写工作区与正式开发资源，完全访问可写其余普通位置；
  * - 工作区不能覆盖核心 deny。
- * 网络（实测修正 2026-09-06）：srt 的 allowedDomains 语义 = 域名限制档——mac/Windows 运行时模式
- *   下需宿主自带 HTTP/SOCKS 代理（Claude Code 集成层有，EM 无）才放行，配置即全 deny（出网也死）。
- *   用空对象 network:{} → 不触发限制档 → macOS seatbelt `allow network*` 出网放行；
- *   回环出站/bind 仍被隔离（allowLocalBinding=false 的 deny 规则独立生效，实测 curl/node 连 127.0.0.1 均 deny）。
- *   Linux 有 srt 内置 bridge（initializeLinuxNetworkBridge）保留 allowedDomains 档；Windows 待实测。
+ * 网络：srt 在宿主进程内启动 HTTP/SOCKS mux 代理，沙盒只允许连接该回环端口，代理再按
+ * allowedDomains 判定目标。代理依赖宿主 Node 事件循环持续运行，因此真实集成测试必须异步 spawn；
+ * 用 spawnSync 会阻塞代理并制造“白名单域也超时”的假故障。
  */
 export function buildSandboxConfig(cwd: string, mode: PermissionMode = "standard"): SandboxRuntimeConfig {
   return buildExecutionPolicy(createExecutionContext(cwd, mode));

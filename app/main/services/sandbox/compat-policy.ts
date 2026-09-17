@@ -14,9 +14,8 @@
  * 3. `isSandboxExcludedCommand()` —— **沙盒外豁免**（浏览器/容器这类"必须自建沙盒"的命令）。
  *
  * ⚠️ 三条硬约束（改动本文件前先读）：
- * - **只有「沙盒内确实跑不了」的命令才进豁免表**，不是"被拦了不方便"就加。豁免 = 该命令完全不受
- *   沙盒约束，是已知的边界削弱点。判定只看**命令首 token**（硬编码白名单，不接受任何外部输入构造），
- *   所以 `chromium && rm -rf ~` 这类复合命令**整条**会被豁免——这是它固有的代价，别把它当安全边界用。
+ * - **只有「沙盒内确实跑不了」的单一命令才进豁免表**。任何管道、重定向、命令替换或复合命令
+ *   都不得豁免，避免 `open URL && payload` 借首命令把整条 shell 移出沙盒。
  * - **域名白名单是"提高门槛"，不是"保证拦住"**。代理只按客户端给的主机名判定，存在
  *   domain fronting、TLS 不解密等已知弱点（Claude Code 官方文档同样如此自我描述）。
  * - **两种模式共用本文件**：完全访问不套沙盒，因此这一层对它不生效（不是"也给它开白名单"）。
@@ -293,6 +292,8 @@ export function sandboxProfileOptions(): { allowPty: boolean; allowAppleEvents: 
  *   嵌套同理。Codex 也把这类列在 `excludedCommands` 语义之外单独处理。
  * - **`open`**：走 LaunchServices / Apple Events，沙盒内会以 -10822 / -54 失败。
  *   这里豁免的是**这个命令**，不是给沙盒开 appleevent 权限（见 sandboxProfileOptions 注释）。
+ *   且只豁免**单个 http(s) URL**（`open 本地文件` / `open -a 应用` 不豁免）——判定在
+ *   `isSandboxExcludedCommand` 的前置分支里，下面清单里的名字仅作索引。
  */
 export const SANDBOX_EXCLUDED_COMMANDS: readonly string[] = [
   // 浏览器自动化（Chromium 自建沙盒，嵌套必崩）
@@ -308,7 +309,8 @@ export const SANDBOX_EXCLUDED_COMMANDS: readonly string[] = [
   "docker-compose",
   "podman",
   "nerdctl",
-  // 打开宿主浏览器 / 文件
+  // 打开宿主浏览器——**只在单个 http(s) URL 时才豁免**，判定见 isSandboxExcludedCommand
+  // 的前置分支（这里列名只为让豁免清单保持完整，实际不靠本数组命中）
   "open",
   "xdg-open",
 ];
@@ -327,12 +329,11 @@ function commandBasename(token: string): string {
 /**
  * 该命令是否应在**沙盒外**执行（见 `SANDBOX_EXCLUDED_COMMANDS` 的逐条依据）。
  *
- * 只认命令首 token（跳过 `VAR=x` 前缀与 `env`/`command`/`nohup` 等包装器），
+ * 只认不含 shell 操作符的单一命令首 token（跳过 `VAR=x` 前缀与 `env`/`command`/`nohup` 等包装器），
  * 以及包管理器执行器的**第二段**（`npx playwright`）。
  *
- * ⚠️ 边界（故意写清楚）：`cmd1 && cmd2` 里只要 `cmd1` 命中豁免，**整条**都不进沙盒。
- * 这是"按命令名豁免"的固有弱点（Claude Code 的 `excludedCommands` 同样如此）。
- * 所以本函数只用于**兼容性兜底**，绝不能被当成安全判定使用。
+ * `open` / `xdg-open` 只接受单个 http(s) URL；打开本地文件或指定应用不属于标准档兼容能力。
+ * 本函数仍只是兼容性兜底：被豁免程序及其自身参数会在沙盒外运行。
  */
 export function isSandboxExcludedCommand(command: string): boolean {
   let parsed: ReturnType<typeof parseShell>;
@@ -341,6 +342,9 @@ export function isSandboxExcludedCommand(command: string): boolean {
   } catch {
     return false;
   }
+  // shell-quote 把 &&、;、|、重定向、括号/命令替换等表示为对象。只要出现任一操作符，
+  // 整条命令都必须留在沙盒中，不能让首命令替后续 payload 获得宿主权限。
+  if (parsed.some((entry) => typeof entry !== "string")) return false;
   const words = parsed.filter((entry): entry is string => typeof entry === "string");
   let index = 0;
   while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] ?? "")) index++;
@@ -351,6 +355,10 @@ export function isSandboxExcludedCommand(command: string): boolean {
   }
   const head = commandBasename(words[index] ?? "");
   if (!head) return false;
+  if (head === "open" || head === "xdg-open") {
+    const args = words.slice(index + 1);
+    return args.length === 1 && /^https?:\/\//i.test(args[0] ?? "");
+  }
   if (SANDBOX_EXCLUDED_COMMANDS.includes(head)) return true;
   if (!PACKAGE_RUNNERS.has(head)) return false;
   // 包管理器执行器：找它后面第一个**非 flag、非子命令**的 token

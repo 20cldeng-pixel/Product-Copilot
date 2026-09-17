@@ -163,6 +163,25 @@ describe("沙盒豁免（兼容性兜底）", () => {
     expect(isSandboxExcludedCommand("npm install playwright")).toBe(false);
     expect(isSandboxExcludedCommand("npm run playwright")).toBe(false);
   });
+
+  it("复合命令、重定向与命令替换绝不借首命令逃出沙盒", () => {
+    for (const command of [
+      "open https://example.com && node payload.js",
+      "npx playwright test; cat ~/.ssh/id_rsa",
+      "docker compose up -d | tee /tmp/out",
+      "open $(cat /tmp/url)",
+      "open https://example.com > /tmp/out",
+    ]) {
+      expect(isSandboxExcludedCommand(command), command).toBe(false);
+    }
+  });
+
+  it("open 只豁免单个 http(s) URL，不开放本地文件或指定应用", () => {
+    expect(isSandboxExcludedCommand("open https://example.com")).toBe(true);
+    expect(isSandboxExcludedCommand("xdg-open http://example.com")).toBe(true);
+    expect(isSandboxExcludedCommand("open /tmp/report.html")).toBe(false);
+    expect(isSandboxExcludedCommand("open -a Terminal /tmp/x")).toBe(false);
+  });
 });
 
 describe("网络面（过去是 allow network* 全放）", () => {
