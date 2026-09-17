@@ -42,7 +42,13 @@ export const DEVELOPMENT_ALLOWED_DOMAINS: readonly string[] = [
   // ── Node / JS 生态 ──────────────────────────────────────────────
   "registry.npmjs.org",
   "registry.yarnpkg.com",
+  // 国内镜像必须写三条：registry 域只给元数据，tarball 落在 cdn 子域（2026-09-17 实测
+  // `npm i` 卡在 cdn.npmmirror.com，且**元数据能取、包取不到**，现象看着像网络正常）；
+  // 裸域是 Electron 等二进制的镜像入口（`.npmrc` 里 `electron_mirror` 指向它）。
+  // 通配符只匹配严格子域、不匹配裸域，所以三条都要写——缺任一条都表现为「装不上依赖」。
   "registry.npmmirror.com",
+  "npmmirror.com",
+  "*.npmmirror.com",
   "registry.npm.taobao.org",
   "npmjs.com",
   "www.npmjs.com",

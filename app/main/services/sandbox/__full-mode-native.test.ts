@@ -195,6 +195,11 @@ describe("网络面（过去是 allow network* 全放）", () => {
     for (const required of ["registry.npmjs.org", "pypi.org", "github.com", "crates.io", "proxy.golang.org"]) {
       expect(DEVELOPMENT_ALLOWED_DOMAINS, required).toContain(required);
     }
+    // 国内镜像（npmmirror）三条缺一不可：registry 只给元数据，tarball 走 cdn 子域，裸域是 Electron 镜像入口。
+    // 2026-09-17 实测：只列 registry 域时 `npm i` 报 E403 卡在 cdn.npmmirror.com（元数据通、包不通）。
+    for (const required of ["registry.npmmirror.com", "npmmirror.com", "*.npmmirror.com"]) {
+      expect(DEVELOPMENT_ALLOWED_DOMAINS, required).toContain(required);
+    }
   });
 
   it("沙盒配置带白名单 + strictAllowlist（未知域名直接拒绝，不落回调）", () => {

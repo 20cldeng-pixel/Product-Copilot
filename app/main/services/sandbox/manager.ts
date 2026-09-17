@@ -395,10 +395,39 @@ export function annotateSandboxFailures(violationKey: string, stderr: string): s
   try {
     const srt = _srt ?? null;
     if (!srt) return stderr;
-    return srt.SandboxManager.annotateStderrWithSandboxFailures(violationKey, stderr);
+    return filterBenignViolations(srt.SandboxManager.annotateStderrWithSandboxFailures(violationKey, stderr));
   } catch {
     return stderr; // 注解失败不吞原 stderr
   }
+}
+
+/** srt 的违规块（macOS 由常驻 `log stream` 收集，见 ensureSandbox）。 */
+const VIOLATION_BLOCK = /<sandbox_violations>\r?\n([\s\S]*?)<\/sandbox_violations>/;
+
+/**
+ * 标准模式下会被连带记录的三类**系统探测**拒绝：进程启动时的常规查询
+ * （sysctl 版本号、磁盘空间/网卡信息、mach 服务查询）。它们不构成“命令被拦”——命令往往完全成功。
+ *
+ * 不过滤的后果：**成功结果里也挂着 violations/deny 字样**，人和模型都会误读成被拦
+ * （2026-09-17 权限自测 B2/B5/B14/B15 四题均出现，得额外核对才敢判“通过”）。
+ *
+ * 只去这三类；语义明确的拦截（网络出口、文件读写目标）**一律保留**——
+ * 成功命令里出现它们反而是有用信号（脚本吞掉了子步骤的失败）。
+ * 兼容性清单腐化暴露的也是后者，所以过滤不影响它作为探测器的价值。
+ */
+const BENIGN_VIOLATION = /\b(?:sysctl-read|system-info|mach-lookup)\b/;
+
+export function filterBenignViolations(stderr: string): string {
+  const match = stderr.match(VIOLATION_BLOCK);
+  if (!match || match.index === undefined) return stderr;
+  const kept = (match[1] ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !BENIGN_VIOLATION.test(line));
+  const before = stderr.slice(0, match.index);
+  const after = stderr.slice(match.index + match[0].length);
+  if (kept.length === 0) return before + after.replace(/^\n+/, "");
+  return `${before}<sandbox_violations>\n${kept.join("\n")}\n</sandbox_violations>${after}`;
 }
 
 /** 仅供测试：释放代理、监控器和全局状态。生产按每次 wrap 的策略隔离工作区。 */
