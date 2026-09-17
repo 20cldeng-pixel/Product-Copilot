@@ -38,6 +38,7 @@ let downloadedFile: string | null = null;      // electron-updater 下载到本�
 let checking = false;                          // 防重入:检查请求进行中(自动/手动同时触发只发一次)
 let downloading = false;                       // 防重入:发现更新后下载在途(available→downloaded,可能数分钟)
 let manualCheckDone = false;                   // 用户手动点过「检查更新」→ 取消后续自动检查
+let reachedDownload = false;                   // 是否已进入下载阶段(error 时据此区分「检测失败」/「下载失败」)
 
 /** 下载状态持久化路径(userData,重启后红点/气泡仍在;安装后启动时自清) */
 function persistPath(): string {
@@ -81,17 +82,21 @@ function broadcast(payload: UpdateStatusPayload): void {
 
 function setupListeners(): void {
   autoUpdater.on("checking-for-update", () => {
+    reachedDownload = false;   // 新一轮检测:下载阶段归零
     broadcast({ status: "checking" });
   });
 
   autoUpdater.on("update-available", (info) => {
     detectedVersion = info.version ?? null;
     downloading = true; // 下载在途:后续检查请求直接忽略,避免重复触发导致界面状态闪烁
+    // 此处只是「发现新版本」,下载尚未真正开始 —— 保持 false,失败仍归检测阶段
+    reachedDownload = false;
     broadcast({ status: "available", version: detectedVersion ?? undefined });
     // autoDownload: true，electron-updater 自动开始下载
   });
 
   autoUpdater.on("download-progress", (progress) => {
+    reachedDownload = true;   // 收到进度 ⇒ 下载已确实开始,此后的失败归下载阶段
     broadcast({
       status: "downloading",
       version: detectedVersion ?? undefined,
@@ -117,7 +122,8 @@ function setupListeners(): void {
   autoUpdater.on("error", (err) => {
     const message = err instanceof Error ? err.message : String(err);
     downloading = false;
-    broadcast({ status: "error", errorMessage: message, errorPhase: "check" });
+    // 已进过下载阶段 ⇒ 这次失败出在下载;否则归检测(含握手/元数据阶段)
+    broadcast({ status: "error", errorMessage: message, errorPhase: reachedDownload ? "download" : "check" });
   });
 
   // electron-updater 负责下载（进度准），我们只接管安装
@@ -259,3 +265,6 @@ export function openUpdateCacheDir(): void {
   // shell imported from top-level
   shell.openPath(dir);
 }
+
+/** 仅供测试：直接驱动事件监听，绕开 startAutoUpdater 的定时器 */
+export const autoUpdaterInternals = { setupListeners };

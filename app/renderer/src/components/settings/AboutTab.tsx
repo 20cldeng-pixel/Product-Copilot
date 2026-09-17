@@ -8,6 +8,10 @@ function formatMB(bytes: number): string {
 
 export interface UpdateStatusState {
   status: string; version?: string; percent?: number; transferred?: number; totalSize?: number;
+  /** 仅在 status === "error" 时有值：失败原因原文（供排查，不替代人话文案） */
+  errorMessage?: string;
+  /** 失败出在哪个阶段（主进程按是否已进过下载阶段判定） */
+  errorPhase?: "check" | "download";
 }
 
 /** 关于:版本号 + 更新检测 + 开源链接 */
@@ -115,7 +119,20 @@ export function AboutTab(): JSX.Element {
           <span className="text-xs text-text-muted">当前已是最新版本</span>
         )}
         {updateStatus.status === "error" && (
-          <span className="text-xs text-text-muted">检查更新失败，请稍后再试</span>
+          // 一句人话给普通用户、原文小字给排查：更新失败此前只有固定文案，真因拿不到
+          <div className="flex flex-col items-center gap-1 max-w-[22rem]">
+            <span className="text-xs text-text-muted">
+              {updateStatus.errorPhase === "download" ? "下载更新失败" : "检查更新失败"}，请稍后再试
+            </span>
+            {updateStatus.errorMessage && (
+              <span
+                className="text-[length:var(--text-2xs)] text-text-muted break-all text-center"
+                title={updateStatus.errorMessage}
+              >
+                {updateStatus.errorMessage}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

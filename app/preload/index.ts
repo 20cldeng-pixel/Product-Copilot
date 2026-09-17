@@ -260,8 +260,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     clearUpdateCache: () => ipcRenderer.invoke("app:clear-update-cache") as Promise<{ cleaned: string[]; errors: string[] }>,
     updateCacheSize: () => ipcRenderer.invoke("app:update-cache-size") as Promise<number>,
     openUpdateCache: () => ipcRenderer.invoke("app:open-update-cache"),
-    onUpdateStatus: (callback: (data: { status: string; version?: string; percent?: number; transferred?: number; totalSize?: number }) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, data: { status: string; version?: string; percent?: number; transferred?: number; totalSize?: number }) =>
+    // 更新状态广播。errorMessage / errorPhase 仅在 status === "error" 时有值，
+    // errorPhase 区分失败发生在检测阶段还是下载阶段（主进程按是否已进过下载阶段判定）
+    onUpdateStatus: (callback: (data: { status: string; version?: string; percent?: number; transferred?: number; totalSize?: number; errorMessage?: string; errorPhase?: "check" | "download" }) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, data: { status: string; version?: string; percent?: number; transferred?: number; totalSize?: number; errorMessage?: string; errorPhase?: "check" | "download" }) =>
         callback(data);
       ipcRenderer.on("app:update-status", handler);
       return () => ipcRenderer.removeListener("app:update-status", handler);
