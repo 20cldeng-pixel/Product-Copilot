@@ -10,6 +10,7 @@ import {
   protectedControlPaths,
   protectedCredentialPaths,
   protectedWriteRoots,
+  standardWriteRoots,
 } from "./access-policy";
 import { developmentRuntimeFor, developmentRuntimesRoot } from "./development-runtime";
 import type { ExecutionContext } from "./execution-context";
@@ -35,8 +36,19 @@ describe("统一资源策略", () => {
       expect(filesystem.allowWrite).toContain("/tmp");
       expect(filesystem.allowWrite).toContain("/var/tmp");
     }
+    // 平台注入断言：不依赖宿主是哪台机器，两个平台的临时目录口径都要钉住
+    // （2026-09-17 补：原负样本用的是 `os.tmpdir()` —— macOS 上它是 /var/folders/…、不在表里所以本地绿，
+    //  Linux 上它就是 `/tmp` **正在白名单里** ⇒ 同一句在 CI 必红。**负样本一律不得平台耦合**，
+    //  涉及 platform 的判定按纪律参数注入。）
+    expect(standardWriteRoots(cwd, context("standard").runtimeRoot, "linux")).toEqual(
+      expect.arrayContaining(["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp"]),
+    );
+    expect(standardWriteRoots(cwd, context("standard").runtimeRoot, "win32")).toEqual(
+      expect.arrayContaining([cwd, context("standard").runtimeRoot]),
+    );
     // 但不能顺手放开宿主其它目录
-    expect(filesystem.allowWrite).not.toContain(path.resolve(os.tmpdir()));
+    expect(filesystem.allowWrite).not.toContain(path.join(os.homedir(), "Documents"));
+    expect(filesystem.allowWrite).not.toContain(path.resolve("/var"));
     expect(filesystem.allowWrite).not.toContain(path.join(os.homedir(), ".npm"));
     expect(filesystem.denyRead).toContain(developmentRuntimesRoot());
     expect(filesystem.allowRead).toContain(context("standard").runtimeRoot);
