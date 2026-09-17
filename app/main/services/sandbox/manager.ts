@@ -9,10 +9,12 @@
 
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { buildExecutionPolicy, type PermissionMode } from "../permission/access-policy";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { wrapWithWindowsWorker } from "./windows-execution-manager";
 import { srtWinPath, srtWinSpawn } from "./srt-win";
+import { isSandboxExcludedCommand } from "./compat-policy";
 
 /** Linux 沙盒系统依赖（EM 不代做系统安装——缺失时给安装指引，装好前自动降级） */
 const LINUX_SANDBOX_DEPS = ["bwrap", "socat", "rg"] as const;
@@ -69,42 +71,37 @@ export function isSandboxBypassed(): boolean {
 }
 
 /**
- * 该模式是否套 OS 沙盒。**只有 `restricted`（受限模式）套**——2026-09-16 定案把权限做成三档
- * （受限 / 标准 / 完全访问），沙盒从"默认防线"改为"用户可选的正式档位"：
+ * 该模式是否套 OS 沙盒（2026-09-17 三档定案：**只读 / 标准 / 完全访问**）。
  *
- * - `restricted` 受限模式：在标准模式全部边界之上再加 OS 强制（Seatbelt / bwrap / srt-sandbox 账户）。
- *   代价必须在 UI 里说清：浏览器与浏览器自动化（Chromium/Playwright）不可用、无法管理其他命令启动的
- *   进程、`open` 打不开——它面向"跑来源不明的项目/安装脚本"，不是日常开发档。
- * - `standard` 标准模式（默认）：不套沙盒，边界由执行前判定 + 开发运行区隔离承担（见 §12 记的三条线）。
- * - `full` 完全访问：永不套沙盒。
+ * - `readonly` 只读模式：**主强制不是沙盒，而是"整个执行面被移除"**——判定层拒绝一切
+ *   执行/写入/联网工具（见 agent-permission-service 的 readonlyDenyReason），所以没有进程可沙盒。
+ *   这里仍返回 true 作**纵深防御**：万一将来有工具从拒绝表漏过，它照样在盒子里跑。
+ * - `standard` 标准模式（默认）：**套沙盒**（甲方案，2026-09-17 用户拍板）。
+ *   它**不是单独成立的**：必须配 ① 兼容性豁免清单（PTY 等，compat-policy）、② 精确豁免
+ *   （浏览器/容器这类自建沙盒的命令）、③ 网络白名单。三者缺一，这一档就会退回历史上那个
+ *   "什么都做不了"的形态——那正是用户最初的痛点。
+ * - `full` 完全访问：永不套沙盒（不需要内核边界，见本文件底部历史背景）。
  *
- * 为什么标准模式默认不套（两天排查的结论，别重复考古）：seatbelt 的净收益只有"拦读凭据、拦工作区外
- * 写入"两条，代价却是把进程信号、Apple Events、Mach IPC 一起挡掉；最硬的一条实测是
- * **Chromium 只要身处任何 seatbelt 沙盒内就起不来**（子进程 apply 自己的沙盒被拒 →
- * `sandbox initialization failed: Operation not permitted`，"套一层宽松沙盒"也救不了）。
- * 那两条净收益已由命令预检接住（agent-permission-service 的 findOutOfScopeWriteTarget /
- * findProtectedReadTarget / findProtectedWriteTarget）。
- *
- * `EASYMINT_SANDBOX_ENABLED=1` 是**标准模式的应急回退通道**（把旧行为临时找回来，不进 UI）。
+ * 需要"不套沙盒"时只有两条路径：**完全访问**（用户显式选择），或 Linux 的「关闭沙盒运行」
+ * 设置项（系统依赖装不上时的降级，见 isSandboxBypassed）。早期那个 `EASYMINT_SANDBOX_ENABLED`
+ * 应急开关已随本次定案废弃——它的语义（"把标准档切进沙盒"）现在就是默认行为。
  */
 export function isSandboxEnabledForMode(mode: PermissionMode = "standard"): boolean {
   if (mode === "full") return false;
-  if (mode === "restricted") return true;
-  return process.env.EASYMINT_SANDBOX_ENABLED === "1";
+  return true;
 }
 
 /**
- * 该权限模式下是否跳过 OS 沙盒。**两种模式默认都跳过**（见 isSandboxEnabledForMode）；
- * 完全访问永远跳过，Linux 的「关闭沙盒运行」设置仍是最高优先级的关闭开关。
+ * 该权限模式下是否跳过 OS 沙盒。
  *
- * 历史背景（别重复考古）：完全访问最早也走沙盒，于是"完全访问"名不副实——srt 的 seatbelt
- * profile 是 deny-default 白名单，进程与信号、Apple Events、Mach IPC 全在名单外，
- * 杀不掉别的命令启动的进程、`open` 打不开浏览器；更硬的一条是 **Chromium 只要身处任何
- * seatbelt 沙盒内就起不来**（子进程 apply 自己的沙盒时 `sandbox initialization failed:
- * Operation not permitted`，三组对照实测，"套一层宽松沙盒"也救不了）。
+ * **完全访问永远跳过**；`readonly` **不受 Linux 全局开关影响**——那个开关的语义是
+ * "沙盒运行不可用时的降级通道"（bwrap/userns 装不上），而只读档的主承诺是"不执行任何命令"
+ * （由判定层保证），沙盒只是纵深。让一个环境降级开关去覆盖另一档的产品承诺，属于名实不符。
  */
 export function isSandboxBypassedForMode(mode?: PermissionMode): boolean {
-  return isSandboxBypassed() || !isSandboxEnabledForMode(mode ?? "standard");
+  const effective: PermissionMode = mode ?? "standard";
+  if (effective === "readonly") return !isSandboxEnabledForMode("readonly");
+  return isSandboxBypassed() || !isSandboxEnabledForMode(effective);
 }
 
 /**
@@ -183,7 +180,8 @@ async function applyWindowsConfig(cfg: SandboxRuntimeConfig): Promise<SandboxRun
 }
 
 /** 懒加载初始化（幂等）。失败原因保留供权限层 fail-closed 拒绝时展示。
- *  沙盒未启用（默认，含完全访问）时直接返回 ok——那条路径根本不进沙盒，见 isSandboxBypassedForMode。 */
+ *  该模式跳过沙盒时（完全访问 / Linux 全局降级）直接返回 ok——那条路径根本不进沙盒，
+ *  见 isSandboxBypassedForMode。标准与只读档**默认就会走到真正的初始化**。 */
 export async function ensureSandbox(cwd: string, mode?: PermissionMode): Promise<SandboxInitResult> {
   if (isSandboxBypassedForMode(mode)) return { ok: true };
   if (_state === "ok") return { ok: true };
@@ -200,7 +198,12 @@ export async function ensureSandbox(cwd: string, mode?: PermissionMode): Promise
       _state = "ok";
       return { ok: true };
     }
-    await srt.SandboxManager.initialize(await applyWindowsConfig(buildSandboxConfig(cwd)));
+    // 第三个参数 enableLogMonitor **必须为 true**：macOS 的违规事件靠常驻 `log stream`
+    // 收集（见 macos-sandbox-utils 的 startMacOSSandboxLogMonitor）。不开的话
+    // sandboxViolationStore 永远为空 → annotateStderrWithSandboxFailures 拿到空数组直接返回
+    // 原文 → **沙盒拦截对用户与模型完全静默**（历史现象："命令莫名失败、不知道为什么"）。
+    // 它同时也是兼容性清单的腐化探测器：没有它，清单失效只能表现为莫名其妙的失败。
+    await srt.SandboxManager.initialize(await applyWindowsConfig(buildSandboxConfig(cwd)), undefined, true);
     _state = "ok";
     return { ok: true };
   } catch (e) {
@@ -228,9 +231,9 @@ export async function ensureSandbox(cwd: string, mode?: PermissionMode): Promise
 /** 沙盒执行规格——执行层按 kind 选择 spawn 方式 */
 export type SandboxSpawnSpec =
   /** darwin/linux：wrapWithSandbox 返回 shell 字符串，走 resolveSpawn 原路径（shell:true / Git Bash -c） */
-  | { kind: "shell"; command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> }
+  | { kind: "shell"; command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void>; violationKey?: string; exemptReason?: string }
   /** win32：srt 不支持 shell 字符串包装（srt-win 两跳），必须 argv + shell:false + 注入 env */
-  | { kind: "argv"; argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> };
+  | { kind: "argv"; argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void>; violationKey?: string; exemptReason?: string };
 
 /**
  * 沙盒命令的收尾租约：**每条沙盒命令结束后必须恰好调一次**（执行层在 exit/error 处调 spec.release()）。
@@ -276,33 +279,65 @@ export const sandboxLeaseInternals = { createOnceLease };
  * 包装命令为沙盒执行规格（调用前须 ensureSandbox ok；失败抛错由调用方转报错文本）。
  * Windows 分支：wrapWithSandboxArgv + Git Bash 绝对路径（EM Windows bash 统一走 Git Bash，
  * 与 resolveSpawn 的 findBashOnWindows 一致——gitBashPath 由调用方传入避免重复探测）。
+ *
+ * 两条**不进沙盒**的分支，语义不同、不要合并：
+ * - 模式本就跳过（完全访问 / Linux 全局降级）→ `nativeSpawnSpec`
+ * - **精确豁免**（浏览器 / 容器这类必须自建沙盒的命令，见 compat-policy）→ 同样原生执行，
+ *   但把 `exemptReason` 带出去让调用方呈现为"例外"而不是静默放行——**清单腐化的反义词就是例外可见**
  */
 export async function wrapForSandbox(
   command: string,
   opts: { context: ExecutionContext; gitBashPath?: string; windowsShell?: "bash" | "powershell" },
 ): Promise<SandboxSpawnSpec> {
   if (isSandboxBypassedForMode(opts.context.mode)) return nativeSpawnSpec(command, opts);
+  if (isSandboxExcludedCommand(command)) {
+    return {
+      ...nativeSpawnSpec(command, opts),
+      exemptReason: "该命令需要自建沙盒（浏览器 / 容器），无法在系统沙盒内运行，已在沙盒外执行",
+    };
+  }
   const srt = await getSrt();
   const context = opts.context;
   if (process.platform === "win32") {
     const wrapped = await wrapWithWindowsWorker(command, context, opts.gitBashPath, opts.windowsShell);
-    return { kind: "argv", ...wrapped, release: createSandboxLease() };
+    // Windows 的 commandId 由 worker 侧的 leaseId 决定，必须用它（不能用本地另生成的 key，
+    // 否则违规注解匹配不上——见 annotateSandboxFailures）。
+    return { kind: "argv", ...wrapped, violationKey: wrapped.commandId, release: createSandboxLease() };
   }
   const policy = buildExecutionPolicy(context);
-  // srt 会在外层把 TMPDIR 设为自己的 scratch 目录。标准模式在最内层恢复运行区变量，
+  // srt 会在外层把 TMPDIR 设为自己的 scratch 目录。非完全访问档在最内层恢复运行区变量，
   // 让遵循 HOME/TMP/XDG 约定的开发工具稳定写入项目运行区；真正边界仍由 policy 强制。
-  const effectiveCommand = context.mode === "standard"
+  const effectiveCommand = context.mode !== "full"
     ? `${runtimeEnvironmentPrefix(context.environment)} ${command}`
     : command;
+  // ⚠️ 违规归因 key **必须与 wrap 时一致**，否则 annotateStderrWithSandboxFailures 永远匹配不到
+  // （srt 的 store 用 base64(commandId) 做键）。此前 EM 是"wrap 不传 id + annotate 传包装后的
+  // 命令字符串"，两处都对不上 ⇒ **sandbox 拦截对用户完全静默**。用一次性随机 id 而不是命令文本：
+  // 命令文本做键会让上一条命令的滞后事件被算到下一条同名命令头上（错误归因）。
+  const violationKey = newViolationKey();
   // 先 await 完包装再建租约：wrapWithSandbox 抛错时不会留下「没人调用」的计数，
   // 否则 srt 的 activeSandboxCount 会只增不减，后面所有清理都被推迟（占位文件永不清）
-  const wrappedCommand = await srt.SandboxManager.wrapWithSandbox(effectiveCommand, undefined, policy);
+  // srt 的签名是 (command, binShell?, customConfig?, abortSignal?, options?)——options 在**第 5 位**，
+  // commandId 必须在这里给出，annotate 时才匹配得上（见上）。
+  const wrappedCommand = await srt.SandboxManager.wrapWithSandbox(
+    effectiveCommand,
+    undefined,
+    policy,
+    undefined,
+    { commandId: violationKey, commandText: command },
+  );
   return {
     kind: "shell",
     command: wrappedCommand,
     env: context.environment,
+    violationKey,
     release: createSandboxLease(),
   };
+}
+
+/** 违规归因 key：一次执行一个，绝不复用（见 wrapForSandbox 的说明）。 */
+function newViolationKey(): string {
+  return `em-${randomUUID()}`;
 }
 
 /**
@@ -351,12 +386,18 @@ function shellLiteral(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-/** 违规归因：把沙盒拦截事件注解进 stderr（Operation not permitted → 大白话违规说明） */
-export function annotateSandboxFailures(wrappedCommand: string, stderr: string): string {
+/**
+ * 违规归因：把沙盒拦截事件注解进 stderr（"Operation not permitted" → 大白话违规说明）。
+ *
+ * `violationKey` 必须是 **wrapForSandbox 产出的那一个**——srt 的违规存储以
+ * `base64(commandId)` 为键，键不一致就恒返回原文（这正是"拦截静默"的第二半原因；
+ * 第一半是 logMonitor 没开，见 ensureSandbox）。
+ */
+export function annotateSandboxFailures(violationKey: string, stderr: string): string {
   try {
     const srt = _srt ?? null;
     if (!srt) return stderr;
-    return srt.SandboxManager.annotateStderrWithSandboxFailures(wrappedCommand, stderr);
+    return srt.SandboxManager.annotateStderrWithSandboxFailures(violationKey, stderr);
   } catch {
     return stderr; // 注解失败不吞原 stderr
   }

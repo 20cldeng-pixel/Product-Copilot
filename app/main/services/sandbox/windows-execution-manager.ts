@@ -7,6 +7,9 @@ export interface WindowsWrappedCommand {
   argv: string[];
   env: NodeJS.ProcessEnv;
   release: () => Promise<void>;
+  /** 沙盒违规归因键（= 本次 wrap 的 leaseId）。执行结束时的 stderr 注解必须用它，
+   *  否则 srt 的违规存储匹配不上，拦截事件对用户与模型静默（同 manager.annotateSandboxFailures）。 */
+  commandId: string;
 }
 
 interface WorkerHandle {
@@ -95,6 +98,7 @@ export async function wrapWithWindowsWorker(
   return {
     argv: response.argv,
     env: response.env,
+    commandId: leaseId,
     release: async () => {
       if (released) return;
       released = true;

@@ -48,28 +48,28 @@ interface ChatInputProps {
 }
 
 /** 权限三档（主进程 PermissionMode 在渲染层的副本；三档定义见 permission/execution-context.ts） */
-export type PermissionMode = "restricted" | "standard" | "full";
+export type PermissionMode = "readonly" | "standard" | "full";
 
-/** 点击循环顺序：受限 → 标准 → 完全访问 → 受限（每次点击"放宽一档"，与旧的二态开关方向一致） */
+/** 点击循环顺序：只读 → 标准 → 完全访问 → 只读（每次点击"放宽一档"，与旧的二态开关方向一致） */
 const PERMISSION_CYCLE: Record<PermissionMode, PermissionMode> = {
-  restricted: "standard",
+  readonly: "standard",
   standard: "full",
-  full: "restricted",
+  full: "readonly",
 };
 
-/** 档位文案：标签 + hover 说明。受限档的代价必须写出来，否则用户会以为坏了。 */
+/** 档位文案：标签 + hover 说明。只读档的代价必须写出来，否则用户会以为坏了。 */
 const PERMISSION_LABEL: Record<PermissionMode, { text: string; tip: string }> = {
-  restricted: {
-    text: "受限",
-    tip: "受限模式：叠加系统级沙盒。浏览器与浏览器自动化（Playwright）不可用、无法管理其它命令启动的进程——适合跑来源不明的项目",
+  readonly: {
+    text: "只读",
+    tip: "只读模式：可以自由读取，但不执行任何命令、不写入文件、不联网。代价是不能构建/测试/装依赖（git 操作也不行）——适合审阅来源不明的项目",
   },
   standard: {
     text: "标准",
-    tip: "标准模式：工作区与专属开发环境可写；越界写入、读取凭据会被拒绝",
+    tip: "标准模式：系统沙盒内执行，工作区与任务临时目录可写；越界写入、读取凭据会被拒绝",
   },
   full: {
     text: "完全访问",
-    tip: "完全访问：普通文件不受工作区限制；gh / git push / 浏览器 / Playwright 均可用",
+    tip: "完全访问：不套沙盒，普通文件不受工作区限制；gh / git push / 浏览器 / Playwright 均可用",
   },
 };
 
@@ -355,7 +355,7 @@ export const ChatInput = memo(function ChatInput({
             </span>
           </Tooltip>
         )}
-        {/* 权限三档：受限（叠系统沙盒）/ 标准 / 完全访问，点击循环切换。
+        {/* 权限三档：只读 / 标准 / 完全访问，点击循环切换。
             图标区分档位（盾内 锁 / 勾 / 感叹号），只有完全访问点亮危险色——颜色与图标都在表达风险。 */}
         <Tooltip tip={PERMISSION_LABEL[permissionMode].tip} className="shrink-0">
           <button
@@ -369,7 +369,7 @@ export const ChatInput = memo(function ChatInput({
               <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
               {permissionMode === "full" ? (
                 <><path d="M12 8v4" /><path d="M12 16h.01" /></>
-              ) : permissionMode === "restricted" ? (
+              ) : permissionMode === "readonly" ? (
                 <><rect x="9" y="11" width="6" height="5" rx="1" /><path d="M10.5 11V9.5a1.5 1.5 0 0 1 3 0V11" /></>
               ) : (
                 <path d="m9 12 2 2 4-4" />

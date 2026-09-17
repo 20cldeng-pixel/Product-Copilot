@@ -5,7 +5,7 @@
  * ① override 纯替换：Mint 身份在、Pi 默认身份句不在——若有人改回「并存」或拼入 Pi 身份句即红
  * ② [系统消息] 前缀协议：systemMessage() 产物必须带前缀——Pi convertToLlm 按 user 透传 content，
  *    模型侧看不到 customType，识别全靠前缀（prompts.ts 注释自述的脆弱点）
- * ③ PERMISSION_RULES_PROMPT 锚定两模式与运行时边界的产品语义。
+ * ③ PERMISSION_RULES_PROMPT 锚定三档与运行时边界的产品语义。
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -71,7 +71,7 @@ describe("[系统消息] 前缀协议", () => {
 });
 
 describe("权限段产品语义", () => {
-  it("两种模式、共同核心底线与运行时执行均有说明", () => {
+  it("三档、共同核心底线与运行时执行均有说明", () => {
     for (const phrase of ["标准模式", "完全访问", "系统核心", "高度敏感凭据", "运行时安全边界", "不要尝试绕过"]) {
       expect(PERMISSION_RULES_PROMPT).toContain(phrase);
     }
@@ -85,12 +85,19 @@ describe("权限段产品语义", () => {
     expect(PERMISSION_RULES_PROMPT).not.toContain("/tmp");
     expect(PERMISSION_RULES_PROMPT).not.toContain("用户目录写入");
   });
-  // 2026-09-16：权限做成三档（受限 / 标准 / 完全访问），两种非受限档都不套 OS 沙盒 ——
-  // 提示词必须说清"由执行前判定拦"、并写明受限档的能力代价，否则模型被拦时误判为 bug。
-  it("说清三档、边界来自执行前判定，且受限档的代价已写明", () => {
-    expect(PERMISSION_RULES_PROMPT).toContain("受限模式");
+  // 2026-09-17：三档定案为 **只读 / 标准 / 完全访问**；甲方案把标准档**改回套沙盒**（默认档保留内核边界），
+  // 并补齐网络白名单与精确豁免。提示词必须说清这几条，否则模型会把"边界"当"故障"，反复换写法重试。
+  it("说清三档、边界来自执行前判定与系统沙盒，且只读档的代价已写明", () => {
+    expect(PERMISSION_RULES_PROMPT).toContain("只读模式");
     expect(PERMISSION_RULES_PROMPT).toContain("执行前判定");
     expect(PERMISSION_RULES_PROMPT).toContain("用宿主真实环境执行");
     expect(PERMISSION_RULES_PROMPT).toContain("Playwright");
+    // 只读档的定义要写明"不执行"，且必须点出联网工具一并停用（否则模型会以为 web_fetch 还能用）
+    expect(PERMISSION_RULES_PROMPT).toContain("读自由");
+    expect(PERMISSION_RULES_PROMPT).toContain("web_fetch");
+    // 标准档：内核边界 + 网络白名单 + 沙盒违规注解的解读方式
+    expect(PERMISSION_RULES_PROMPT).toContain("系统级沙盒");
+    expect(PERMISSION_RULES_PROMPT).toContain("域名白名单");
+    expect(PERMISSION_RULES_PROMPT).toContain("sandbox_violations");
   });
 });

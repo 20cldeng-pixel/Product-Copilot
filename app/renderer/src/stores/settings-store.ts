@@ -92,7 +92,7 @@ interface SettingsState {
   /** 全局聊天思考等级(新聊天会话初始默认,不控制 agent/task) */
   chatThinkingLevel: string;
   /** 全局默认权限模式(新聊天会话初始默认;输入条可临时切换,切换即更新默认) */
-  chatPermissionMode: "restricted" | "standard" | "full";
+  chatPermissionMode: "readonly" | "standard" | "full";
   /** Linux 兜底：关闭沙盒运行（系统依赖装不上时的逃生通道，仅 Linux 生效） */
   sandboxDisabled: boolean;
   /** 聊天字号缩放系数(0.9~1.3,默认 1):控制消息内容(正文/代码/思考/工具折叠)字号 */
@@ -134,7 +134,7 @@ interface SettingsState {
   setModel: (model: string) => void;
   setContextThreshold: (pct: number) => void;
   setChatThinkingLevel: (level: string) => void;
-  setChatPermissionMode: (mode: "restricted" | "standard" | "full") => void;
+  setChatPermissionMode: (mode: "readonly" | "standard" | "full") => void;
   setSandboxDisabled: (disabled: boolean) => void;
   setChatFontScale: (scale: number) => void;
   setUiFontScale: (scale: number) => void;
@@ -204,7 +204,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ chatThinkingLevel: level });
     window.electronAPI?.settings?.set?.("chatThinkingLevel", level);
   },
-  setChatPermissionMode: (mode: "restricted" | "standard" | "full") => {
+  setChatPermissionMode: (mode: "readonly" | "standard" | "full") => {
     set({ chatPermissionMode: mode });
     window.electronAPI?.settings?.set?.("chatPermissionMode", mode);
   },
@@ -301,7 +301,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           availableModels: settings.availableModels ?? [],
           contextThreshold: settings.contextThreshold ?? 75,
           chatThinkingLevel: settings.chatThinkingLevel ?? "medium",
-          chatPermissionMode: (settings.chatPermissionMode as "restricted" | "standard" | "full") ?? "standard",
+          chatPermissionMode: (settings.chatPermissionMode as "readonly" | "standard" | "full") ?? "standard",
           sandboxDisabled: Boolean(settings.sandboxDisabled),
           chatFontScale: settings.chatFontScale ?? LEGACY_CHAT_FONT_SCALE[settings.chatFontLevel ?? 3] ?? 1,
           uiFontScale: settings.uiFontScale ?? 1,

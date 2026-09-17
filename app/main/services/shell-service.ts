@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import { resolveHome } from "../utils/paths";
 import { createCodingAwareDecoder } from "./background-shell/encoding";
 import { isSystemMutationCommand } from "./permission/agent-permission-service";
-import { ensureSandbox, wrapForSandbox } from "./sandbox/manager";
+import { ensureSandbox, wrapForSandbox, annotateSandboxFailures } from "./sandbox/manager";
 import { createExecutionContext } from "./permission/execution-context";
 import { sandboxGitBashPath } from "./background-shell/registry";
 
@@ -77,7 +77,13 @@ export async function execShell(
 
     proc.on("close", (code) => {
       void spec.release?.();
-      resolve({ code, stdout, stderr });
+      // 沙盒违规注解（与前台/后台同源）：UI 终端里用户直接读 stderr，
+      // 没有注解就只看到"命令失败"，无从判断是边界还是故障（见 manager.annotateSandboxFailures）。
+      // ⚠️ 只用返回值的 stderr——流式 onStderr 已经推过原文，重复注解会打断行渲染。
+      const annotated = spec.violationKey && stderr
+        ? annotateSandboxFailures(spec.violationKey, stderr)
+        : stderr;
+      resolve({ code, stdout, stderr: annotated });
     });
 
     proc.on("error", (err) => {

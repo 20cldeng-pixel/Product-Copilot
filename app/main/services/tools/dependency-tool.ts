@@ -47,8 +47,8 @@ function installCommand(manager: Manager, packages: string[], scope: "project" |
 
 function executionTarget(wrapped: SandboxSpawnSpec) {
   return wrapped.kind === "argv"
-    ? { argv: wrapped.argv, env: wrapped.env, release: wrapped.release }
-    : { command: wrapped.command, env: wrapped.env, release: wrapped.release };
+    ? { argv: wrapped.argv, env: wrapped.env, release: wrapped.release, violationKey: wrapped.violationKey, exemptReason: wrapped.exemptReason }
+    : { command: wrapped.command, env: wrapped.env, release: wrapped.release, violationKey: wrapped.violationKey, exemptReason: wrapped.exemptReason };
 }
 
 export async function createDependencyTool(cwd: string): Promise<ToolDefinition> {
@@ -77,18 +77,20 @@ export async function createDependencyTool(cwd: string): Promise<ToolDefinition>
       const context = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined
         ?? createExecutionContext(cwd, "standard");
       const command = installCommand(manager, packages, scope, params.dev === true, context.workspaceRealPath);
-      // 完全访问 / Linux 兜底：直接原生执行；此时任意子进程 I/O 不再有 OS 强制边界
-      if (isSandboxBypassedForMode(context.mode)) {
-        return executeForeground(command, context.workspaceRealPath, signal, undefined, undefined, false, onUpdate);
+      // 关沙盒**只换执行后端，不跳过环境处理**：wrapForSandbox 两条分支都返回「命令 + 编译后环境」，
+      // 所以执行目标一律由它产出。（此前"关沙盒"分支直接传裸命令字符串 ⇒ resolveSpawn 落回宿主
+      // process.env ⇒ 标准/只读档的运行区隔离在安装依赖这条路径上整体失效。）
+      const sandboxed = !isSandboxBypassedForMode(context.mode);
+      if (sandboxed) {
+        const initialized = await ensureSandbox(context.workspaceRealPath, context.mode);
+        if (!initialized.ok) throw new Error(`系统保护初始化失败：${initialized.reason}`);
       }
-      const initialized = await ensureSandbox(context.workspaceRealPath, context.mode);
-      if (!initialized.ok) throw new Error(`系统保护初始化失败：${initialized.reason}`);
       const wrapped = await wrapForSandbox(command, {
         context,
         gitBashPath: sandboxGitBashPath(),
       });
       const target = executionTarget(wrapped);
-      return executeForeground(target, context.workspaceRealPath, signal, undefined, undefined, true, onUpdate);
+      return executeForeground(target, context.workspaceRealPath, signal, undefined, undefined, onUpdate);
     },
   } as any) as ToolDefinition;
 }

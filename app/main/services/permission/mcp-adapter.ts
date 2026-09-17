@@ -16,7 +16,7 @@ import { scanMcpServers, getMcpServerConfig, expandServerConfig } from "../mcp-s
 import type { McpServerConfig, McpServerStatus } from "../mcp-service";
 import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
 import { EmOAuthProvider } from "../mcp-oauth";
-import { ensureSandbox, wrapForSandbox } from "../sandbox/manager";
+import { ensureSandbox, isSandboxBypassedForMode, wrapForSandbox } from "../sandbox/manager";
 import type { PermissionMode } from "./access-policy";
 import { createExecutionContext } from "./execution-context";
 import { bindExecutionOwner } from "./execution-context";
@@ -117,8 +117,13 @@ async function connect(
     }
     // 完全访问模式不进沙盒——否则 Playwright 这类需要自己 apply 子进程沙盒的 MCP 会恒起不来
     // （Chromium 在已沙盒进程内 `sandbox initialization failed`），见 isSandboxBypassedForMode
-    const initialized = await ensureSandbox(projectPath, mode);
-    if (!initialized.ok) throw new Error(`MCP 安全执行后端不可用：${initialized.reason}`);
+    // 关沙盒只换执行后端：wrapForSandbox 两条分支都返回带 env 的规格，一律由它产出执行目标；
+    // ensureSandbox 只在真的要用沙盒时才调（否则会白初始化 srt，且初始化失败会误报"MCP 后端不可用"）。
+    const sandboxed = !isSandboxBypassedForMode(mode);
+    if (sandboxed) {
+      const initialized = await ensureSandbox(projectPath, mode);
+      if (!initialized.ok) throw new Error(`MCP 安全执行后端不可用：${initialized.reason}`);
+    }
     const rawCommand = [cfg.command!, ...(cfg.args ?? [])].map(shellQuote).join(" ");
     const gitBashPath = process.platform === "win32" ? findBashOnWindows() : undefined;
     if (process.platform === "win32" && !gitBashPath) {

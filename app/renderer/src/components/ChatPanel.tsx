@@ -532,7 +532,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
     if (sid) { window.electronAPI.agent.setModel(sid, m, chatProvider || undefined).catch(() => {}); }
   }, [setStoreModel, chatProvider]);
 
-  /** 标准/受限 → 完全访问时说明风险并确认；切回或切到受限直接生效。模式会持久化为全局默认。 */
+  /** 标准/只读 → 完全访问时说明风险并确认；切回或切到只读直接生效。模式会持久化为全局默认。 */
   const handlePermissionModeChange = useCallback(async (mode: PermissionMode) => {
     if (mode === "full" && permissionMode !== "full") {
       const ok = await confirmFullAccess();
@@ -1779,7 +1779,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
           const m = cache.permissionMode;
           setPermissionMode(
             m === "full" || m === "bypassPermissions" ? "full"
-              : m === "restricted" || m === "sandbox" ? "restricted"
+              : m === "readonly" || m === "restricted" || m === "sandbox" ? "readonly"
                 : "standard",
           );
         }

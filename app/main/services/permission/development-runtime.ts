@@ -78,6 +78,7 @@ export function ensureDevelopmentRuntime(workspace: string, baseRoot = developme
     assertPrivateDirectory(directory);
   }
   seedSafeGitConfig(runtime);
+  seedSshKnownHosts(runtime);
   return runtime;
 }
 
@@ -108,4 +109,30 @@ function seedSafeGitConfig(runtime: DevelopmentRuntime): void {
     }
   }
   if (fs.existsSync(target) && process.platform !== "win32") fs.chmodSync(target, 0o600);
+}
+
+/**
+ * 把**服务器 host 指纹**复制进运行区（`known_hosts`）。
+ *
+ * 为什么必须给：HOME 隔离后 `~/.ssh` 不存在，ssh 连一台没见过的主机会**交互式询问**
+ * "The authenticity of host … can't be established"，在非交互的会话里直接失败——而这与"凭据隔离"
+ * 无关，纯粹是被隔离误伤的基础设施（`known_hosts` 是**公开的指纹信息**，不是凭据）。
+ *
+ * 只复制这一个文件：
+ * - **不复制** `id_*`（私钥）、`authorized_keys`（凭据）
+ * - **不复制** `config`（它会牵出 `IdentityFile` / `ProxyJump` 等更多路径，且常含主机别名，
+ *   属"半敏感"；真需要时用户可自行把它放进运行区）
+ *
+ * 复制失败不阻塞：最坏情况是首次连接某主机失败，而那时的报错是明确的（不是静默）。
+ */
+function seedSshKnownHosts(runtime: DevelopmentRuntime): void {
+  if (process.platform === "win32") return; // Windows 的 known_hosts 位置随安装形态而异，暂不处理
+  const source = path.join(os.homedir(), ".ssh", "known_hosts");
+  const target = path.join(runtime.home, ".ssh", "known_hosts");
+  try {
+    if (!fs.existsSync(source) || fs.existsSync(target)) return; // 幂等：已存在则不覆盖（保留运行区内的新增条目）
+    fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+    fs.copyFileSync(source, target);
+    fs.chmodSync(target, 0o600);
+  } catch { /* 见上：失败退化为"该主机首次连接需要手动确认" */ }
 }

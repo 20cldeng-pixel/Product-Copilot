@@ -9,9 +9,9 @@ const CWD = path.join(os.homedir(), "dev", "myproj");
 
 vi.mock("./session-cache", () => ({ readCache: () => ({ permissionMode: "standard" }) }));
 const sandboxMock = vi.hoisted(() => ({
-  /** 该模式是否跳过沙盒。默认 true —— 沙盒默认不启用（见 sandbox/manager.isSandboxEnabledForMode）。 */
+  /** 该模式是否跳过沙盒（测试可控开关，模拟"完全访问 / Linux 全局降级"与"走沙盒"两条路径）。 */
   bypassed: true,
-  ensureSandbox: vi.fn(async () => ({ ok: true })),
+  ensureSandbox: vi.fn(async (): Promise<{ ok: boolean; reason?: string }> => ({ ok: true })),
 }));
 vi.mock("./sandbox/manager", () => ({
   ensureSandbox: sandboxMock.ensureSandbox,
@@ -49,11 +49,12 @@ describe("标准模式权限契约", () => {
     }
   });
 
-  // 2026-09-16：沙盒默认不启用后，原由沙盒 allowWrite/denyRead 承担的两条边界改由命令预检接住
+  // 2026-09-17：沙盒回来后，这两条界面的**判定层**仍然是纵深（沙盒拒得更彻底，但判定层先给出
+  // 可读的拒绝理由）。系统临时目录不再算越界——写 /tmp 是开发常规动作，拦它属于纯误伤
+  // （Codex 官方口径：工作区含 cwd 与 /tmp 等临时目录）。
   it("命令预检接住标准模式的区外写入（原 allowWrite 的职责）", async () => {
     for (const command of [
       "echo x > ~/Desktop/x.txt",
-      "echo x > /tmp/x.txt",
       "ls > ../outside.txt",
       "rm -rf ~/other-project",
       "cp ./a.txt ~/Documents/b.txt",
@@ -62,9 +63,12 @@ describe("标准模式权限契约", () => {
       expect(result.behavior, command).toBe("deny");
       if (result.behavior === "deny") expect(result.message).toContain("standard.write_scope");
     }
-    // 工作区内、运行区、设备文件不算越界
+    // 工作区内、运行区、系统临时目录、设备文件都不算越界
     expect((await bash("echo x > ./inside.txt")).behavior).toBe("allow");
     expect((await bash("echo x > /dev/null")).behavior).toBe("allow");
+    expect((await bash("echo x > /tmp/x.txt")).behavior).toBe("allow");
+    expect((await bash("echo x > /var/tmp/x.txt")).behavior).toBe("allow");
+    expect((await bash("mkdir -p /tmp/easymint-scratch")).behavior).toBe("allow");
   });
 
   it("命令预检接住标准模式的凭据读取（原 denyRead 的职责）", async () => {
@@ -83,15 +87,23 @@ describe("标准模式权限契约", () => {
     expect((await bash("sed -n '1,5p' README.md")).behavior).toBe("allow");
   });
 
-  it("沙盒未启用（默认）时不初始化沙盒；显式启用时才初始化", async () => {
+  it("沙盒跳过时不再要求初始化；需要沙盒时先初始化（失败即 fail-closed）", async () => {
     try {
+      // 跳过分支：完全访问 / Linux 全局降级 —— 不该白初始化 srt
       sandboxMock.bypassed = true;
       sandboxMock.ensureSandbox.mockClear();
       expect((await bash("npm run build")).behavior).toBe("allow");
       expect(sandboxMock.ensureSandbox).not.toHaveBeenCalled();
 
-      // 回退通道：EASYMINT_SANDBOX_ENABLED=1 时标准模式重新走沙盒（此路径在本文件被 mock）
+      // 走沙盒分支：初始化失败必须拒绝，不能静默放行
       sandboxMock.bypassed = false;
+      sandboxMock.ensureSandbox.mockClear();
+      sandboxMock.ensureSandbox.mockResolvedValueOnce({ ok: false, reason: "测试注入的初始化失败" });
+      const denied = await bash("npm run build");
+      expect(denied.behavior).toBe("deny");
+      if (denied.behavior === "deny") expect(denied.message).toContain("backend.sandbox_unavailable");
+      expect(sandboxMock.ensureSandbox).toHaveBeenCalled();
+
       sandboxMock.ensureSandbox.mockClear();
       expect((await bash("npm run build")).behavior).toBe("allow");
       expect(sandboxMock.ensureSandbox).toHaveBeenCalled();
@@ -136,6 +148,9 @@ describe("标准模式权限契约", () => {
   it("系统核心写入与提权命令任何模式都提前拒绝", async () => {
     expect((await write("/etc/easymint.conf")).behavior).toBe("deny");
     expect((await write(path.join(CWD, ".mcp.json"))).behavior).toBe("deny");
+    // 项目级网络白名单与 MCP 配置同级：改它 = 放宽后续命令的出口（自审发现的缺口）
+    expect((await write(path.join(CWD, ".easymint", "sandbox.json"))).behavior).toBe("deny");
+    expect((await bash(`echo '{"allowedDomains":["evil.com"]}' > ${JSON.stringify(path.join(CWD, ".easymint", "sandbox.json"))}`)).behavior).toBe("deny");
     const result = await bash("sudo apt install x");
     expect(result.behavior).toBe("deny");
     if (result.behavior === "deny") expect(result.message).toContain("core.privileged_operation");

@@ -16,6 +16,9 @@ import path from "node:path";
 import { broadcast } from "../ipc-broadcast";
 import { decodeSeg, finalDecode } from "./encoding";
 import { readManagedEnvironment } from "../tools/environment-tool";
+import { annotateSandboxFailures } from "../sandbox/manager";
+// 纯类型导入（编译后擦除，不产生运行时循环：tool.ts 运行时依赖本文件）
+import type { ExecutionTarget } from "./tool";
 
 /** 保留输出尾部上限(内存,通知预览;超出截断,防止内存膨胀) */
 const MAX_OUTPUT_BYTES = 4096;
@@ -177,7 +180,7 @@ class BackgroundShellRegistry {
   /** 启动后台命令,立即返回 id + 输出文件路径;进程退出时自动注销并回调 onExit。
    *  command = 实际执行内容（shell 字符串，或沙盒 argv 规格）；displayCommand = 面板/通知展示用（缺省 = 原命令） */
   start(
-    command: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> },
+    command: ExecutionTarget,
     cwd: string,
     onExit?: (shell: BackgroundShell) => void,
     sessionId?: string,
@@ -278,7 +281,11 @@ class BackgroundShellRegistry {
     child.on("exit", (code) => {
       // 冲掉残留缓冲(终局解码:不再等待未完成序列,UTF-8 尝试失败则 GBK)
       const outTail = finalDecode(outBuf.bytes);
-      const errTail = finalDecode(errBuf.bytes);
+      let errTail = finalDecode(errBuf.bytes);
+      // 沙盒违规注解（与前台路径同源）：后台命令被沙盒拦下时同样必须可见，
+      // 否则用户只看到"命令失败了"，无从判断是边界还是故障（清单腐化正是这样发生的）。
+      const violationKey = typeof command === "string" ? undefined : command.violationKey;
+      if (violationKey && errTail) errTail = annotateSandboxFailures(violationKey, errTail);
       outBuf.bytes = Buffer.alloc(0);
       errBuf.bytes = Buffer.alloc(0);
       const tail = outTail + errTail;

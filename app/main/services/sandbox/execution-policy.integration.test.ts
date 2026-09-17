@@ -10,6 +10,7 @@ describe("执行策略真实 I/O", () => {
   const workspace = path.join(root, "workspace");
   const outside = path.join(root, "outside.txt");
 
+  /** 本文件验证的是**沙盒后端**的真实行为：载体档位 = standard（默认就套沙盒，见 sandbox/manager）。 */
   beforeAll(() => {
     fs.mkdirSync(workspace, { recursive: true });
   });
@@ -31,30 +32,42 @@ describe("执行策略真实 I/O", () => {
    * 只增不减，后面的清理断言全部失效——测出来的就不是真实行为了。
    * 真实执行层（前台 bash / 后台 shell / shell:exec / install_dependency）都是这么收尾的。
    */
-  async function spawnSandboxed(command: string, mode: "restricted" | "full") {
+  async function spawnSandboxed(command: string, mode: "standard" | "full") {
     const wrapped = await wrapForSandbox(command, {
       context: createExecutionContext(workspace, mode, {}, path.join(root, "runtimes")),
     });
     expect(wrapped.kind).toBe("shell");
     if (wrapped.kind !== "shell") throw new Error("本测试只覆盖 shell 规格（darwin/linux）");
     // 沙盒路径靠它收尾，退回 undefined 就等于整条清理链路空转（见 __sandbox-lease.test.ts）。
-    // 完全访问不进沙盒（2026-09-16 拍板），没有 srt 租约也就不用清占位文件——故只对受限模式断言。
-    if (mode === "restricted") expect(typeof wrapped.release).toBe("function");
+    // 完全访问不进沙盒（用户显式选择），没有 srt 租约也就不用清占位文件——故只对标准档断言。
+    if (mode === "standard") { expect(typeof wrapped.release).toBe("function"); expect(wrapped.violationKey).toBeTruthy(); }
     const result = run(wrapped.command, wrapped.env);
     return { result, command: wrapped.command, release: (): Promise<void> => wrapped.release?.() ?? Promise.resolve() };
   }
 
-  it("受限模式由 OS 沙盒阻止工作区外写入，完全访问允许同一普通目标", async () => {
+  it("开启沙盒的标准档阻止工作区外写入，完全访问允许同一普通目标", async () => {
     const initialized = await ensureSandbox(workspace);
     expect(initialized).toEqual({ ok: true });
 
-    const standardContext = createExecutionContext(workspace, "restricted", {}, path.join(root, "runtimes"));
-    const deniedRun = await spawnSandboxed(`touch ${JSON.stringify(outside)}`, "restricted");
+    const standardContext = createExecutionContext(workspace, "standard", {}, path.join(root, "runtimes"));
+
+    // 前置探针：先证明**沙盒在本机能真正 apply**。
+    // 否则下面"写入被拒"的断言会因 `sandbox_apply: Operation not permitted` 一起失败而**假通过**
+    // ——要求失败的断言因别的原因失败而通过，是"本机绿不等于验证"的典型形态
+    // （见 skill code-review §3.3；嵌套沙盒限制见 skill easymint-sandbox-srt §4）。
+    const probe = await spawnSandboxed("echo sandbox-probe-ok", "standard");
+    expect(
+      probe.result.status,
+      `沙盒无法在本机应用，本用例无法验证边界：${String(probe.result.stderr).slice(0, 120)}`,
+    ).toBe(0);
+    await probe.release();
+
+    const deniedRun = await spawnSandboxed(`touch ${JSON.stringify(outside)}`, "standard");
     expect(deniedRun.result.status).not.toBe(0);
     expect(fs.existsSync(outside)).toBe(false);
     await deniedRun.release();
 
-    const runtimeRun = await spawnSandboxed(`touch "$HOME/home-write" "$TMPDIR/tmp-write"`, "restricted");
+    const runtimeRun = await spawnSandboxed(`touch "$HOME/home-write" "$TMPDIR/tmp-write"`, "standard");
     expect(runtimeRun.result.status, String(runtimeRun.result.stderr)).toBe(0);
     expect(fs.existsSync(path.join(standardContext.runtimeRoot, "home", "home-write"))).toBe(true);
     expect(fs.existsSync(path.join(standardContext.runtimeRoot, "tmp", "tmp-write"))).toBe(true);
@@ -66,24 +79,24 @@ describe("执行策略真实 I/O", () => {
     await allowedRun.release();
   }, 60_000);
 
-  it("受限模式允许开发服务器绑定本机端口", async () => {
+  it("开启沙盒的标准档允许开发服务器绑定本机端口", async () => {
     const initialized = await ensureSandbox(workspace);
     expect(initialized).toEqual({ ok: true });
     const { result, release } = await spawnSandboxed(
       `node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>s.close())'`,
-      "restricted",
+      "standard",
     );
     expect(result.status, String(result.stderr)).toBe(0);
     await release();
   }, 60_000);
 
-  it("受限模式在命令最内层使用项目运行区的 HOME、临时目录和 npm 缓存", async () => {
+  it("开启沙盒的标准档在命令最内层使用项目运行区的 HOME、临时目录和 npm 缓存", async () => {
     const initialized = await ensureSandbox(workspace);
     expect(initialized).toEqual({ ok: true });
-    const context = createExecutionContext(workspace, "restricted", {}, path.join(root, "runtimes"));
+    const context = createExecutionContext(workspace, "standard", {}, path.join(root, "runtimes"));
     const { result, release } = await spawnSandboxed(
       `printf '%s\\n' "$HOME" "$TMPDIR" "$(npm config get cache)" "$(npm config get prefix)"`,
-      "restricted",
+      "standard",
     );
     expect(result.status, String(result.stderr)).toBe(0);
     expect(String(result.stdout).trim().split("\n")).toEqual([
@@ -95,12 +108,12 @@ describe("执行策略真实 I/O", () => {
     await release();
   }, 60_000);
 
-  it("受限模式完整读写工作区配置，不继承第三方按文件名硬编码的误拦", async () => {
+  it("开启沙盒的标准档完整读写工作区配置，不继承第三方按文件名硬编码的误拦", async () => {
     const initialized = await ensureSandbox(workspace);
     expect(initialized).toEqual({ ok: true });
     const { result, release } = await spawnSandboxed(
       "mkdir -p .vscode .idea .git/hooks && touch .vscode/settings.json .idea/workspace.xml .git/config .git/hooks/pre-commit",
-      "restricted",
+      "standard",
     );
     expect(result.status, String(result.stderr)).toBe(0);
     for (const relative of [".vscode/settings.json", ".idea/workspace.xml", ".git/config", ".git/hooks/pre-commit"]) {
@@ -113,15 +126,15 @@ describe("执行策略真实 I/O", () => {
    * 2026-09-16 变更：本用例原为「两种模式都不能改写工作区 .mcp.json」——完全访问那一半由 srt 的
    * denyWrite 提供。完全访问不再进沙盒后，那份保护移到**权限层的命令预检**
    * （`permission/agent-permission-service.ts` 的 findProtectedWriteTarget，命中 protectedControlPaths
-   * 即拒绝），断言在 `__permission-full.test.ts`。这里只留受限模式的 OS 强制边界。
+   * 即拒绝），断言在 `__permission-full.test.ts`。这里只留只读模式的 OS 强制边界。
    */
-  it("受限模式不能把工作区兼容 MCP 配置改造成后续可执行配置（且不留幽灵占位文件）", async () => {
+  it("两种模式都不能把工作区兼容 MCP 配置改造成后续可执行配置（且不留幽灵占位文件）", async () => {
     const initialized = await ensureSandbox(workspace);
     expect(initialized).toEqual({ ok: true });
     const protectedFile = path.join(workspace, ".mcp.json");
     const { result, command, release } = await spawnSandboxed(
       `printf '%s' '{"mcpServers":{}}' > ${JSON.stringify(protectedFile)}`,
-      "restricted",
+      "standard",
     );
 
     // 断言失败时自动留证据（正常路径无输出，不污染 CI 日志）。

@@ -4,12 +4,13 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import { developmentRuntimeFor, developmentRuntimesRoot } from "./development-runtime";
+import { allowedDomainsFor, sandboxProfileOptions, sshAgentSockets } from "../sandbox/compat-policy";
 import type { ExecutionContext, PermissionMode } from "./execution-context";
 
 export type { PermissionMode } from "./execution-context";
 
 /**
- * 两种模式共同的安全底线。这里只列“禁止写入”的系统控制面；普通系统文件允许读取，
+ * 三档共同的安全底线。这里只列“禁止写入”的系统控制面；普通系统文件允许读取，
  * /tmp、用户文档、开发工具链也不属于系统核心。
  */
 export function protectedWriteRoots(platform: NodeJS.Platform = process.platform): string[] {
@@ -103,6 +104,10 @@ export function protectedPersistencePaths(cwd: string, platform: NodeJS.Platform
     path.join(home, "Library", "LaunchAgents"),
     path.join(home, "Library", "LaunchDaemons"),
     path.join(cwd, ".easymint", "mcp.json"),
+    // 网络白名单（项目级）：改它 = 给后续所有沙盒命令放行新的出口域名。
+    // 它与 MCP 配置同属"**后续执行能力**的载体"——而标准档的沙盒进程自己能写工作区，
+    // 所以不保护它 = 沙盒里的进程可以自己把出口放宽（自审时发现的缺口，2026-09-17）。
+    path.join(cwd, ".easymint", "sandbox.json"),
     // 兼容 Claude/OMP 的项目级 MCP 配置。EasyMint 只读它，但它会决定下次会话
     // 可以启动哪些本地进程，因此不能由 Agent 通过普通文件工具持久化修改。
     path.join(cwd, ".mcp.json"),
@@ -135,8 +140,8 @@ export function protectedControlPaths(cwd: string, platform: NodeJS.Platform = p
 /**
  * 该模式下"仍受保护"的目标集合（2026-09-16 用户口径：除系统核心与危险操作外全放开）。
  *
- * - 两种模式都保护：系统核心（`protectedWriteRoots`）+ 原始设备 + 持久化执行载体
- * - 标准模式额外：高敏凭据 + EasyMint 会话状态
+ * - 三档都保护：系统核心（`protectedWriteRoots`）+ 原始设备 + 持久化执行载体
+ * - 标准与只读档额外：高敏凭据 + EasyMint 会话状态
  * - 完全访问**不再保护凭据**——用户明确要求"其他都放开"，读凭据属于他要打通的能力
  *   （`gh`/`git push`/本地 keychain 工具因此可用）；代价是提示注入也能读到，见文档说明
  */
@@ -153,21 +158,67 @@ export function protectedTargetsForMode(
   return mode === "full" ? always : [...always, ...protectedCredentialPaths(platform), ...protectedStatePaths()];
 }
 
+/**
+ * 可写根（标准 / 只读档）——**沙盒的 allowWrite 与判定层的「区外写」共用这一份**。
+ *
+ * 两处必须同源，否则同一个 `> /tmp/x` 会出现两套拒绝语义（判定层拒、沙盒放行，或反之），
+ * 用户与模型都会看不懂（这正是历史上"命令被拦但报错口径不一致"的来源）。
+ *
+ * 系统临时目录是 2026-09-17 新加的（Codex 官方口径：工作区含 `cwd` 与 `/tmp` 等临时目录）：
+ * 写 `/tmp/xxx` 是开发常规动作（进程间传文件、工具链 scratch），拦它属于纯误伤。
+ * macOS 上 `/tmp` 是 `/private/tmp` 的符号链接，两个都要列（canonicalPolicyPath 会解符号链接）。
+ */
+export function standardWriteRoots(
+  workspaceRealPath: string,
+  runtimeRoot: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform === "win32") {
+    const temp = process.env.TEMP || process.env.TMP || path.win32.join(os.homedir(), "AppData", "Local", "Temp");
+    return [...new Set([workspaceRealPath, runtimeRoot, temp])];
+  }
+  return [...new Set([workspaceRealPath, runtimeRoot, "/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp"])];
+}
+
 export function buildExecutionPolicy(context: Pick<ExecutionContext, "mode" | "workspaceRealPath" | "runtimeRoot">): SandboxRuntimeConfig {
   const { mode, workspaceRealPath, runtimeRoot } = context;
   const credentials = protectedCredentialPaths();
   const runtimesRoot = developmentRuntimesRoot();
-  const allowWrite = mode === "full" ? filesystemRoots(workspaceRealPath) : [workspaceRealPath, runtimeRoot];
+  const allowWrite = mode === "full"
+    ? filesystemRoots(workspaceRealPath)
+    : standardWriteRoots(workspaceRealPath, runtimeRoot);
   return {
-    // 不启用域名过滤；文件与进程边界仍始终启用。开发服务器需要本机监听。
-    network: process.platform === "darwin"
-      ? ({ allowedDomains: undefined, deniedDomains: [], allowLocalBinding: true } as unknown as SandboxRuntimeConfig["network"])
-      : { allowedDomains: ["*"], deniedDomains: [], allowLocalBinding: true },
+    // 网络面（2026-09-17 补齐）。过去三平台的配置分别是：
+    //   macOS  → `allowedDomains: undefined`：srt 视作"未配置网络限制" ⇒ seatbelt `allow network*` 全放；
+    //   Linux  → `allowedDomains: ["*"]`：看似有配置，实为逐条放行（且 `*` 本身就违反 srt 的
+    //            schema 意图——它明确拒绝"过宽模式"）。
+    //   ⇒ 净效果是**沙盒拦得住"碰你机器上的东西"，却完全拦不住"把你项目里的东西送出去"**，
+    //     而后者才是提示注入的出口（详见 temp/权限模式复盘…md §三）。
+    // 现在统一走真实白名单：`allowedDomains` 一旦有值，srt 就启用它的内置 HTTP+SOCKS mux 代理
+    // （sandbox-manager 的 `needsNetworkRestriction = allowedDomains !== undefined`），
+    // seatbelt 只在代理端口上放行出网，实际可达域名由代理判定。
+    network: {
+      // 完全访问不套沙盒 ⇒ 这份配置不会被使用（注意 `[]` 在 srt 里是"全断网"语义，别外泄出去）。
+      // 保留空数组只是让配置形状完整；真要给 full 定义网络策略是另一件事。
+      allowedDomains: mode === "full" ? [] : allowedDomainsFor(workspaceRealPath),
+      deniedDomains: [],
+      // 未匹配域名**直接拒绝**，不落回调。EM 不传 sandboxAskCallback，这里显式化语义：
+      // 不引入逐条审批（用户明确不接受），未知域名失败但可见（stderr 注解 + 域名清单可扩展）。
+      strictAllowlist: true,
+      // 开发服务器必须能监听本机端口；同时 srt 会额外放行"回环出站"，
+      // 所以 `curl localhost:3000` 这类本机互访不受白名单影响。
+      allowLocalBinding: true,
+      // **唯一放行的 unix socket 是 ssh-agent**（取舍与发现逻辑见 compat-policy）：
+      // 让 `git push` / `fetch` 借用 agent 签名，而私钥不进会话环境。
+      // ⚠️ 空数组意味着 srt 禁掉**全部** unix socket（docker.sock、gradle daemon 等一并不可用）——
+      //    这是有意的：那些 socket 能直接控制宿主服务，不该为了顺手而打开。
+      allowUnixSockets: mode === "full" ? [] : sshAgentSockets(),
+    },
     filesystem: {
       // EasyMint 自己按绝对资源保护安全边界；工作区内 .git/config 等开发文件需要正常可写。
       allowGitConfig: true,
-      denyRead: mode === "standard" ? [...credentials, runtimesRoot] : credentials,
-      allowRead: mode === "standard" ? [runtimeRoot] : [],
+      denyRead: mode === "full" ? credentials : [...credentials, runtimesRoot],
+      allowRead: mode === "full" ? [] : [runtimeRoot],
       allowWrite,
       denyWrite: [
         ...protectedWriteRoots(),
@@ -175,9 +226,11 @@ export function buildExecutionPolicy(context: Pick<ExecutionContext, "mode" | "w
         ...protectedDevicePaths(),
         ...credentials,
         ...protectedControlPaths(workspaceRealPath),
-        ...(mode === "standard" ? sandboxRuntimeDefaultWriteLeaks() : []),
+        ...(mode === "full" ? [] : sandboxRuntimeDefaultWriteLeaks()),
       ],
     },
+    // profile 兼容性选项（PTY 等）——逐条依据见 compat-policy；缺了它交互式工具会在沙盒里表现异常
+    ...sandboxProfileOptions(),
   };
 }
 
@@ -273,11 +326,15 @@ export function pathHitsAny(candidate: string, roots: readonly string[], cwd: st
   return roots.some((root) => isWithin(canonicalPolicyPath(root, cwd), target));
 }
 
+/**
+ * 完整访问（standard / readonly）档的可写目标判定。
+ * 与沙盒的 `allowWrite` 同源（`standardWriteRoots`）——两处必须一致，否则同一操作两套语义。
+ */
 export function isStandardWritableTarget(cwd: string, candidate: string): boolean {
   const workspace = canonicalPolicyPath(cwd, cwd);
   const target = canonicalPolicyPath(candidate, cwd);
   const runtime = canonicalPolicyPath(developmentRuntimeFor(workspace).root, workspace);
-  return isWithin(workspace, target) || isWithin(runtime, target);
+  return standardWriteRoots(workspace, runtime).some((root) => isWithin(canonicalPolicyPath(root, cwd), target));
 }
 
 export const accessPolicyInternals = { filesystemRoots, windowsDriveRoots, windowsVolumeMetadataPaths };

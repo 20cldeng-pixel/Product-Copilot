@@ -4,6 +4,13 @@ import os from "os";
 import type { ProviderConfig, ApiProvidersData } from "../../shared/platform-presets";
 import { resolveHome } from "../utils/paths";
 import { dropLegacyEncryptedApiKeys, dropLegacyEncryptedProviderKeys } from "./settings-legacy";
+import { LEGACY_PERMISSION_MODE_ALIASES, type PermissionMode } from "./permission/execution-context";
+
+/** 磁盘上的旧权限模式值归一到新三档（`restricted` / `sandbox` → `readonly`）。 */
+function normalizeStoredPermissionMode(raw: unknown): PermissionMode {
+  if (raw === "full" || raw === "readonly" || raw === "standard") return raw;
+  return typeof raw === "string" ? (LEGACY_PERMISSION_MODE_ALIASES[raw] ?? "standard") : "standard";
+}
 
 export const DATA_DIR = path.join(os.homedir(), ".easymint");
 
@@ -41,7 +48,7 @@ interface Settings {
   /** 全局聊天思考等级(仅作为新聊天会话的初始默认,不控制 agent/task) */
   chatThinkingLevel?: string;
   /** 全局默认权限模式(仅作为新聊天会话的初始默认,可临时切回) */
-  chatPermissionMode?: "restricted" | "standard" | "full";
+  chatPermissionMode?: PermissionMode;
   /**
    * Linux 兜底：关闭沙盒运行（系统依赖 bwrap/socat/rg 装不上时的逃生通道）。
    * 政策：优先引导安装依赖，实在装不了才用它；仅 Linux 生效，见 sandbox/manager.isSandboxBypassed。
@@ -214,7 +221,7 @@ export class Store {
       contextThreshold: (emData.contextThreshold as number) ?? EM_DEFAULTS.contextThreshold,
       sandboxDisabled: Boolean(emData.sandboxDisabled),
       chatThinkingLevel: (emData.chatThinkingLevel as string) ?? "medium",
-      chatPermissionMode: (emData.chatPermissionMode as "restricted" | "standard" | "full") ?? "standard",
+      chatPermissionMode: normalizeStoredPermissionMode(emData.chatPermissionMode),
       chatFontLevel: (emData.chatFontLevel as number) ?? 3,
       // chatFontScale 不兜底:老用户磁盘无此字段时须返回 undefined,
       // 前端 loadFromElectron 才能走 LEGACY_CHAT_FONT_SCALE 旧级别迁移(?? 1 会吞掉迁移)

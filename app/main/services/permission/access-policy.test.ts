@@ -25,13 +25,30 @@ describe("统一资源策略", () => {
     policyVersion: "2",
   });
 
-  it("标准模式只允许工作区和当前开发运行区写入", () => {
+  it("标准模式允许写入工作区、运行区与系统临时目录", () => {
     const filesystem = buildExecutionPolicy(context("standard")).filesystem!;
-    expect(filesystem.allowWrite).toEqual([path.resolve(cwd), context("standard").runtimeRoot]);
+    expect(filesystem.allowWrite).toContain(path.resolve(cwd));
+    expect(filesystem.allowWrite).toContain(context("standard").runtimeRoot);
+    // 系统临时目录（2026-09-17 新增）：写 /tmp 是开发常规动作（工具链 scratch、进程间传文件），
+    // 拦它属于纯误伤——Codex 官方口径同样是"工作区含 cwd 与 /tmp 等临时目录"。
+    if (process.platform !== "win32") {
+      expect(filesystem.allowWrite).toContain("/tmp");
+      expect(filesystem.allowWrite).toContain("/var/tmp");
+    }
+    // 但不能顺手放开宿主其它目录
     expect(filesystem.allowWrite).not.toContain(path.resolve(os.tmpdir()));
     expect(filesystem.allowWrite).not.toContain(path.join(os.homedir(), ".npm"));
     expect(filesystem.denyRead).toContain(developmentRuntimesRoot());
     expect(filesystem.allowRead).toContain(context("standard").runtimeRoot);
+  });
+
+  // 甲-3：判定层的「区外写」与沙盒的 allowWrite 必须同源，否则同一个 /tmp 会出现两种拒绝口径。
+  // （注意 isStandardWritableTarget 自己按 developmentRuntimeFor 推导运行区——真实运行时
+  //   createExecutionContext 用的是同一个函数，所以两者一致；测试里的自定义 runtimeRoot 不参与此断言。）
+  it("判定层与沙盒对同一个目标给出一致口径", () => {
+    expect(isStandardWritableTarget(path.resolve(cwd), path.resolve(cwd, "src", "a.ts"))).toBe(true);
+    expect(isStandardWritableTarget(path.resolve(cwd), "/tmp/em-scratch.txt")).toBe(process.platform !== "win32");
+    expect(isStandardWritableTarget(path.resolve(cwd), path.join(os.homedir(), "Desktop", "a.txt"))).toBe(false);
   });
 
   it("完全访问扩大 allowWrite，但保留相同核心 deny", () => {

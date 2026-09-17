@@ -17,47 +17,88 @@ import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { maskSecrets } from "../../utils/secret-mask";
 
+/**
+ * 已编译的执行目标 —— **必须携带环境**。
+ *
+ * ⚠️ 这里**故意不接受裸命令字符串**（类型层面堵死一类真实回归）：
+ * 裸字符串会让 `resolveSpawn` 回退到宿主 `process.env`，于是标准/只读档的运行区隔离
+ * （HOME / TMPDIR / 包缓存重定向）在该路径上整体失效——而**关沙盒只换执行后端，不该跳过环境处理**。
+ * 所以所有执行入口一律用 `wrapForSandbox` 产出的规格（它两条分支都带 env）。
+ */
+export type ExecutionTarget =
+  | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void>; violationKey?: string; exemptReason?: string }
+  | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void>; violationKey?: string; exemptReason?: string };
+
+/**
+ * 组合实际 spawn 用的环境：基准**只能**是已编译的执行环境，`PI_*` 是唯一允许追加的来源。
+ *
+ * ⚠️ 绝不合并 `process.env`：对象展开里"删键 ≠ 覆盖"——从 baseEnv 删掉某变量并不会盖住
+ * `process.env` 的同名变量，于是被 `cleanEnvironment` 过滤掉的 `BASH_ENV` / `LD_PRELOAD` /
+ * `NODE_OPTIONS` 等会从宿主回填，环境清理在执行链末端失效。
+ */
+export function composeExecutionEnvironment(
+  baseEnv: NodeJS.ProcessEnv | undefined,
+  ctx?: { model?: { provider?: string; id?: string }; thinkingLevel?: string; sessionManager?: { getSessionId(): string; getSessionFile?(): string } },
+): Record<string, string> {
+  const env: Record<string, string> = { ...(baseEnv as Record<string, string> | undefined) };
+  if (!ctx) return env;
+  try {
+    if (ctx.sessionManager) {
+      env.PI_SESSION_ID = ctx.sessionManager.getSessionId();
+      const sf = ctx.sessionManager.getSessionFile?.();
+      if (sf) env.PI_SESSION_FILE = sf;
+    }
+    if (ctx.model) {
+      if (ctx.model.provider) env.PI_PROVIDER = ctx.model.provider;
+      if (ctx.model.id) env.PI_MODEL = ctx.model.id;
+    }
+    if (ctx.thinkingLevel) env.PI_REASONING_LEVEL = ctx.thinkingLevel;
+  } catch { /* 会话信息不可用时跳过注入 */ }
+  return env;
+}
+
+/**
+ * 把「该命令在沙盒外豁免执行」的说明追加为工具结果的最后一行。
+ *
+ * 为什么必须可见：豁免清单（浏览器 / 容器这类必须自建沙盒的命令，见 sandbox/compat-policy）
+ * 是**按需增长**的，而它同时也是标准档的边界缺口。静默豁免会让清单悄悄腐化——
+ * 到那时谁也说不清"这条命令到底受不受管"（这正是 Codex 把 `excludedCommands` 写进文档的原因）。
+ */
+function appendExemptNote(
+  result: { content: Array<{ type: string; text: string }> },
+  reason: string,
+): { content: Array<{ type: string; text: string }> } {
+  const last = result.content[result.content.length - 1];
+  if (!last) return result;
+  return { content: [...result.content.slice(0, -1), { ...last, text: `${last.text}\n[沙盒豁免] ${reason}` }] };
+}
+
 /** 前台 bash 执行(spawn + 编码容错解码,对齐 Pi 行为:同步 + 超时 + 截断提示 + PI_* 环境注入)
- *  command: shell 命令字符串（走 resolveSpawn）或沙盒 argv 规格（Windows srt-win 两跳, shell:false + env 注入）
- *  sandboxed: 命令已沙盒包装(权限层判不了域放行),退出时把违规拦截注解进 stderr(大白话违规说明) */
+ *  command: 已编译执行目标（shell 命令 / 沙盒 argv 规格），一律由 wrapForSandbox 产出并携带 env；
+ *           是否沙盒执行由 `command.violationKey` 表达（有 = 走过沙盒路径），退出时据此把违规拦截注解进 stderr */
 export async function executeForeground(
-  command: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> },
+  command: ExecutionTarget,
   cwd: string,
   signal: AbortSignal | undefined,
   timeoutSec?: number,
   ctx?: { model?: { provider?: string; id?: string }; thinkingLevel?: string; sessionManager?: { getSessionId(): string; getSessionFile?(): string } },
-  sandboxed?: boolean,
   /** SDK 增量回调:执行中把输出片段推给 UI(无则跳过,后台/无 UI 场景不受影响) */
   onUpdate?: (partial: { content: Array<{ type: string; text: string }> }) => void,
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   return new Promise((resolve, reject) => {
-    const spawnPlan = typeof command === "string"
-      ? resolveSpawn(command, cwd)
-      : "argv" in command
-        ? { file: command.argv[0] ?? "", args: command.argv.slice(1), opts: { cwd, env: command.env }, error: undefined }
-        : resolveSpawn(command.command, cwd, command.env);
+    const spawnPlan = "argv" in command
+      ? { file: command.argv[0] ?? "", args: command.argv.slice(1), opts: { cwd, env: command.env }, error: undefined }
+      : resolveSpawn(command.command, cwd, command.env);
     const { file, args, opts, error } = spawnPlan;
     if (error) {
-      if (typeof command !== "string") void command.release?.();
+      void command.release?.();
       resolve({ content: [{ type: "text", text: error }] });
       return;
     }
-    // 注入 PI_* 环境变量(对齐 Pi resolveSpawnContext):脚本可读当前会话/模型信息
+    // 注入 PI_* 环境变量(对齐 Pi resolveSpawnContext):脚本可读当前会话/模型信息。
+    // 基准是**已编译的执行环境**，不再回填 process.env —— 见 composeExecutionEnvironment。
     if (ctx) {
-      const env: Record<string, string> = { ...process.env as Record<string, string>, ...(opts.env as Record<string, string> | undefined) };
-      try {
-        if (ctx.sessionManager) {
-          env.PI_SESSION_ID = ctx.sessionManager.getSessionId();
-          const sf = ctx.sessionManager.getSessionFile?.();
-          if (sf) env.PI_SESSION_FILE = sf;
-        }
-        if (ctx.model) {
-          if (ctx.model.provider) env.PI_PROVIDER = ctx.model.provider;
-          if (ctx.model.id) env.PI_MODEL = ctx.model.id;
-        }
-        if (ctx.thinkingLevel) env.PI_REASONING_LEVEL = ctx.thinkingLevel;
-      } catch { /* 会话信息不可用时跳过注入 */ }
-      (opts as { env?: Record<string, string> }).env = env;
+      (opts as { env?: Record<string, string> }).env = composeExecutionEnvironment(opts.env, ctx);
     }
     const child = spawn(file, args, opts);
     const outDec = createCodingAwareDecoder();
@@ -113,10 +154,10 @@ export async function executeForeground(
       if (typeof command !== "string") void command.release?.();
       output += outAnsi.feed(outDec.finish()) + outAnsi.finish();
       errOutput += errAnsi.feed(errDec.finish()) + errAnsi.finish();
-      // 沙盒违规注解：seatbelt/代理产生的拦截在此转成可读说明（仅沙盒执行时）。
-      // argv 形态（Windows srt-win 两跳）的违规归因 key 形态不同——留待 Windows 实机验证
-      const wrappedCommand = typeof command === "string" ? command : "command" in command ? command.command : undefined;
-      if (sandboxed && wrappedCommand) errOutput = annotateSandboxFailures(wrappedCommand, errOutput);
+      // 沙盒违规注解：seatbelt / 代理产生的拦截在此转成可读说明。
+      // 用**执行时那一个** violationKey——srt 的违规存储以 base64(commandId) 为键，
+      // 传命令文本（或包装后的命令）都匹配不上，注解会静默失效（见 manager.annotateSandboxFailures）。
+      if (command.violationKey) errOutput = annotateSandboxFailures(command.violationKey, errOutput);
       // 凭据脱敏：agent 若违规内联密码/连接串，明文不进模型可见的输出
       const text = maskSecrets([output, errOutput].filter(Boolean).join("\n") || "(无输出)");
       if (timedOut) {
@@ -224,32 +265,44 @@ export async function createEnhancedBashTool(
       // 显示/通知用原命令;实际 spawn 用包装命令(含代理 env 前缀)。wrap 失败 = 明确报错(fail-closed)。
       const executionPolicy = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined;
       const context = executionPolicy ?? createExecutionContext(cwd, "standard");
-      // 完全访问不进沙盒（真能杀进程/开浏览器/跑 Playwright），见 isSandboxBypassedForMode
+      // 是否套 OS 沙盒（完全访问恒不套，见 isSandboxBypassedForMode）。
+      // ⚠️ 关沙盒**只换执行后端**（srt 包装 → 原生执行），**不跳过环境处理**：
+      //    wrapForSandbox 的两条分支都会返回「命令 + 编译后环境」的规格，所以 execTarget
+      //    一律由它产出，**类型上也不再允许裸命令字符串**——裸字符串会让 resolveSpawn 落回
+      //    宿主 process.env，运行区隔离（HOME/TMPDIR/包缓存重定向）整体失效。
       const sandboxed = !isSandboxBypassedForMode(context.mode);
-      let execTarget: string | { argv: string[]; env: NodeJS.ProcessEnv; release?: () => Promise<void> } | { command: string; env: NodeJS.ProcessEnv; release?: () => Promise<void> } = command;
       if (sandboxed) {
         const init = await ensureSandbox(cwd, context.mode);
         if (!init.ok) {
           return { content: [{ type: "text" as const, text: `系统保护初始化失败：${init.reason}` }] };
         }
-        try {
-          // Windows 沙盒需要 Git Bash 绝对路径（srt argv 两跳启动的 binShell）
-          const spec = await wrapForSandbox(command, {
-            context,
-            ...(process.platform === "win32" ? { gitBashPath: findBashOnWindows() ?? undefined } : {}),
-          });
-          execTarget = spec.kind === "argv"
-            ? { argv: spec.argv, env: spec.env, release: spec.release }
-            : { command: spec.command, env: spec.env, release: spec.release };
-        } catch (e) {
-          return { content: [{ type: "text" as const, text: `系统保护启动失败：${(e as Error).message}` }] };
-        }
+      }
+      let execTarget: ExecutionTarget;
+      try {
+        // Windows 沙盒需要 Git Bash 绝对路径（srt argv 两跳启动的 binShell）
+        const spec = await wrapForSandbox(command, {
+          context,
+          ...(process.platform === "win32" ? { gitBashPath: findBashOnWindows() ?? undefined } : {}),
+        });
+        execTarget = spec.kind === "argv"
+          ? { argv: spec.argv, env: spec.env, release: spec.release, violationKey: spec.violationKey, exemptReason: spec.exemptReason }
+          : { command: spec.command, env: spec.env, release: spec.release, violationKey: spec.violationKey, exemptReason: spec.exemptReason };
+      } catch (e) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: sandboxed
+              ? `系统保护启动失败：${(e as Error).message}`
+              : `执行环境准备失败：${(e as Error).message}`,
+          }],
+        };
       }
 
       // 前台:EM 自己 spawn + 编码容错解码(Windows 下 Pi 的 OutputAccumulator 固定 UTF-8,
       // 解 GBK 字节必乱码;EM 侧按 UTF-8/GBK 自动判定)。行为对齐 Pi:同步 + 超时 + 截断 + PI_* 注入。
       if (params.background !== true) {
-        return executeForeground(execTarget, context.workspaceRealPath, signal, typeof params.timeout === "number" ? params.timeout : undefined, ctx, sandboxed, onUpdate);
+        const result = await executeForeground(execTarget, context.workspaceRealPath, signal, typeof params.timeout === "number" ? params.timeout : undefined, ctx, onUpdate);
+        return execTarget.exemptReason ? appendExemptNote(result, execTarget.exemptReason) : result;
       }
 
       // 后台:spawn + 注册,立即返回
@@ -257,11 +310,20 @@ export async function createEnhancedBashTool(
       // 去哪读输出,运行中可随时 read,不必等退出通知
       let shellSessionId: string | undefined;
       try { shellSessionId = ctx?.sessionManager?.getSessionId?.(); } catch { /* 会话信息不可用 */ }
-      const { id, logPath } = backgroundShellRegistry.start(execTarget, context.workspaceRealPath, options?.onExit, shellSessionId, sandboxed ? command : undefined);
+      // displayCommand 只在"命令被沙盒包装过"时才需要覆盖（否则面板会显示包装串）；
+      // violationKey 是"确实走过沙盒路径"的可靠标志（豁免与原生执行都没有）。
+      const { id, logPath } = backgroundShellRegistry.start(
+        execTarget,
+        context.workspaceRealPath,
+        options?.onExit,
+        shellSessionId,
+        execTarget.violationKey ? command : undefined,
+      );
+      const exemptNote = execTarget.exemptReason ? `\n[沙盒豁免] ${execTarget.exemptReason}` : "";
       return {
         content: [{
           type: "text" as const,
-          text: `已后台启动: ${command}\n后台 ID: ${id}\n输出自动收集(面板实时显示),完整输出落盘: ${logPath}\n命令退出后结果将自动注入会话。无需在命令中手动重定向输出——手动重定向会绕过自动收集,面板和通知将无内容。`,
+          text: `已后台启动: ${command}\n后台 ID: ${id}\n输出自动收集(面板实时显示),完整输出落盘: ${logPath}\n命令退出后结果将自动注入会话。无需在命令中手动重定向输出——手动重定向会绕过自动收集,面板和通知将无内容。${exemptNote}`,
         }],
       };
     },

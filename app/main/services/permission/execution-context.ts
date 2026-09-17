@@ -2,17 +2,26 @@ import path from "node:path";
 import fs from "node:fs";
 import { developmentRuntimeFor, developmentRuntimesRoot, ensureDevelopmentRuntime, type DevelopmentRuntime } from "./development-runtime";
 import { readManagedEnvironment } from "../tools/environment-tool";
+import { sshAgentSockets } from "../sandbox/compat-policy";
 
 /**
- * 权限三档（2026-09-16 定案，用户拍板：受限 / 标准 / 完全访问）：
- * - `restricted` 受限模式：在标准模式的全部边界**之上再加 OS 沙盒**（macOS Seatbelt / Linux bwrap /
- *   Windows srt-sandbox 账户）。代价必须明说：浏览器与浏览器自动化（Chromium/Playwright）不可用
- *   （子进程无法在已沙盒进程中自建沙盒）、无法管理其他命令启动的进程、`open` 打不开。
- *   定位是"跑来源不明的项目/安装脚本"这类场景，不是日常开发。
- * - `standard` 标准模式（默认）：执行前判定 + 开发运行区隔离（HOME/TMPDIR/包缓存重定向），不套沙盒。
- * - `full` 完全访问：只保留系统核心/提权/持久化执行配置三类禁区判定。
+ * 权限三档（2026-09-17 定案：**只读 / 标准 / 完全访问**）：
+ * - `readonly` 只读模式：**读自由，其他一律拒绝**——不执行任何命令、不写入任何文件、
+ *   不启用 MCP、不联网（`web_fetch`/`web_search` 这类工具本身就是外泄出口）。
+ *   它的保证是**结构性的、不依赖路径猜测**：整个执行面被移除 ⇒ 没有进程能发起网络请求
+ *   ⇒ 读到敏感内容也送不出去，所以这一档**允许**读凭据（与标准档相反）。
+ *   代价必须明说：不能构建 / 测试 / 装依赖，**连 `git log`、`git diff` 也不行**（都属执行）。
+ *   定位是"只看不动"（审阅陌生项目、理解代码），不是日常开发。
+ * - `standard` 标准模式（默认）：执行前判定 + 开发运行区隔离（HOME/TMPDIR/包缓存重定向）+ OS 沙盒。
+ * - `full` 完全访问：不套沙盒，只保留系统核心/提权/持久化执行配置三类禁区判定。
  */
-export type PermissionMode = "restricted" | "standard" | "full";
+export type PermissionMode = "readonly" | "standard" | "full";
+
+/** 旧值别名（会话缓存/设置里可能残留），一律归一到新三档。 */
+export const LEGACY_PERMISSION_MODE_ALIASES: Record<string, PermissionMode> = {
+  restricted: "readonly",
+  sandbox: "readonly",
+};
 
 export interface ExecutionContext {
   mode: PermissionMode;
@@ -71,7 +80,9 @@ export function createExecutionContext(
 ): ExecutionContext {
   const workspaceRealPath = realWorkspace(workspace);
   const managed = readManagedEnvironment();
-  const runtime = mode === "standard"
+  // ⚠️ 判据是「非完全访问」而非「等于标准」：只读档也走运行区（它虽不执行，但环境仍要编译出来，
+  //    且此前 restricted 档因为只判 standard 而拿到**未创建的** HOME/TMPDIR——已一并修正）。
+  const runtime = mode !== "full"
     ? ensureDevelopmentRuntime(workspaceRealPath, runtimeBaseRoot)
     : developmentRuntimeFor(workspaceRealPath, runtimeBaseRoot);
   if (mode === "full") {
@@ -134,6 +145,15 @@ export function createExecutionContext(
   if (process.platform === "win32") {
     environment.APPDATA = path.join(runtime.config, "AppData", "Roaming");
     environment.LOCALAPPDATA = path.join(runtime.state, "AppData", "Local");
+  }
+  // ssh-agent 通道：标准/只读档「能 push、而私钥不进会话」的关键。
+  // 为什么需要补：macOS 从 Finder / Dock 启动的应用**不继承 shell 环境**，`SSH_AUTH_SOCK` 常常缺失，
+  // 而它正是 git 找到 agent 的唯一线索（发现逻辑与安全取舍见 sandbox/compat-policy）。
+  // ⚠️ 这里只注入**变量**；沙盒是否放行那个 socket 由 access-policy 的 `allowUnixSockets` 决定 ——
+  //    两者必须同时成立（只注入不放行 = 连接被 seatbelt 拒，命令会以 socket 错误失败）。
+  if (!environment.SSH_AUTH_SOCK) {
+    const agent = sshAgentSockets().find((socket) => fs.existsSync(socket));
+    if (agent) environment.SSH_AUTH_SOCK = agent;
   }
   return { mode, workspaceRealPath, runtimeRoot: runtime.root, environment, policyVersion: "2" };
 }
