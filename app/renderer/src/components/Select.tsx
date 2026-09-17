@@ -18,12 +18,16 @@ interface SelectProps {
   placeholder?: string;
   /** 禁用(只读浏览用) */
   disabled?: boolean;
+  /** 菜单与触发器左缘或中心对齐（输入栏的紧凑选择器使用中心对齐） */
+  align?: "left" | "center";
+  /** 用于输入栏浮层：保留阴影层级，去掉边框 */
+  borderless?: boolean;
 }
 
 const MAX_PANEL_H = 280;
 
 /** 自绘下拉选择：触发器 + fixed 面板（与 ContextMenu 同风格），点击外部/Escape/失焦关闭 */
-export function Select({ value, onChange, options, className, block, placeholder, disabled }: SelectProps): JSX.Element {
+export function Select({ value, onChange, options, className, block, placeholder, disabled, align = "left", borderless = false }: SelectProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -38,7 +42,7 @@ export function Select({ value, onChange, options, className, block, placeholder
     setOpen((o) => {
       if (!o && ref.current) {
         const r = ref.current.getBoundingClientRect();
-        setPos({ left: r.left, top: r.bottom + 4, minWidth: r.width });
+        setPos({ left: align === "center" ? r.left + r.width / 2 : r.left, top: r.bottom + 4, minWidth: r.width });
       }
       return !o;
     });
@@ -54,7 +58,11 @@ export function Select({ value, onChange, options, className, block, placeholder
     if (!r) return;
     let nextLeft = pos.left;
     let nextTop = pos.top;
-    if (rect.right > window.innerWidth - 8) {
+    if (align === "center" && rect.left < 8) {
+      nextLeft = rect.width / 2 + 8;
+    } else if (align === "center" && rect.right > window.innerWidth - 8) {
+      nextLeft = window.innerWidth - rect.width / 2 - 8;
+    } else if (rect.right > window.innerWidth - 8) {
       nextLeft = window.innerWidth - rect.width - 8;
     }
     if (rect.bottom > window.innerHeight) {
@@ -63,7 +71,7 @@ export function Select({ value, onChange, options, className, block, placeholder
     if (nextLeft !== pos.left || nextTop !== pos.top) {
       setPos({ ...pos, left: nextLeft, top: nextTop });
     }
-  }, [open, pos]);
+  }, [align, open, pos]);
 
   // 点击外部 / Escape / 失焦关闭
   // 注意:面板 Portal 到 body,须把 panelRef 也视为内部——否则点击面板 option 会先触发
@@ -109,8 +117,8 @@ export function Select({ value, onChange, options, className, block, placeholder
       {open && pos && createPortal(
         <div
           ref={panelRef}
-          className="fixed z-dropdown w-max py-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface-elevated shadow-xl"
-          style={{ left: pos.left, top: pos.top, minWidth: pos.minWidth, maxHeight: MAX_PANEL_H }}
+          className={`fixed z-dropdown w-max py-0 overflow-hidden rounded-[var(--radius-lg)] bg-surface-elevated shadow-xl ${borderless ? "" : "border border-border"}`}
+          style={{ left: pos.left, top: pos.top, minWidth: pos.minWidth, maxHeight: MAX_PANEL_H, transform: align === "center" ? "translateX(-50%)" : undefined }}
         >
           <div className="overflow-y-auto" style={{ maxHeight: MAX_PANEL_H }}>
             {options.map((o) => (

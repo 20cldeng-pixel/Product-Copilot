@@ -58,12 +58,12 @@ function ChatPermissionModeSection(): JSX.Element {
           value={chatPermissionMode}
           onChange={(v) => { void handleChange(v); }}
           options={[
-            { value: "readonly", label: "只读（读自由，不执行/不写入/不联网）" },
+            { value: "readonly", label: "只读（普通项目可读，敏感凭据除外）" },
             { value: "standard", label: "标准（系统沙盒内执行，工作区可写）" },
             { value: "full", label: "完全访问（普通文件无限制）" },
           ]}
         />
-        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">只读模式可以自由读取，但不执行任何命令、不写文件、不联网——代价是不能构建/测试/装依赖（git 操作也不行），适合审阅来源不明的项目。完全访问不限制普通文件读写；从标准模式切换时会先说明风险。系统核心、提权与自动执行代码的持久化配置始终受保护。</p>
+        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">只读模式可读普通项目内容（敏感凭据除外），但不执行命令、不写文件或应用状态、不联网，适合审阅来源不明的项目。完全访问不套沙盒；系统核心、提权与持久化配置只做执行前尽力拦截，动态脚本不提供强隔离保证。</p>
       </div>
     </section>
   );

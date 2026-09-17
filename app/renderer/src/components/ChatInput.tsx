@@ -1,4 +1,5 @@
 import { memo, useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useSettingsStore } from "../stores/settings-store";
 import { THINKING_LABELS, THINKING_ORDER } from "@shared/thinking-levels";
 import { useStatusStore } from "../stores/status-store";
@@ -50,28 +51,178 @@ interface ChatInputProps {
 /** 权限三档（主进程 PermissionMode 在渲染层的副本；三档定义见 permission/execution-context.ts） */
 export type PermissionMode = "readonly" | "standard" | "full";
 
-/** 点击循环顺序：只读 → 标准 → 完全访问 → 只读（每次点击"放宽一档"，与旧的二态开关方向一致） */
-const PERMISSION_CYCLE: Record<PermissionMode, PermissionMode> = {
-  readonly: "standard",
-  standard: "full",
-  full: "readonly",
-};
-
-/** 档位文案：标签 + hover 说明。只读档的代价必须写出来，否则用户会以为坏了。 */
-const PERMISSION_LABEL: Record<PermissionMode, { text: string; tip: string }> = {
+/** 档位文案：下拉菜单展示每档边界，避免用户把“标准”与“完全访问”混为一谈。 */
+const PERMISSION_LABEL: Record<PermissionMode, { text: string; tip: string; description: string }> = {
   readonly: {
     text: "只读",
-    tip: "只读模式：可以自由读取，但不执行任何命令、不写入文件、不联网。代价是不能构建/测试/装依赖（git 操作也不行）——适合审阅来源不明的项目",
+    tip: "只读模式：可读普通项目内容（敏感凭据除外），但不执行命令、不写入文件或应用状态、不联网。不能构建/测试/装依赖或运行 git——适合审阅来源不明的项目",
+    description: "仅浏览项目内容，不执行、不写入、不联网",
   },
   standard: {
     text: "标准",
     tip: "标准模式：系统沙盒内执行，工作区与任务临时目录可写；越界写入、读取凭据会被拒绝",
+    description: "默认推荐：在系统沙盒内开发",
   },
   full: {
     text: "完全访问",
-    tip: "完全访问：不套沙盒，普通文件不受工作区限制；gh / git push / 浏览器 / Playwright 均可用",
+    tip: "完全访问：不套沙盒，普通文件不受工作区限制；gh / git push / 浏览器 / Playwright 均可用。系统危险操作仅做执行前尽力拦截",
+    description: "不套沙盒，普通文件不受工作区限制",
   },
 };
+
+const PERMISSION_MODES: PermissionMode[] = ["readonly", "standard", "full"];
+
+function PermissionShieldIcon({ mode, className }: { mode: PermissionMode; className?: string }): JSX.Element {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      {mode === "full" ? (
+        <><path d="M12 8v4" /><path d="M12 16h.01" /></>
+      ) : mode === "readonly" ? (
+        <><rect x="9" y="11" width="6" height="5" rx="1" /><path d="M10.5 11V9.5a1.5 1.5 0 0 1 3 0V11" /></>
+      ) : (
+        <path d="m9 12 2 2 4-4" />
+      )}
+    </svg>
+  );
+}
+
+/** 输入栏权限选择器：用清晰的三项菜单替代循环开关，且固定定位避免被聊天容器裁切。 */
+function PermissionModePicker({ value, onChange }: { value: PermissionMode; onChange: (mode: PermissionMode) => void }): JSX.Element {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ left: number; top: number; above: boolean } | null>(null);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setPosition(null);
+  }, []);
+
+  const openMenu = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // 与模型选择器一致：默认向下展开；只有贴近窗口底部时才翻到上方。
+    // left 保存触发器中心点，菜单通过 translateX(-50%) 与它水平居中。
+    setPosition({ left: rect.left + rect.width / 2, top: rect.bottom + 4, above: false });
+    setOpen(true);
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (open) close();
+    else openMenu();
+  }, [close, open, openMenu]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [close, open]);
+
+  // 菜单实际尺寸只在挂载后可得：钳制左右边距，窗口底部空间不足时改为向上展开。
+  useEffect(() => {
+    if (!open || !position || !panelRef.current || !triggerRef.current) return;
+    const panel = panelRef.current.getBoundingClientRect();
+    const trigger = triggerRef.current.getBoundingClientRect();
+    const enoughRoomBelow = trigger.bottom + panel.height + 4 <= window.innerHeight;
+    const nextAbove = !enoughRoomBelow;
+    const nextLeft = Math.max(panel.width / 2 + 8, Math.min(trigger.left + trigger.width / 2, window.innerWidth - panel.width / 2 - 8));
+    const nextTop = nextAbove ? trigger.top - 4 : trigger.bottom + 4;
+    if (nextLeft !== position.left || nextTop !== position.top || nextAbove !== position.above) {
+      setPosition({ left: nextLeft, top: nextTop, above: nextAbove });
+    }
+  }, [open, position]);
+
+  useEffect(() => {
+    if (!open) return;
+    const selectedIndex = PERMISSION_MODES.indexOf(value);
+    requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+  }, [open, value]);
+
+  const moveFocus = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const next = (index + (event.key === "ArrowDown" ? 1 : -1) + PERMISSION_MODES.length) % PERMISSION_MODES.length;
+    optionRefs.current[next]?.focus();
+  };
+
+  const current = PERMISSION_LABEL[value];
+  const color = value === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary";
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) openMenu();
+          }
+        }}
+        className={`permission-mode-trigger ${color}`}
+        aria-label={`权限模式：${current.text}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <PermissionShieldIcon mode={value} />
+        <span className="permission-mode-trigger-label">{current.text}</span>
+        <svg className={`permission-mode-chevron ${open ? "rotate-180" : ""}`} width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 4.5 3 3 3-3" /></svg>
+      </button>
+      {open && position && createPortal(
+        <div
+          ref={panelRef}
+          role="menu"
+          aria-label="选择权限模式"
+          className="permission-mode-menu"
+          style={{ left: position.left, top: position.top, transform: position.above ? "translate(-50%, -100%)" : "translateX(-50%)" }}
+        >
+          {PERMISSION_MODES.map((mode, index) => {
+            const item = PERMISSION_LABEL[mode];
+            const selected = mode === value;
+            return (
+              <button
+                key={mode}
+                ref={(node) => { optionRefs.current[index] = node; }}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                className={`permission-mode-option ${selected ? "is-selected" : ""} ${mode === "full" ? "is-full" : ""}`}
+                onClick={() => { onChange(mode); close(); }}
+                onKeyDown={(event) => moveFocus(event, index)}
+              >
+                <span className={`permission-mode-option-icon ${mode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`}><PermissionShieldIcon mode={mode} /></span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="permission-mode-option-title">{item.text}{mode === "standard" && <span className="permission-mode-default">推荐</span>}</span>
+                  <span className="permission-mode-option-description">{item.description}</span>
+                </span>
+                {selected && <svg className="shrink-0 text-accent" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-label="当前选择"><path d="m5 12 4 4L19 6" /></svg>}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
 
 // 档位名称与顺序见 @shared/thinking-levels（主进程与渲染层共用）
 
@@ -355,31 +506,7 @@ export const ChatInput = memo(function ChatInput({
             </span>
           </Tooltip>
         )}
-        {/* 权限三档：只读 / 标准 / 完全访问，点击循环切换。
-            图标区分档位（盾内 锁 / 勾 / 感叹号），只有完全访问点亮危险色——颜色与图标都在表达风险。 */}
-        <Tooltip tip={PERMISSION_LABEL[permissionMode].tip} className="shrink-0">
-          <button
-            type="button"
-            onClick={() => onPermissionModeChange(PERMISSION_CYCLE[permissionMode])}
-            className="flex items-center gap-1.5 shrink-0 group"
-            aria-label={`权限模式：${PERMISSION_LABEL[permissionMode].text}（点击切换）`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`block transition-colors ${permissionMode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`} style={{ marginRight: -1, marginLeft: 2 }} role="img">
-              <title>{`权限：${PERMISSION_LABEL[permissionMode].text}`}</title>
-              <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-              {permissionMode === "full" ? (
-                <><path d="M12 8v4" /><path d="M12 16h.01" /></>
-              ) : permissionMode === "readonly" ? (
-                <><rect x="9" y="11" width="6" height="5" rx="1" /><path d="M10.5 11V9.5a1.5 1.5 0 0 1 3 0V11" /></>
-              ) : (
-                <path d="m9 12 2 2 4-4" />
-              )}
-            </svg>
-            <span className={`text-[length:var(--text-xs)] transition-colors ${permissionMode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`}>
-              {PERMISSION_LABEL[permissionMode].text}
-            </span>
-          </button>
-        </Tooltip>
+        <PermissionModePicker value={permissionMode} onChange={onPermissionModeChange} />
         {/* 模型标签:神经网络节点图标(三点互联,带三点聚拢动效)——组件见 ModelGlyph;hover 悬浮名称(与缓存命中率一致向上) */}
         <Tooltip tip="模型" className="shrink-0">
           <ModelGlyph label="模型" className="inp-lbl block" style={{ marginRight: -1, marginLeft: 2 }} />
@@ -388,6 +515,8 @@ export const ChatInput = memo(function ChatInput({
           value={chatModel}
           onChange={onModelChange}
           options={availableModels.length > 0 ? availableModels.map((m) => ({ value: m, label: modelLabels[m] ?? m })) : [{ value: "", label: "暂无可选模型" }]}
+          align="center"
+          borderless
         />
         {/* 思考等级标签:大脑图标(Lucide brain)——替换原「思考」文字;hover 悬浮名称(与缓存命中率一致向上) */}
         <Tooltip tip="思考等级" className="shrink-0">
@@ -406,9 +535,10 @@ export const ChatInput = memo(function ChatInput({
         <Select
           value={thinkingLevel}
           onChange={onThinkingLevelChange}
-          
           options={(thinkingLevels && thinkingLevels.length > 0 ? THINKING_ORDER.filter((l) => thinkingLevels.includes(l)) : THINKING_ORDER)
             .map((l) => ({ value: l, label: THINKING_LABELS[l] ?? l }))}
+          align="center"
+          borderless
         />
         {/* 上下文使用率环:点击打开统计;百分比 hover 悬浮显示(圈内不常驻数字,悬浮向上与缓存命中率一致) */}
         <Tooltip tip={ctxTip(ctxPct, ctxWindow)} className="shrink-0">
