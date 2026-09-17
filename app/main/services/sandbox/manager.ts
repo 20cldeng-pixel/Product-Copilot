@@ -69,6 +69,45 @@ export function isSandboxBypassed(): boolean {
 }
 
 /**
+ * 该模式是否套 OS 沙盒。**只有 `restricted`（受限模式）套**——2026-09-16 定案把权限做成三档
+ * （受限 / 标准 / 完全访问），沙盒从"默认防线"改为"用户可选的正式档位"：
+ *
+ * - `restricted` 受限模式：在标准模式全部边界之上再加 OS 强制（Seatbelt / bwrap / srt-sandbox 账户）。
+ *   代价必须在 UI 里说清：浏览器与浏览器自动化（Chromium/Playwright）不可用、无法管理其他命令启动的
+ *   进程、`open` 打不开——它面向"跑来源不明的项目/安装脚本"，不是日常开发档。
+ * - `standard` 标准模式（默认）：不套沙盒，边界由执行前判定 + 开发运行区隔离承担（见 §12 记的三条线）。
+ * - `full` 完全访问：永不套沙盒。
+ *
+ * 为什么标准模式默认不套（两天排查的结论，别重复考古）：seatbelt 的净收益只有"拦读凭据、拦工作区外
+ * 写入"两条，代价却是把进程信号、Apple Events、Mach IPC 一起挡掉；最硬的一条实测是
+ * **Chromium 只要身处任何 seatbelt 沙盒内就起不来**（子进程 apply 自己的沙盒被拒 →
+ * `sandbox initialization failed: Operation not permitted`，"套一层宽松沙盒"也救不了）。
+ * 那两条净收益已由命令预检接住（agent-permission-service 的 findOutOfScopeWriteTarget /
+ * findProtectedReadTarget / findProtectedWriteTarget）。
+ *
+ * `EASYMINT_SANDBOX_ENABLED=1` 是**标准模式的应急回退通道**（把旧行为临时找回来，不进 UI）。
+ */
+export function isSandboxEnabledForMode(mode: PermissionMode = "standard"): boolean {
+  if (mode === "full") return false;
+  if (mode === "restricted") return true;
+  return process.env.EASYMINT_SANDBOX_ENABLED === "1";
+}
+
+/**
+ * 该权限模式下是否跳过 OS 沙盒。**两种模式默认都跳过**（见 isSandboxEnabledForMode）；
+ * 完全访问永远跳过，Linux 的「关闭沙盒运行」设置仍是最高优先级的关闭开关。
+ *
+ * 历史背景（别重复考古）：完全访问最早也走沙盒，于是"完全访问"名不副实——srt 的 seatbelt
+ * profile 是 deny-default 白名单，进程与信号、Apple Events、Mach IPC 全在名单外，
+ * 杀不掉别的命令启动的进程、`open` 打不开浏览器；更硬的一条是 **Chromium 只要身处任何
+ * seatbelt 沙盒内就起不来**（子进程 apply 自己的沙盒时 `sandbox initialization failed:
+ * Operation not permitted`，三组对照实测，"套一层宽松沙盒"也救不了）。
+ */
+export function isSandboxBypassedForMode(mode?: PermissionMode): boolean {
+  return isSandboxBypassed() || !isSandboxEnabledForMode(mode ?? "standard");
+}
+
+/**
  * srt filesystem 规则（写 allow-only / 读 deny-then-allow）：
  * - 两模式都禁止直接读取高度敏感凭据、禁止修改系统核心与安全控制面；
  * - 标准模式可写工作区与正式开发资源，完全访问可写其余普通位置；
@@ -143,8 +182,10 @@ async function applyWindowsConfig(cfg: SandboxRuntimeConfig): Promise<SandboxRun
   }
 }
 
-/** 懒加载初始化（幂等）。失败原因保留供权限层 fail-closed 拒绝时展示。 */
-export async function ensureSandbox(cwd: string): Promise<SandboxInitResult> {
+/** 懒加载初始化（幂等）。失败原因保留供权限层 fail-closed 拒绝时展示。
+ *  沙盒未启用（默认，含完全访问）时直接返回 ok——那条路径根本不进沙盒，见 isSandboxBypassedForMode。 */
+export async function ensureSandbox(cwd: string, mode?: PermissionMode): Promise<SandboxInitResult> {
+  if (isSandboxBypassedForMode(mode)) return { ok: true };
   if (_state === "ok") return { ok: true };
   if (_state === "failed") return { ok: false, reason: _failReason };
   try {
@@ -240,6 +281,7 @@ export async function wrapForSandbox(
   command: string,
   opts: { context: ExecutionContext; gitBashPath?: string; windowsShell?: "bash" | "powershell" },
 ): Promise<SandboxSpawnSpec> {
+  if (isSandboxBypassedForMode(opts.context.mode)) return nativeSpawnSpec(command, opts);
   const srt = await getSrt();
   const context = opts.context;
   if (process.platform === "win32") {
@@ -261,6 +303,29 @@ export async function wrapForSandbox(
     env: context.environment,
     release: createSandboxLease(),
   };
+}
+
+/**
+ * 完全访问的原生执行规格：不套任何 OS 沙盒，直接在宿主环境执行。
+ * 形态与沙盒分支保持一致，调用方无需分支：
+ * - 非 Windows：shell 字符串 → 原样交给 resolveSpawn（shell:true + detached 进程组，便于整组 kill）
+ * - Windows：argv 形态（bash = Git Bash -c／powershell = powershell -Command），
+ *   比 srt-win 那条两跳路径少一次 worker 转交
+ * 不返回 release：没有 srt 租约，也就没有 bwrap/seatbelt 留下的 ghost 占位文件要清
+ * （调用方一律用 `release?.()`，缺省即跳过）。
+ */
+function nativeSpawnSpec(
+  command: string,
+  opts: { context: ExecutionContext; gitBashPath?: string; windowsShell?: "bash" | "powershell" },
+): SandboxSpawnSpec {
+  const env = opts.context.environment;
+  if (process.platform === "win32") {
+    const powershell = opts.windowsShell === "powershell";
+    const exe = powershell ? "powershell.exe" : (opts.gitBashPath ?? "bash.exe");
+    const args = powershell ? ["-NoProfile", "-NonInteractive", "-Command", command] : ["-c", command];
+    return { kind: "argv", argv: [exe, ...args], env };
+  }
+  return { kind: "shell", command, env };
 }
 
 function runtimeEnvironmentPrefix(environment: NodeJS.ProcessEnv): string {

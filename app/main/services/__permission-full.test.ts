@@ -7,9 +7,12 @@ import type { CanUseToolOptions } from "./permission/agent-permission-service";
 const CWD = path.join(os.homedir(), "dev", "myproj");
 
 vi.mock("./session-cache", () => ({ readCache: () => ({ permissionMode: "full" }) }));
+// 完全访问不进沙盒（2026-09-16 拍板）：下面的"仍禁止"用例因此**全部落在执行前判定上**，
+// 不再有 OS 沙盒兜底——这组断言就是那条底线的守卫。
 vi.mock("./sandbox/manager", () => ({
   ensureSandbox: async () => ({ ok: true }),
   isSandboxBypassed: () => false,
+  isSandboxBypassedForMode: (mode?: string) => mode === "full",
 }));
 
 const check = new AgentPermissionService().createCanUseTool("sid-test", CWD);
@@ -48,13 +51,34 @@ describe("完全访问权限契约", () => {
     expect((await read("/tmp/grad_bg.png")).behavior).toBe("allow");
   });
 
-  it("仍禁止直接读写高度敏感凭据", async () => {
+  // 2026-09-16 用户口径：除"系统核心"与"危险操作"外全部放开 → 凭据属于要打通的能力
+  it("完全访问放开高度敏感凭据的读写（gh / git push / keychain 工具因此可用）", async () => {
     const credential = path.join(os.homedir(), ".ssh", "id_rsa");
-    expect((await read(credential)).behavior).toBe("deny");
-    expect((await write(credential)).behavior).toBe("deny");
+    expect((await read(credential)).behavior).toBe("allow");
+    expect((await write(credential)).behavior).toBe("allow");
+    expect((await bash(`cat ${JSON.stringify(credential)}`)).behavior).toBe("allow");
+    expect((await bash("gh auth status")).behavior).toBe("allow");
+    expect((await bash("git push origin main")).behavior).toBe("allow");
   });
 
-  it("仍禁止系统核心写入和系统控制命令", async () => {
+  it("持久化执行载体与安全机制开关仍被拒（危险操作侧）", async () => {
+    // 会自动执行代码的配置：改一次就等于把整个判定层绕过（下次会话 / 开机即生效）
+    expect((await write(path.join(os.homedir(), "Library", "LaunchAgents", "x.plist"))).behavior).toBe("deny");
+    expect((await write(path.join(os.homedir(), ".easymint", "agent", "settings.json"))).behavior).toBe("deny");
+    // 关闭安全机制 / 系统级变更：命令预检
+    for (const command of [
+      "spctl --master-disable",
+      "fdesetup disable",
+      "softwareupdate -i -a",
+      "socketfilterfw --setglobalstate off",
+      "csrutil disable",
+    ]) {
+      const result = await bash(command);
+      expect(result.behavior, command).toBe("deny");
+    }
+  });
+
+  it("系统核心写入和系统控制命令仍被拒", async () => {
     expect((await write("/etc/easymint.conf")).behavior).toBe("deny");
     expect((await write(path.join(CWD, ".mcp.json"))).behavior).toBe("deny");
     expect((await bash("launchctl unload x")).behavior).toBe("deny");
@@ -68,5 +92,50 @@ describe("完全访问权限契约", () => {
   it("PowerShell 不再被旧的 Windows worker 占位规则提前拒绝", async () => {
     const result = await check("powershell", { command: "Get-ChildItem ." }, opts);
     expect(result.behavior).toBe("allow");
+  });
+
+  // 完全访问不进沙盒后，"系统核心/设备/持久化载体"只剩执行前判定这一道
+  it("shell 命令不得写入系统核心、原始设备与持久化执行配置", async () => {
+    for (const command of [
+      "echo x > /etc/easymint.conf",
+      "cp ./payload /usr/bin/curl",
+      "tee -a /etc/hosts",
+      "sed -i '' s/a/b/ /etc/hosts",
+      "dd of=/dev/mem if=/dev/zero count=1",
+      "echo x >> ~/.easymint/mcp.json",
+      "rm -rf /",
+      "rm -rf ~",
+    ]) {
+      const result = await bash(command);
+      expect(result.behavior, command).toBe("deny");
+    }
+    // 承接原 execution-policy.integration.test.ts 的「两种模式都不能改写工作区 .mcp.json」：
+    // 完全访问不再有沙盒兜底，这条改由命令预检保护（命中 protectedPersistencePaths 即拒绝）
+    const workspaceMcp = path.join(CWD, ".mcp.json");
+    const writeMcp = await bash(`printf '%s' '{"mcpServers":{}}' > ${JSON.stringify(workspaceMcp)}`);
+    expect(writeMcp.behavior).toBe("deny");
+  });
+
+  it("普通写入、进程管理、开浏览器与读系统公开文件不受影响", async () => {
+    for (const command of [
+      "npm run build",
+      "echo x > /tmp/easymint-ok.txt",
+      "echo x > /dev/null",
+      "rm -rf node_modules",
+      "cp -r ./src /tmp/backup",
+      "cat /etc/hosts",
+      "ls > ../outside.txt",
+      "echo hi > /etc/../tmp/spot.txt",
+      "kill -TERM 12345",
+      "pkill -f vite",
+      "open https://example.com",
+      "rm -rf ~/.ssh/known_hosts",
+      "defaults write com.apple.dock autohide -bool true",
+      "killall Finder",
+      'git commit -m "document /etc and ~/.ssh"',
+    ]) {
+      const result = await bash(command);
+      expect(result.behavior, command).toBe("allow");
+    }
   });
 });

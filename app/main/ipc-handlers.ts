@@ -528,7 +528,11 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("session-cache:write", async (_e, { sessionId, data }) => {
     const previous = readCache(sessionId)?.permissionMode;
     writeCache(sessionId, data);
-    if ((previous === "full" || previous === "bypassPermissions") && data?.permissionMode === "standard") {
+    // 从完全访问收紧到任何其它档（标准 / 受限）都要撤销旧的高权限执行上下文；
+    // 只写其它字段（不发 permissionMode）时不动。
+    const next = data?.permissionMode;
+    if ((previous === "full" || previous === "bypassPermissions")
+      && next !== undefined && next !== "full" && next !== "bypassPermissions") {
       await agentService.revokeElevatedExecution(sessionId);
     }
   });

@@ -16,7 +16,8 @@ export async function createEnhancedPowerShellTool(cwd: string): Promise<ToolDef
       if (!command.trim()) return { content: [{ type: "text" as const, text: "请提供 command" }], details: {} };
       const context = params[EXECUTION_POLICY] as ExecutionContext | undefined
         ?? createExecutionContext(cwd, "standard");
-      const initialized = await ensureSandbox(context.workspaceRealPath);
+      // 完全访问不进沙盒：ensureSandbox 按模式短路，wrapForSandbox 返回原生 argv 规格
+      const initialized = await ensureSandbox(context.workspaceRealPath, context.mode);
       if (!initialized.ok) return { content: [{ type: "text" as const, text: `系统保护初始化失败：${initialized.reason}` }], details: {} };
       try {
         const wrapped = await wrapForSandbox(command, { context, windowsShell: "powershell" });

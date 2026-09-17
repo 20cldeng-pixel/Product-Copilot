@@ -5,18 +5,18 @@
  * 并把不可伪造的执行策略交给工具包装层。命令中的消息、正则和脚本文本不再扫描成路径。
  */
 
-import { ensureSandbox, isSandboxBypassed } from "../sandbox/manager";
+import { ensureSandbox, isSandboxBypassedForMode } from "../sandbox/manager";
 import { readCache } from "../session-cache";
 import { parse as parseShell } from "shell-quote";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   canonicalPolicyPath,
   isStandardWritableTarget,
   pathHitsAny,
-  protectedControlPaths,
   protectedCredentialPaths,
-  protectedWriteRoots,
+  protectedTargetsForMode,
   type PermissionMode,
 } from "./access-policy";
 import { bindExecutionOwner, createExecutionContext, type ExecutionContext } from "./execution-context";
@@ -99,25 +99,27 @@ export class AgentPermissionService {
       const explicitPaths = extractExplicitPaths(input);
 
       if (isReadTool(name)) {
-        for (const requested of explicitPaths) {
-          if (pathHitsAny(requested, protectedCredentialPaths(), cwd)) {
-            return deny("core.credential_read", "read", requested, "读取高度敏感凭据");
+        // 高敏凭据的**读**检查只在标准模式生效（2026-09-16 用户口径：完全访问除系统核心与
+        // 危险操作外全放开）。此前完全访问也拦，导致 `read ~/.ssh/id_rsa` 被拒、而 shell 里
+        // `cat` 却能读——同一文件两套口径，属于不一致，已随本次改动统一。
+        if (mode !== "full") {
+          for (const requested of explicitPaths) {
+            if (pathHitsAny(requested, protectedCredentialPaths(), cwd)) {
+              return deny("core.credential_read", "read", requested, "读取高度敏感凭据（标准模式限制，切完全访问可放开）");
+            }
           }
         }
         return allow();
       }
 
       if (isWriteTool(name)) {
+        const protectedTargets = protectedTargetsForMode(mode, cwd);
         for (const requested of explicitPaths) {
           const target = canonicalPolicyPath(requested, cwd);
-          if (pathHitsAny(target, [
-            ...protectedWriteRoots(),
-            ...protectedCredentialPaths(),
-            ...protectedControlPaths(cwd),
-          ], cwd)) {
-            return deny("core.protected_write", "write", target, "修改系统核心或高度敏感资源（完全访问也不允许）");
+          if (pathHitsAny(target, protectedTargets, cwd)) {
+            return deny("core.protected_write", "write", target, "修改系统核心、原始设备或持久化执行配置（完全访问也不允许）");
           }
-          if (mode === "standard" && !isStandardWritableTarget(cwd, target)) {
+          if (mode !== "full" && !isStandardWritableTarget(cwd, target)) {
             return deny("standard.write_scope", "write", target, "写入工作区外文件");
           }
         }
@@ -125,8 +127,8 @@ export class AgentPermissionService {
       }
 
       if (name === "install_dependency") {
-        if (!isSandboxBypassed()) {
-          const sandbox = await ensureSandbox(cwd);
+        if (!isSandboxBypassedForMode(mode)) {
+          const sandbox = await ensureSandbox(cwd, mode);
           if (!sandbox.ok) {
             return deny("backend.sandbox_unavailable", "execute", "install_dependency", `安全执行后端不可用：${sandbox.reason}`);
           }
@@ -144,8 +146,24 @@ export class AgentPermissionService {
         if (unsafeScript) {
           return deny("core.privileged_operation", "execute", unsafeScript, "执行包含提权或系统控制命令的本地脚本（完全访问也不允许）");
         }
-        if (!isSandboxBypassed()) {
-          const sandbox = await ensureSandbox(cwd);
+        // 两种模式都不再有 OS 沙盒兜底（见 sandbox/manager.isSandboxEnabledForMode）→
+        // 这层执行前判定就是唯一屏障。三条线各接住沙盒原来扛的一件事：
+        // ① 保护面（原 denyWrite/allowWrite 的禁区）② 标准模式的区外写（原 allowWrite 的白名单）
+        // ③ 标准模式的凭据读（原 denyRead）。都是启发式，边界见各函数注释。
+        const protectedTarget = findProtectedWriteTarget(command, cwd, mode);
+        if (protectedTarget) {
+          return deny("core.protected_write", "write", protectedTarget, "写入系统核心、原始设备或持久化执行配置（不可放开）");
+        }
+        const outOfScope = mode !== "full" ? findOutOfScopeWriteTarget(command, cwd) : null;
+        if (outOfScope) {
+          return deny("standard.write_scope", "write", outOfScope, "写入工作区与开发运行区之外（切完全访问可放开）");
+        }
+        const secretRead = mode !== "full" ? findProtectedReadTarget(command, cwd) : null;
+        if (secretRead) {
+          return deny("core.credential_read", "read", secretRead, "读取高度敏感凭据（标准模式限制，切完全访问可放开）");
+        }
+        if (!isSandboxBypassedForMode(mode)) {
+          const sandbox = await ensureSandbox(cwd, mode);
           if (!sandbox.ok) {
             return deny("backend.sandbox_unavailable", "execute", firstCommand(command), `安全执行后端不可用：${sandbox.reason}`);
           }
@@ -156,19 +174,16 @@ export class AgentPermissionService {
       if (name.startsWith("mcp__") && explicitPaths.length > 0) {
         const writeLike = /(?:write|edit|create|delete|remove|move|copy|upload|update|patch|save)/.test(name);
         const readLike = /(?:read|get|list|search|find|fetch|download)/.test(name);
+        const protectedTargets = protectedTargetsForMode(mode, cwd);
         for (const requested of explicitPaths) {
           const target = canonicalPolicyPath(requested, cwd);
-          if (readLike && pathHitsAny(target, protectedCredentialPaths(), cwd)) {
-            return deny("core.credential_read", "read", target, "读取高度敏感凭据");
+          if (readLike && mode !== "full" && pathHitsAny(target, protectedCredentialPaths(), cwd)) {
+            return deny("core.credential_read", "read", target, "读取高度敏感凭据（标准模式限制，切完全访问可放开）");
           }
-          if (writeLike && pathHitsAny(target, [
-            ...protectedWriteRoots(),
-            ...protectedCredentialPaths(),
-            ...protectedControlPaths(cwd),
-          ], cwd)) {
-            return deny("core.protected_write", "write", target, "修改系统核心或高度敏感资源（完全访问也不允许）");
+          if (writeLike && pathHitsAny(target, protectedTargets, cwd)) {
+            return deny("core.protected_write", "write", target, "修改系统核心、原始设备或持久化执行配置（完全访问也不允许）");
           }
-          if (writeLike && mode === "standard" && !isStandardWritableTarget(cwd, target)) {
+          if (writeLike && mode !== "full" && !isStandardWritableTarget(cwd, target)) {
             return deny("standard.write_scope", "write", target, "写入工作区外文件");
           }
         }
@@ -181,7 +196,10 @@ export class AgentPermissionService {
 export const permissionService = new AgentPermissionService();
 
 function normalizeMode(raw: string): PermissionMode {
-  return raw === "full" || raw === "bypassPermissions" ? "full" : "standard";
+  if (raw === "full" || raw === "bypassPermissions") return "full";
+  // "sandbox" 是受限模式定名前用过的内部叫法，一并接受（老会话缓存里可能出现）
+  if (raw === "restricted" || raw === "sandbox") return "restricted";
+  return "standard";
 }
 
 function isReadTool(name: string): boolean {
@@ -217,7 +235,7 @@ function firstCommand(command: string): string {
 /** 明确的提权、磁盘和系统服务控制命令；文件路径保护由运行时沙盒完成。 */
 export function isSystemMutationCommand(command: string): boolean {
   const alwaysMutating = new Set([
-    "sudo", "su", "dd", "mkfs", "umount", "fdisk", "parted",
+    "sudo", "su", "doas", "dd", "mkfs", "umount", "fdisk", "parted",
     "shutdown", "reboot", "halt", "poweroff",
     "csrutil", "nvram", "diskpart", "format", "bcdedit", "netsh",
     "set-executionpolicy", "format-volume", "clear-disk", "initialize-disk",
@@ -227,6 +245,9 @@ export function isSystemMutationCommand(command: string): boolean {
     "set-itemproperty", "new-itemproperty", "remove-itemproperty", "set-mppreference", "regedit",
     "add-windowscapability", "remove-windowscapability", "enable-windowsoptionalfeature",
     "disable-windowsoptionalfeature", "install-windowsfeature", "uninstall-windowsfeature",
+    // macOS 安全机制 / 固件 / 内核 / 防火墙（2026-09-16 补：完全访问不再有沙盒兜底，
+    // 这批"关闭安全机制"的动作此前不在名单里，属危险操作缺口）
+    "fdesetup", "systemsetup", "kextload", "kextunload", "pfctl", "socketfilterfw", "bless",
   ]);
   const mutatingSubcommands: Record<string, Set<string>> = {
     launchctl: new Set(["bootstrap", "bootout", "enable", "disable", "kickstart", "kill", "load", "remove", "setenv", "start", "stop", "submit", "unload", "unsetenv"]),
@@ -236,6 +257,9 @@ export function isSystemMutationCommand(command: string): boolean {
     reg: new Set(["add", "delete", "import", "load", "unload", "restore", "copy"]),
     schtasks: new Set(["/change", "/create", "/delete", "/end", "/run"]),
     diskutil: new Set(["apfs", "corestorage", "eject", "eraseDisk", "eraseVolume", "mount", "mountDisk", "partitionDisk", "randomDisk", "rename", "repairDisk", "repairVolume", "resetFusion", "unmount", "unmountDisk", "zeroDisk"].map((v) => v.toLowerCase())),
+    // 关闭/改写安全机制与系统更新（只拦变更类参数，`spctl --status` 之类查询仍放行）
+    spctl: new Set(["--master-disable", "--global-disable", "--disable", "--enable", "--add", "--remove"]),
+    softwareupdate: new Set(["-i", "--install", "-a", "--all", "--schedule", "--clear-catalog"]),
   };
   // 命令替换会在普通命令的参数求值阶段执行。shell-quote 会把双引号中的 $(...) 当成
   // 一个字符串，因此先单独提取真实会执行的子命令；单引号内的同样文本不会被提取。
@@ -512,6 +536,155 @@ function findUnsafeExecutedScript(command: string, cwd: string): string | null {
     words = [];
   }
   return inspect();
+}
+
+/** 参数即目标（可多个）的写入类命令 */
+const WRITE_ALL_ARG_COMMANDS = new Set([
+  "rm", "rmdir", "unlink", "shred", "truncate", "touch", "mkdir",
+  "chmod", "chown", "chgrp", "chflags", "tee", "setfacl",
+]);
+/** 末位参数是写入目标、前面参数是读取来源的命令 */
+const WRITE_LAST_ARG_COMMANDS = new Set(["cp", "mv", "install", "ln", "rsync", "scp"]);
+/** 参数即读取来源的命令（用来接住"读凭据"这条原来由沙盒 denyRead 扛的线） */
+const READ_ALL_ARG_COMMANDS = new Set([
+  "cat", "less", "more", "head", "tail", "strings", "xxd", "od", "base64",
+  "wc", "sort", "uniq", "md5", "md5sum", "shasum", "cksum", "file", "stat",
+  "grep", "rg", "ag", "awk", "sed", "perl", "diff", "du", "ls", "find", "tar", "zip", "ditto",
+]);
+
+interface CommandTargets {
+  reads: string[];
+  writes: string[];
+}
+
+/**
+ * 从一条 shell 命令里收集**显式的**读/写目标（启发式）。
+ *
+ * 认：写重定向（`>` `>>` `2>` `&>`）、写/读类命令的位置参数、`dd of=|if=`、`sed|perl -i` 的目标文件。
+ * 不认：变量与命令替换（`> $F`、`tee $(…)`）、脚本文件内部的读写——后者只能靠
+ * `findUnsafeExecutedScript` 的脚本内容扫描兜一层。解析失败按"无目标"处理（放行交给下一层）。
+ */
+function collectCommandTargets(command: string): CommandTargets {
+  const result: CommandTargets = { reads: [], writes: [] };
+  let parsed: ReturnType<typeof parseShell>;
+  try { parsed = parseShell(command); } catch { return result; }
+
+  const separators = new Set(["&&", "||", ";", ";;", "|", "|&", "&", "(", ")", "<("]);
+  let words: string[] = [];
+  let redirect: "read" | "write" | null = null;
+
+  const flush = (): void => {
+    if (words.length > 0) {
+      let index = 0;
+      while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] || "")) index++;
+      while (["command", "exec", "nohup", "env", "xcrun", "nice"].includes(commandBasename(words[index] || ""))) {
+        const wrapper = commandBasename(words[index++] || "");
+        while (words[index]?.startsWith("-")) index++;
+        if (wrapper === "env") while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] || "")) index++;
+      }
+      const token = commandBasename(words[index] || "");
+      const rawArgs = words.slice(index + 1);
+      const args = rawArgs.filter((arg) => !arg.startsWith("-"));
+      if (token === "dd") {
+        for (const arg of rawArgs) {
+          if (arg.startsWith("of=")) result.writes.push(arg.slice(3));
+          if (arg.startsWith("if=")) result.reads.push(arg.slice(3));
+        }
+      } else if (WRITE_ALL_ARG_COMMANDS.has(token)) {
+        result.writes.push(...args);
+      } else if (WRITE_LAST_ARG_COMMANDS.has(token)) {
+        result.reads.push(...args.slice(0, -1));
+        const last = args[args.length - 1];
+        if (last) result.writes.push(last);
+      } else if (READ_ALL_ARG_COMMANDS.has(token)) {
+        const inPlace = (token === "sed" || token === "perl") && rawArgs.some((arg) => /^-i/.test(arg));
+        if (inPlace && args.length > 0) {
+          result.reads.push(...args.slice(0, -1));
+          result.writes.push(args[args.length - 1]!);
+        } else {
+          result.reads.push(...args);
+        }
+      }
+    }
+    words = [];
+  };
+
+  for (const entry of parsed) {
+    if (typeof entry === "string") {
+      if (redirect === "write") { redirect = null; result.writes.push(entry); continue; }
+      if (redirect === "read") { redirect = null; result.reads.push(entry); continue; }
+      words.push(entry);
+      continue;
+    }
+    if ("comment" in entry) break;
+    if (!("op" in entry) || typeof entry.op !== "string") continue;
+    if (entry.op.includes(">")) { redirect = "write"; continue; }
+    if (entry.op.includes("<") && !entry.op.includes("<(")) { redirect = "read"; continue; }
+    if (!separators.has(entry.op)) continue;
+    flush();
+  }
+  flush();
+  return result;
+}
+
+function cleanTarget(raw: string): string | null {
+  const token = raw.replace(/^['"]|['"]$/g, "");
+  return token && !token.startsWith("-") ? token : null;
+}
+
+/**
+ * 命中**保护面**（系统核心 / 原始设备 / 持久化执行配置；标准模式另含凭据与 EasyMint 状态）的写目标。
+ * 保护面按模式取，见 `protectedTargetsForMode`。
+ */
+export function findProtectedWriteTarget(command: string, cwd: string, mode: PermissionMode = "standard"): string | null {
+  const { writes } = collectCommandTargets(command);
+  const protectedRoots = protectedTargetsForMode(mode, cwd);
+  const home = os.homedir();
+  for (const raw of writes) {
+    const token = cleanTarget(raw);
+    if (!token) continue;
+    const absolute = canonicalPolicyPath(token, cwd);
+    // 根目录与 home 本身不算"保护面的子路径"，但整棵删除同样是灾难，单独拦
+    if (absolute === "/" || absolute === home) return absolute;
+    if (pathHitsAny(absolute, protectedRoots, cwd)) return absolute;
+  }
+  return null;
+}
+
+/**
+ * 标准模式下**越界**的写目标（原由沙盒的 allowWrite「只放工作区与运行区」承担）。
+ * 设备文件不算越界（`> /dev/null` 是最常见的一条；裸设备已由保护面先拦）。
+ */
+export function findOutOfScopeWriteTarget(command: string, cwd: string): string | null {
+  const { writes } = collectCommandTargets(command);
+  for (const raw of writes) {
+    const token = cleanTarget(raw);
+    if (!token) continue;
+    const absolute = canonicalPolicyPath(token, cwd);
+    if (absolute === "/dev" || absolute.startsWith("/dev/")) continue;
+    if (!isStandardWritableTarget(cwd, absolute)) return absolute;
+  }
+  return null;
+}
+
+/**
+ * 标准模式下读取**高敏凭据**的目标（原由沙盒的 denyRead 承担）。
+ *
+ * 只判定"看起来是路径"的参数（`/`、`~`、`./`、`../` 开头）——读命令的模式/表达式参数
+ * （`sed 's/a/b/'`、`grep 'x'`）不该走路径判定。
+ * 已知缺口：`cd ~ && cat .ssh/id_rsa` 这类**相对路径**不判（凭据都在 home，cwd 在项目内时碰不到；
+ * 只有先 cd 出去才可能，属启发式的固有边界）。
+ */
+export function findProtectedReadTarget(command: string, cwd: string): string | null {
+  const { reads } = collectCommandTargets(command);
+  const credentials = protectedCredentialPaths();
+  for (const raw of reads) {
+    const token = cleanTarget(raw);
+    if (!token || !/^(?:\/|~|\.\.?\/)/.test(token)) continue;
+    const absolute = canonicalPolicyPath(token, cwd);
+    if (pathHitsAny(absolute, credentials, cwd)) return absolute;
+  }
+  return null;
 }
 
 /** 保留给诊断测试；执行安全不再依赖脚本文本扫描。 */

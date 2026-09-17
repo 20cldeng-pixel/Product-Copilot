@@ -26,7 +26,9 @@ vi.mock("@anthropic-ai/sandbox-runtime", () => ({
 
 import { sandboxLeaseInternals, wrapForSandbox } from "./manager";
 
-const context = () => createExecutionContext(path.join(process.cwd(), "temp", "lease-test"), "standard");
+// 租约只属于**沙盒路径**，而沙盒现在只在「受限模式」下启用（见 manager.isSandboxEnabledForMode）——
+// 本文件因此用 restricted 档跑；标准/完全访问走原生执行，没有租约（见 __full-mode-native.test.ts）。
+const context = () => createExecutionContext(path.join(process.cwd(), "temp", "lease-test"), "restricted");
 
 describe("沙盒收尾租约", () => {
   it("wrapForSandbox 必须给出 release —— 否则四条执行路径都在调 undefined", async () => {

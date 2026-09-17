@@ -85,4 +85,12 @@ describe("权限段产品语义", () => {
     expect(PERMISSION_RULES_PROMPT).not.toContain("/tmp");
     expect(PERMISSION_RULES_PROMPT).not.toContain("用户目录写入");
   });
+  // 2026-09-16：权限做成三档（受限 / 标准 / 完全访问），两种非受限档都不套 OS 沙盒 ——
+  // 提示词必须说清"由执行前判定拦"、并写明受限档的能力代价，否则模型被拦时误判为 bug。
+  it("说清三档、边界来自执行前判定，且受限档的代价已写明", () => {
+    expect(PERMISSION_RULES_PROMPT).toContain("受限模式");
+    expect(PERMISSION_RULES_PROMPT).toContain("执行前判定");
+    expect(PERMISSION_RULES_PROMPT).toContain("用宿主真实环境执行");
+    expect(PERMISSION_RULES_PROMPT).toContain("Playwright");
+  });
 });

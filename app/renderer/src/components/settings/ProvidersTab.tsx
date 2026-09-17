@@ -44,7 +44,7 @@ function ChatPermissionModeSection(): JSX.Element {
   const chatPermissionMode = useSettingsStore((s) => s.chatPermissionMode);
   const setChatPermissionMode = useSettingsStore((s) => s.setChatPermissionMode);
   const handleChange = async (value: string): Promise<void> => {
-    const mode = value as "standard" | "full";
+    const mode = value as "restricted" | "standard" | "full";
     if (mode === "full" && chatPermissionMode !== "full" && !(await confirmFullAccess())) return;
     setChatPermissionMode(mode);
   };
@@ -58,11 +58,12 @@ function ChatPermissionModeSection(): JSX.Element {
           value={chatPermissionMode}
           onChange={(v) => { void handleChange(v); }}
           options={[
+            { value: "restricted", label: "受限（叠加系统级沙盒）" },
             { value: "standard", label: "标准（工作区与专属开发环境）" },
             { value: "full", label: "完全访问（普通文件无限制）" },
           ]}
         />
-        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">完全访问不限制普通文件读写；从标准模式切换时会先说明风险。系统核心、凭据和 EasyMint 安全配置始终受保护。</p>
+        <p className="text-[length:var(--text-2xs)] text-text-secondary mt-1.5">受限模式在标准模式之上叠加系统级沙盒，适合跑来源不明的项目——代价是浏览器、浏览器自动化（Playwright）与跨进程管理不可用。完全访问不限制普通文件读写；从标准模式切换时会先说明风险。系统核心、提权与自动执行代码的持久化配置始终受保护。</p>
       </div>
     </section>
   );

@@ -35,8 +35,8 @@ interface ChatInputProps {
   onDocChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   /** 点击附件缩略图查看原图(ImageViewer 挂载在页面层，状态在 viewer-store) */
   onPreviewImage?: (src: string, name: string) => void;
-  permissionMode: "standard" | "full";
-  onPermissionModeChange: (v: "standard" | "full") => void;
+  permissionMode: PermissionMode;
+  onPermissionModeChange: (v: PermissionMode) => void;
   chatModel: string;
   onModelChange: (m: string) => void;
   thinkingLevel: string;
@@ -46,6 +46,32 @@ interface ChatInputProps {
   thinkingLevels?: string[] | null;
   onThinkingLevelChange: (v: string) => void;
 }
+
+/** 权限三档（主进程 PermissionMode 在渲染层的副本；三档定义见 permission/execution-context.ts） */
+export type PermissionMode = "restricted" | "standard" | "full";
+
+/** 点击循环顺序：受限 → 标准 → 完全访问 → 受限（每次点击"放宽一档"，与旧的二态开关方向一致） */
+const PERMISSION_CYCLE: Record<PermissionMode, PermissionMode> = {
+  restricted: "standard",
+  standard: "full",
+  full: "restricted",
+};
+
+/** 档位文案：标签 + hover 说明。受限档的代价必须写出来，否则用户会以为坏了。 */
+const PERMISSION_LABEL: Record<PermissionMode, { text: string; tip: string }> = {
+  restricted: {
+    text: "受限",
+    tip: "受限模式：叠加系统级沙盒。浏览器与浏览器自动化（Playwright）不可用、无法管理其它命令启动的进程——适合跑来源不明的项目",
+  },
+  standard: {
+    text: "标准",
+    tip: "标准模式：工作区与专属开发环境可写；越界写入、读取凭据会被拒绝",
+  },
+  full: {
+    text: "完全访问",
+    tip: "完全访问：普通文件不受工作区限制；gh / git push / 浏览器 / Playwright 均可用",
+  },
+};
 
 // 档位名称与顺序见 @shared/thinking-levels（主进程与渲染层共用）
 
@@ -329,35 +355,31 @@ export const ChatInput = memo(function ChatInput({
             </span>
           </Tooltip>
         )}
-        {/* 权限标签：完全访问关闭普通路径限制；两种模式都保留系统核心保护。
-            盾形图标随模式切换(标准=shield-check / 完全访问=shield-alert)，颜色与文字一致；hover 悬浮说明。 */}
-        <Tooltip tip={permissionMode === "full" ? "完全访问：普通文件不受工作区限制" : "标准：工作区与专属开发环境可写"} className="shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`block transition-colors ${permissionMode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`} style={{ marginRight: -1, marginLeft: 2 }} role="img" aria-label="权限">
-            <title>{permissionMode === "full" ? "完全访问" : "标准权限"}</title>
-            <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-            {permissionMode === "full" ? (
-              <><path d="M12 8v4" /><path d="M12 16h.01" /></>
-            ) : (
-              <path d="m9 12 2 2 4-4" />
-            )}
-          </svg>
+        {/* 权限三档：受限（叠系统沙盒）/ 标准 / 完全访问，点击循环切换。
+            图标区分档位（盾内 锁 / 勾 / 感叹号），只有完全访问点亮危险色——颜色与图标都在表达风险。 */}
+        <Tooltip tip={PERMISSION_LABEL[permissionMode].tip} className="shrink-0">
+          <button
+            type="button"
+            onClick={() => onPermissionModeChange(PERMISSION_CYCLE[permissionMode])}
+            className="flex items-center gap-1.5 shrink-0 group"
+            aria-label={`权限模式：${PERMISSION_LABEL[permissionMode].text}（点击切换）`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`block transition-colors ${permissionMode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`} style={{ marginRight: -1, marginLeft: 2 }} role="img">
+              <title>{`权限：${PERMISSION_LABEL[permissionMode].text}`}</title>
+              <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+              {permissionMode === "full" ? (
+                <><path d="M12 8v4" /><path d="M12 16h.01" /></>
+              ) : permissionMode === "restricted" ? (
+                <><rect x="9" y="11" width="6" height="5" rx="1" /><path d="M10.5 11V9.5a1.5 1.5 0 0 1 3 0V11" /></>
+              ) : (
+                <path d="m9 12 2 2 4-4" />
+              )}
+            </svg>
+            <span className={`text-[length:var(--text-xs)] transition-colors ${permissionMode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`}>
+              {PERMISSION_LABEL[permissionMode].text}
+            </span>
+          </button>
         </Tooltip>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={permissionMode === "full"}
-
-          onClick={() => onPermissionModeChange(permissionMode === "full" ? "standard" : "full")}
-          className="flex items-center gap-1.5 shrink-0 group"
-        >
-          <span className={`text-[length:var(--text-xs)] transition-colors ${permissionMode === "full" ? "text-[var(--color-permission-on)]" : "text-text-secondary"}`}>
-            {permissionMode === "full" ? "完全访问" : "标准"}
-          </span>
-          <span className={`relative w-8 h-[18px] rounded-full transition-colors overflow-hidden ${permissionMode === "full" ? "bg-[var(--color-permission-on)] border border-[var(--color-permission-on)]" : "bg-surface-hover border border-border"}`}>
-            {/* hover 高亮在圆点上(group-hover):与模型/思考的 hover 同色(surface-hover) */}
-            <span className={`absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-surface-elevated shadow transition-all group-hover:bg-surface-hover ${permissionMode === "full" ? "left-[calc(100%-16px)]" : "left-0.5"}`} />
-          </span>
-        </button>
         {/* 模型标签:神经网络节点图标(三点互联,带三点聚拢动效)——组件见 ModelGlyph;hover 悬浮名称(与缓存命中率一致向上) */}
         <Tooltip tip="模型" className="shrink-0">
           <ModelGlyph label="模型" className="inp-lbl block" style={{ marginRight: -1, marginLeft: 2 }} />

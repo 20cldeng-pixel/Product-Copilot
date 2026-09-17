@@ -15,7 +15,7 @@ import { useStatusStore } from "../stores/status-store";
 import { StatusBar } from "./StatusBar";
 import { useDelegationStore } from "../stores/delegation-store";
 import { normalizeApiError } from "../../../shared/api-errors";
-import { ChatInput, AttachPreview } from "./ChatInput";
+import { ChatInput, AttachPreview, type PermissionMode } from "./ChatInput";
 import { TodoStrip } from "./TodoStrip";
 import { SessionStatsPopup } from "./SessionStatsPopup";
 import { CompactionDialog } from "./CompactionDialog";
@@ -206,7 +206,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
   // 权限模式:新会话默认取全局持久化值(输入条切换即更新全局——用户不需要每次重选);
   // 只读一次作初始值,不订阅全局变化(会话内以手动切换为准)
   const globalPermissionMode = useSettingsStore((s) => s.chatPermissionMode);
-  const [permissionMode, setPermissionMode] = useState<"standard" | "full">(globalPermissionMode || "standard");
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(globalPermissionMode || "standard");
   // 权限模式「已恢复」标记：读会话缓存是异步的，而初始值来自异步加载的全局设置——
   // 两者都未就绪时初始值会落到 fallback "standard"，若不拦一道，写缓存 effect 会把这个
   // 未就绪的值覆盖到磁盘（磁盘上的 full 被抹掉，重启后永远回 standard）
@@ -532,16 +532,14 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
     if (sid) { window.electronAPI.agent.setModel(sid, m, chatProvider || undefined).catch(() => {}); }
   }, [setStoreModel, chatProvider]);
 
-  /** 标准 → 完全访问时说明风险并确认；切回标准直接生效。模式会持久化为全局默认。 */
-  const handlePermissionModeChange = useCallback(async (mode: "standard" | "full") => {
+  /** 标准/受限 → 完全访问时说明风险并确认；切回或切到受限直接生效。模式会持久化为全局默认。 */
+  const handlePermissionModeChange = useCallback(async (mode: PermissionMode) => {
     if (mode === "full" && permissionMode !== "full") {
       const ok = await confirmFullAccess();
       if (!ok) return;
     }
     setPermissionMode(mode);
-    if (mode === "standard" || mode === "full") {
-      useSettingsStore.getState().setChatPermissionMode(mode);
-    }
+    useSettingsStore.getState().setChatPermissionMode(mode);
   }, [permissionMode]);
   const [showStats, setShowStats] = useState(false);
   // 压缩确认弹层：auto=阈值自动触发 / manual=统计弹窗按钮
@@ -1779,7 +1777,11 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
         if (cache.permissionMode) {
           sessionPermissionOwnedRef.current = true;
           const m = cache.permissionMode;
-          setPermissionMode(m === "full" || m === "bypassPermissions" ? "full" : "standard");
+          setPermissionMode(
+            m === "full" || m === "bypassPermissions" ? "full"
+              : m === "restricted" || m === "sandbox" ? "restricted"
+                : "standard",
+          );
         }
         if (cache.model) setChatModel(cache.model);
         if (cache.provider) setChatProvider(cache.provider);

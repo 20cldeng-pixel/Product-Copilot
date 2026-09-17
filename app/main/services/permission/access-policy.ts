@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import { developmentRuntimeFor, developmentRuntimesRoot } from "./development-runtime";
-import type { ExecutionContext } from "./execution-context";
+import type { ExecutionContext, PermissionMode } from "./execution-context";
 
 export type { PermissionMode } from "./execution-context";
 
@@ -45,8 +45,9 @@ export function protectedWriteRoots(platform: NodeJS.Platform = process.platform
   ];
 }
 
-/** 原始设备不能通过“完全访问”获得写权限；按启动时实际存在的设备展开，避免 glob 后端差异。 */
-function protectedDevicePaths(platform: NodeJS.Platform = process.platform): string[] {
+/** 原始设备不能通过“完全访问”获得写权限；按启动时实际存在的设备展开，避免 glob 后端差异。
+ *  导出给命令预检复用（完全访问不进沙盒后，写裸设备也要在执行前拦掉）。 */
+export function protectedDevicePaths(platform: NodeJS.Platform = process.platform): string[] {
   if (platform === "win32") return [];
   const fixed = ["/dev/mem", "/dev/kmem", "/dev/port", "/dev/kmsg", "/dev/mapper", "/dev/disk"];
   try {
@@ -82,15 +83,16 @@ export function protectedCredentialPaths(platform: NodeJS.Platform = process.pla
 }
 
 /**
- * EasyMint 与 shell 的持久控制面。它们不一定含凭据，所以仍可由只读工具检查，
- * 但普通文件工具和沙盒进程不能改写；修改应走宿主提供的专用、结构化能力。
+ * 能在**后续会话或开机**时执行任意代码的持久化载体：MCP 配置（决定下次会话启动哪些本地进程）、
+ * EasyMint 的模型/供应商设置（能把请求转发到别的端点）、自启目录（开机即执行）。
+ *
+ * 它们不是"系统核心"，但改一次就等于把整个判定层绕过去——所以归到"危险操作"一侧，
+ * **完全访问也保留保护**（2026-09-16 用户口径：除系统核心与危险操作外全放开）。
  */
-export function protectedControlPaths(cwd: string, platform: NodeJS.Platform = process.platform): string[] {
+export function protectedPersistencePaths(cwd: string, platform: NodeJS.Platform = process.platform): string[] {
   const home = os.homedir();
-  const controls = [
+  const paths = [
     path.join(home, ".easymint", "mcp.json"),
-    path.join(home, ".easymint", "session-cache"),
-    path.join(home, ".easymint", "system-prompts.json"),
     path.join(home, ".easymint", "agent", "settings.json"),
     path.join(home, ".easymint", "agent", "models.json"),
     path.join(home, ".config", "autostart"),
@@ -107,9 +109,48 @@ export function protectedControlPaths(cwd: string, platform: NodeJS.Platform = p
   ];
   if (platform === "win32") {
     const appData = process.env.APPDATA || path.win32.join(home, "AppData", "Roaming");
-    controls.push(path.win32.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup"));
+    paths.push(path.win32.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup"));
   }
-  return controls;
+  return paths;
+}
+
+/** EasyMint 的会话状态（缓存、提示词覆盖）。改它不构成提权，完全访问下放开。 */
+export function protectedStatePaths(): string[] {
+  const home = os.homedir();
+  return [
+    path.join(home, ".easymint", "session-cache"),
+    path.join(home, ".easymint", "system-prompts.json"),
+  ];
+}
+
+/**
+ * EasyMint 与 shell 的持久控制面（两者合并，标准模式用）。
+ * 它们不一定含凭据，所以仍可由只读工具检查，但普通文件工具和沙盒进程不能改写；
+ * 修改应走宿主提供的专用、结构化能力。
+ */
+export function protectedControlPaths(cwd: string, platform: NodeJS.Platform = process.platform): string[] {
+  return [...protectedPersistencePaths(cwd, platform), ...protectedStatePaths()];
+}
+
+/**
+ * 该模式下"仍受保护"的目标集合（2026-09-16 用户口径：除系统核心与危险操作外全放开）。
+ *
+ * - 两种模式都保护：系统核心（`protectedWriteRoots`）+ 原始设备 + 持久化执行载体
+ * - 标准模式额外：高敏凭据 + EasyMint 会话状态
+ * - 完全访问**不再保护凭据**——用户明确要求"其他都放开"，读凭据属于他要打通的能力
+ *   （`gh`/`git push`/本地 keychain 工具因此可用）；代价是提示注入也能读到，见文档说明
+ */
+export function protectedTargetsForMode(
+  mode: PermissionMode,
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const always = [
+    ...protectedWriteRoots(platform),
+    ...protectedDevicePaths(platform),
+    ...protectedPersistencePaths(cwd, platform),
+  ];
+  return mode === "full" ? always : [...always, ...protectedCredentialPaths(platform), ...protectedStatePaths()];
 }
 
 export function buildExecutionPolicy(context: Pick<ExecutionContext, "mode" | "workspaceRealPath" | "runtimeRoot">): SandboxRuntimeConfig {

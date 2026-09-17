@@ -115,7 +115,9 @@ async function connect(
     if (cfg.command && !commandExists(cfg.command, context.environment)) {
       throw new Error(`未找到命令 "${cfg.command}"——请检查 MCP 配置,确认已安装`);
     }
-    const initialized = await ensureSandbox(projectPath);
+    // 完全访问模式不进沙盒——否则 Playwright 这类需要自己 apply 子进程沙盒的 MCP 会恒起不来
+    // （Chromium 在已沙盒进程内 `sandbox initialization failed`），见 isSandboxBypassedForMode
+    const initialized = await ensureSandbox(projectPath, mode);
     if (!initialized.ok) throw new Error(`MCP 安全执行后端不可用：${initialized.reason}`);
     const rawCommand = [cfg.command!, ...(cfg.args ?? [])].map(shellQuote).join(" ");
     const gitBashPath = process.platform === "win32" ? findBashOnWindows() : undefined;

@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ToolDefinition } from "../pi-sdk";
 import { getDefineToolFn } from "../pi-sdk";
-import { ensureSandbox, wrapForSandbox, isSandboxBypassed, type SandboxSpawnSpec } from "../sandbox/manager";
+import { ensureSandbox, wrapForSandbox, isSandboxBypassedForMode, type SandboxSpawnSpec } from "../sandbox/manager";
 import { executeForeground } from "../background-shell/tool";
 import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
@@ -77,11 +77,11 @@ export async function createDependencyTool(cwd: string): Promise<ToolDefinition>
       const context = (params as Record<PropertyKey, unknown>)[EXECUTION_POLICY] as ExecutionContext | undefined
         ?? createExecutionContext(cwd, "standard");
       const command = installCommand(manager, packages, scope, params.dev === true, context.workspaceRealPath);
-      // Linux 兜底：设置里关掉沙盒运行时直接执行；此时任意子进程 I/O 不再有 OS 强制边界
-      if (isSandboxBypassed()) {
+      // 完全访问 / Linux 兜底：直接原生执行；此时任意子进程 I/O 不再有 OS 强制边界
+      if (isSandboxBypassedForMode(context.mode)) {
         return executeForeground(command, context.workspaceRealPath, signal, undefined, undefined, false, onUpdate);
       }
-      const initialized = await ensureSandbox(context.workspaceRealPath);
+      const initialized = await ensureSandbox(context.workspaceRealPath, context.mode);
       if (!initialized.ok) throw new Error(`系统保护初始化失败：${initialized.reason}`);
       const wrapped = await wrapForSandbox(command, {
         context,

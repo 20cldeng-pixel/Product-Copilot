@@ -3,7 +3,16 @@ import fs from "node:fs";
 import { developmentRuntimeFor, developmentRuntimesRoot, ensureDevelopmentRuntime, type DevelopmentRuntime } from "./development-runtime";
 import { readManagedEnvironment } from "../tools/environment-tool";
 
-export type PermissionMode = "standard" | "full";
+/**
+ * 权限三档（2026-09-16 定案，用户拍板：受限 / 标准 / 完全访问）：
+ * - `restricted` 受限模式：在标准模式的全部边界**之上再加 OS 沙盒**（macOS Seatbelt / Linux bwrap /
+ *   Windows srt-sandbox 账户）。代价必须明说：浏览器与浏览器自动化（Chromium/Playwright）不可用
+ *   （子进程无法在已沙盒进程中自建沙盒）、无法管理其他命令启动的进程、`open` 打不开。
+ *   定位是"跑来源不明的项目/安装脚本"这类场景，不是日常开发。
+ * - `standard` 标准模式（默认）：执行前判定 + 开发运行区隔离（HOME/TMPDIR/包缓存重定向），不套沙盒。
+ * - `full` 完全访问：只保留系统核心/提权/持久化执行配置三类禁区判定。
+ */
+export type PermissionMode = "restricted" | "standard" | "full";
 
 export interface ExecutionContext {
   mode: PermissionMode;
