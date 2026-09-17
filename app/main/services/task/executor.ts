@@ -80,6 +80,8 @@ export interface SubagentOptions {
   delegationId: string;
   /** 子会话 jsonl 路径记录(按 index 写入;前端查看 Agent 过程定位文件) */
   childSessionFiles: string[];
+  /** 子会话 ID 记录（按 index 写入；后台进程所有权与父会话撤销能力使用）。 */
+  childSessionIds: string[];
   /** Agent 模板名(如 builder/evaluator)——只取它的 prompt 作子 Agent 人格;模型与等级不来自模板 */
   agent?: string;
   /** 主会话当前生效的思考等级——**唯一来源**(子 Agent 不再有任何等级配置) */
@@ -242,6 +244,7 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
     });
     // 记录子会话 jsonl 路径(前端查看 Agent 过程用)
     opts.childSessionFiles[opts.index] = session2.sessionFile ?? "";
+    opts.childSessionIds[opts.index] = resolveAgentSessionId(session2);
     progress.sessionFile = opts.childSessionFiles[opts.index] || undefined;
     const result2 = await executeAndCollect(session2, opts.task, yieldItems, opts, progress, id, agentLabel, startMs, opts.outputSchema);
     return result2;
@@ -264,6 +267,7 @@ async function runSingleSubagent(opts: SubagentOptions): Promise<SingleResult> {
     });
     // 记录子会话 jsonl 路径(前端查看 Agent 过程用)
     opts.childSessionFiles[opts.index] = session.sessionFile ?? "";
+    opts.childSessionIds[opts.index] = resolveAgentSessionId(session);
     progress.sessionFile = opts.childSessionFiles[opts.index] || undefined;
     const result = await executeAndCollect(session, opts.task, yieldItems, opts, progress, id, agentLabel, startMs);
     return result;
@@ -540,6 +544,7 @@ export async function runSubagents(
       onProgress: runtime.onProgress,
       delegationId: record.delegationId,
       childSessionFiles: record.childSessionFiles,
+      childSessionIds: record.childSessionIds,
       agent: task.agent,
       model: task.model,
       provider: task.provider,
@@ -601,4 +606,13 @@ export async function runSubagents(
       aborted: false,
     },
   });
+}
+
+function resolveAgentSessionId(session: unknown): string {
+  const candidate = session as { sessionId?: string; sessionManager?: { getSessionId?: () => string } };
+  try {
+    return candidate.sessionId ?? candidate.sessionManager?.getSessionId?.() ?? "";
+  } catch {
+    return candidate.sessionId ?? "";
+  }
 }

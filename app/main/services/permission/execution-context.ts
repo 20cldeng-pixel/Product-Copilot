@@ -8,8 +8,8 @@ import { sshAgentSockets } from "../sandbox/compat-policy";
  * 权限三档（2026-09-17 定案：**只读 / 标准 / 完全访问**）：
  * - `readonly` 只读模式：**读自由，其他一律拒绝**——不执行任何命令、不写入任何文件、
  *   不启用 MCP、不联网（`web_fetch`/`web_search` 这类工具本身就是外泄出口）。
- *   它的保证是**结构性的、不依赖路径猜测**：整个执行面被移除 ⇒ 没有进程能发起网络请求
- *   ⇒ 读到敏感内容也送不出去，所以这一档**允许**读凭据（与标准档相反）。
+ *   工具面按纯读白名单 fail-closed；高度敏感凭据仍禁止读取，因为工具结果会进入远程模型上下文，
+ *   模型请求本身也是外发通道，不能把“没有联网工具”等同于“内容不会离开本机”。
  *   代价必须明说：不能构建 / 测试 / 装依赖，**连 `git log`、`git diff` 也不行**（都属执行）。
  *   定位是"只看不动"（审阅陌生项目、理解代码），不是日常开发。
  * - `standard` 标准模式（默认）：执行前判定 + 开发运行区隔离（HOME/TMPDIR/包缓存重定向）+ OS 沙盒。
@@ -22,6 +22,24 @@ export const LEGACY_PERMISSION_MODE_ALIASES: Record<string, PermissionMode> = {
   restricted: "readonly",
   sandbox: "readonly",
 };
+
+/** 会话缓存中的旧值/缺省值统一归一；缺省沿用产品默认的标准模式。 */
+export function normalizePermissionMode(raw?: string): PermissionMode {
+  if (raw === "full" || raw === "bypassPermissions") return "full";
+  return LEGACY_PERMISSION_MODE_ALIASES[raw ?? ""] ?? (raw === "readonly" ? "readonly" : "standard");
+}
+
+const PERMISSION_MODE_RANK: Record<PermissionMode, number> = {
+  readonly: 0,
+  standard: 1,
+  full: 2,
+};
+
+/** 只要新模式更严格，就必须立即撤销旧执行上下文，而不只处理 full → 其它档。 */
+export function isPermissionModeTightening(previous: string | undefined, next: string | undefined): boolean {
+  if (previous === undefined || next === undefined) return false;
+  return PERMISSION_MODE_RANK[normalizePermissionMode(next)] < PERMISSION_MODE_RANK[normalizePermissionMode(previous)];
+}
 
 export interface ExecutionContext {
   mode: PermissionMode;
@@ -146,7 +164,7 @@ export function createExecutionContext(
     environment.APPDATA = path.join(runtime.config, "AppData", "Roaming");
     environment.LOCALAPPDATA = path.join(runtime.state, "AppData", "Local");
   }
-  // ssh-agent 通道：标准/只读档「能 push、而私钥不进会话」的关键。
+  // ssh-agent 通道：标准档「能 push、而私钥不进会话」的关键（只读档不执行 git）。
   // 为什么需要补：macOS 从 Finder / Dock 启动的应用**不继承 shell 环境**，`SSH_AUTH_SOCK` 常常缺失，
   // 而它正是 git 找到 agent 的唯一线索（发现逻辑与安全取舍见 sandbox/compat-policy）。
   // ⚠️ 这里只注入**变量**；沙盒是否放行那个 socket 由 access-policy 的 `allowUnixSockets` 决定 ——

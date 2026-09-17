@@ -16,6 +16,7 @@ import { ensureSandbox, wrapForSandbox, annotateSandboxFailures, isSandboxBypass
 import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { maskSecrets } from "../../utils/secret-mask";
+import { getOwnedSessionIds } from "../task/registry";
 
 /**
  * 已编译的执行目标 —— **必须携带环境**。
@@ -363,13 +364,14 @@ export function createStopShellTool(): ToolDefinition {
       _onUpdate?: unknown,
       ctx?: any,
     ) {
-      // 按发起会话过滤（对齐 stop_agent 的会话语义）：只停本会话启动的命令，
-      // 避免跨会话误停（多窗口/多 tab 并行时各自的后台命令互不干扰）
+      // 主会话可管理自己及后代子 Agent 启动的命令；子会话只拥有自己。
+      // 会话信息缺失时 fail-closed，不能退化为“能停止所有会话”。
       let sessionId: string | undefined;
       try { sessionId = ctx?.sessionManager?.getSessionId?.(); } catch { /* 会话信息不可用 */ }
       const mine = (): BackgroundShell[] => {
-        const all = backgroundShellRegistry.list();
-        return sessionId ? all.filter((s) => !s.sessionId || s.sessionId === sessionId) : all;
+        if (!sessionId) return [];
+        const owned = getOwnedSessionIds(sessionId);
+        return backgroundShellRegistry.list().filter((s) => !!s.sessionId && owned.has(s.sessionId));
       };
       const reason = params.reason ? `(${String(params.reason)})` : "";
       if (params.id) {

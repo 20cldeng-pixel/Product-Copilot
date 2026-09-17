@@ -92,6 +92,19 @@ export function getRunningDelegations(sessionId: string): DelegationRecord[] {
   return out;
 }
 
+/** 主会话拥有自己及其创建的子会话；子会话不会反向获得父会话或兄弟会话的控制权。 */
+export function getOwnedSessionIds(sessionId: string): Set<string> {
+  const resolved = resolveParentSessionId(sessionId);
+  const owned = new Set<string>([sessionId, resolved]);
+  for (const record of delegations.values()) {
+    if (record.parentSessionId !== resolved && record.tempParentSessionId !== sessionId) continue;
+    for (const childId of record.childSessionIds) {
+      if (childId) owned.add(childId);
+    }
+  }
+  return owned;
+}
+
 /** 中止某主会话的全部运行中委派（调用各子会话 abort）；source = 主动停止来源(用户 UI / Mint stop_agent) */
 export function abortDelegations(parentSessionId: string, source?: TaskStopSource): number {
   const running = getRunningDelegations(parentSessionId);

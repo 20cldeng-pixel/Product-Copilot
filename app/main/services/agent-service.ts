@@ -28,7 +28,7 @@ import { createDependencyTool } from "./tools/dependency-tool";
 import { evaluateLearnGate, isFixTool } from "./learn-gate";
 import { searchExperiences, buildExperienceInjection, shortId } from "./experience-service";
 import { createImportTools } from "./import-tools";
-import { registerSessionIdMapping, abortDelegations, abortTask, getRunningSummary, getRunningDelegations, resolveParentSessionId } from "./task/registry";
+import { registerSessionIdMapping, abortDelegations, abortTask, getRunningSummary, getRunningDelegations, getOwnedSessionIds, resolveParentSessionId } from "./task/registry";
 import type { TaskStatus } from "./task/types";
 import { formatShellResult } from "./background-shell/tool";
 import { backgroundShellRegistry, type BackgroundShell } from "./background-shell/registry";
@@ -52,6 +52,7 @@ import { renameSession, hasCustomTitle } from "./session-service";
 import { buildProjectEnvSection, buildProjectProfileSection, readProjectProfile, PERMISSION_RULES_PROMPT } from "./prompt-sections";
 import { MINT_DESIGN_BOOST, THINKING_LANGUAGE_PROMPT } from "../../shared/prompts";
 import { resolveThinkingLevel } from "../../shared/thinking-levels";
+import { isPermissionModeTightening, normalizePermissionMode } from "./permission/execution-context";
 
 // ── 类型 ────────────────────────────────────────────
 
@@ -100,6 +101,8 @@ interface ActiveChat {
   eventBuffer: PiChatEvent[];
   /** 按需激活的压缩专用会话（仅加载历史，无工具/系统提示）——发消息时需重建为完整会话 */
   minimal?: boolean;
+  /** 从只读放宽后需要重建工具集，才能安全地按需加载此前未连接的 MCP。 */
+  rebuildToolsOnNextMessage?: boolean;
   /** 本会话已 compact 次数（轮转取消后仅统计用） */
   compactCount: number;
   /** learn 触发控制（期3）：本轮（单轮）信号累计 + 每会话一次防重 */
@@ -730,13 +733,15 @@ export class AgentService {
         onTaskCompleted: (sid, text) => this.injectSystemMessage(sid, text, "delegation"),
       });
       const productTools = await createProductTools(projectPath);
-      // 本地 MCP 长驻进程按「项目 + 当前权限模式」隔离；模式切换后的下一次调用会使用
-      // 对应的新连接，不能继续复用旧模式进程。
-      const mcpTools = await loadMcpTools(projectPath, () => {
+      const resolveMode = () => {
         const sid = resolveParentSessionId(sessionId);
-        const raw = readCache(sid)?.permissionMode;
-        return raw === "full" || raw === "bypassPermissions" ? "full" : "standard";
-      }, sessionId);
+        return normalizePermissionMode(readCache(sid)?.permissionMode);
+      };
+      // 只读会话不能为了发现工具而启动本地 MCP 或连接远程 MCP。MCP 工具集在会话创建时固定，
+      // 因此从只读放宽后需新建/恢复会话才能加载 MCP；安全上宁可少工具，也不能预连接。
+      const mcpTools = resolveMode() === "readonly"
+        ? []
+        : await loadMcpTools(projectPath, resolveMode, sessionId);
       const agentTemplateTool = await createAgentTemplateTool();
       const stopAgentTool = await createStopAgentTool(sessionId);
       const listAgentsTool = await createListAgentsTool(sessionId);
@@ -1118,7 +1123,7 @@ export class AgentService {
     if (opts?.rewind) await this.rewindIfNoOutput(chat);
   }
 
-  /** 从完全访问降级时撤销所有仍在运行的旧权限执行上下文。 */
+  /** 权限收紧时撤销主会话及其后代仍在运行的旧权限执行上下文。 */
   async revokeElevatedExecution(sessionId: string): Promise<void> {
     const parentId = resolveParentSessionId(sessionId);
     const chat = this.findActiveChat(sessionId);
@@ -1128,11 +1133,15 @@ export class AgentService {
       chat?.sessionId,
       chat?.tempSessionId,
     ].filter((id): id is string => !!id))];
-    for (const id of ids) backgroundShellRegistry.stopBySession(id);
+    const ownedIds = new Set(ids);
+    for (const id of ids) {
+      for (const owned of getOwnedSessionIds(id)) ownedIds.add(owned);
+    }
+    for (const id of ownedIds) backgroundShellRegistry.stopBySession(id);
     abortDelegations(parentId, "user");
     await closeMcpContexts(ids);
     if (chat && chat.status !== "idle") await this.abort(chat.chatId);
-    await revokeWindowsExecutionOwners(ids);
+    await revokeWindowsExecutionOwners([...ownedIds]);
   }
 
   /** 打断撤回：仅当本轮没有产出可见内容时，把会话分支退回本轮起点（那条消息退出上下文）。
@@ -1204,8 +1213,13 @@ export class AgentService {
     // 已有活跃会话 → 直接用
     if (resumeSessionId) {
       const existing = this.findActiveChat(resumeSessionId);
+      if (existing?.rebuildToolsOnNextMessage && existing.session && !existing.session.isStreaming) {
+        existing.session.dispose();
+        this.activeChats.delete(existing.chatId);
+        console.log(`[agent] 权限从只读放宽，重建会话工具集 ${resumeSessionId}`);
+      }
       // 按需激活的压缩专用会话（minimal，无工具/系统提示）不能用于对话——丢弃后用完整配置重建
-      if (existing?.minimal) {
+      else if (existing?.minimal) {
         this.activeChats.delete(existing.chatId);
         console.log(`[agent] 丢弃压缩专用会话 ${existing.chatId}，按完整配置重建`);
       } else if (existing && existing.session) {
@@ -1251,8 +1265,7 @@ export class AgentService {
       const cacheId = resumeSessionId ?? newSessionId;
       const previousMode = readCache(cacheId)?.permissionMode;
       writeCache(resumeSessionId ?? newSessionId, { permissionMode });
-      if ((previousMode === "full" || previousMode === "bypassPermissions")
-        && permissionMode !== "full" && permissionMode !== "bypassPermissions") {
+      if (isPermissionModeTightening(previousMode, permissionMode)) {
         await this.revokeElevatedExecution(cacheId);
       }
     }
@@ -2160,6 +2173,12 @@ export class AgentService {
   setActiveTools(sessionId: string, toolNames: string[]): void {
     const chat = this.findActiveChat(sessionId);
     chat?.session?.setActiveToolsByName(toolNames);
+  }
+
+  /** 只读会话创建时不会连接 MCP；放宽后在下一条消息前重建会话工具集。 */
+  schedulePermissionToolRebuild(sessionId: string): void {
+    const chat = this.findActiveChat(sessionId);
+    if (chat) chat.rebuildToolsOnNextMessage = true;
   }
 
   shutdown(): void {

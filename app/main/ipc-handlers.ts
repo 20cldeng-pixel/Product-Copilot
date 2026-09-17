@@ -83,6 +83,7 @@ import { readCache, writeCache, deleteCache } from "./services/session-cache";
 import { listIssues, addIssue, setStatus, updateIssue, deleteIssue } from "./services/issue-service";
 import { getPins, setPins } from "./services/pin-service";
 import type { IssueStatus } from "./services/issue-service";
+import { isPermissionModeTightening, normalizePermissionMode } from "./services/permission/execution-context";
 import { detectRunnable, startProcess, stopProcess, restartProcess, getStatus, getRunningIds, checkPort, killPort, ensureRunJsonWatch, saveRunJson } from "./services/process-service";
 import { networkService } from "./services/network-service";
 import { migrationService, readIgnoreFileRaw, saveIgnoreFileRaw, DEFAULT_IGNORE_CONTENT } from "./services/migration-service";
@@ -528,12 +529,17 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("session-cache:write", async (_e, { sessionId, data }) => {
     const previous = readCache(sessionId)?.permissionMode;
     writeCache(sessionId, data);
-    // 从完全访问收紧到任何其它档（只读 / 标准）都要撤销旧的高权限执行上下文；
+    // 任何权限收紧（full → standard/readonly、standard → readonly）都要撤销旧执行上下文；
     // 只写其它字段（不发 permissionMode）时不动。
     const next = data?.permissionMode;
-    if ((previous === "full" || previous === "bypassPermissions")
-      && next !== undefined && next !== "full" && next !== "bypassPermissions") {
+    if (isPermissionModeTightening(previous, next)) {
       await agentService.revokeElevatedExecution(sessionId);
+    }
+    // 只读会话没有预连接 MCP；放宽后下一条消息前重建工具集，用户无需手动重开会话。
+    if (previous !== undefined && next !== undefined
+      && normalizePermissionMode(previous) === "readonly"
+      && normalizePermissionMode(next) !== "readonly") {
+      agentService.schedulePermissionToolRebuild(sessionId);
     }
   });
   ipcMain.handle("session-cache:delete", (_e, { sessionId }) => { deleteCache(sessionId); });

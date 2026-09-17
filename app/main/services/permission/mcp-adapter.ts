@@ -99,6 +99,9 @@ async function connect(
   execution?: { projectPath: string; mode: PermissionMode; contextId?: string },
   timeoutMs = MCP_CONNECT_TIMEOUT_MS,
 ): Promise<Client> {
+  if (execution?.mode === "readonly") {
+    throw new Error("只读模式不启动或连接 MCP");
+  }
   const client = new Client(
     { name: "easymint", version: "1.0.0" },
     { capabilities: {} as any },
@@ -296,6 +299,8 @@ async function loadOneServer(
 }
 
 export async function loadMcpTools(projectPath?: string, getMode?: () => PermissionMode, contextId = "shared"): Promise<ToolDefinition[]> {
+  // 防御式门禁：调用方即使误调用，也不能在只读模式下扫描后连接 MCP。
+  if (getMode?.() === "readonly") return [];
   // 工具列表不变，缓存避免重复扫描（按项目分键）
   const key = cacheKey(projectPath);
   const cached = getMode ? undefined : toolsCache.get(key);
