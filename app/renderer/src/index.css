@@ -646,6 +646,10 @@ html[data-platform="win32"] .sb-drag-strip { height: 35px; }
 .sb-drawer {
   position: absolute; left: var(--s2); right: var(--s2); bottom: 86px;
   z-index: var(--z-index-dialog);
+  /* 抽屉是绝对定位、直接挂在 .sidebar 下的浮层，而 .sidebar 是拖拽区——
+     -webkit-app-region 会被子元素继承，不声明 no-drag 的话抽屉里的按钮/输入框
+     全会被拖拽区吞掉点击（表现为「点不动」）。 */
+  -webkit-app-region: no-drag;
   /* 玻璃基色**不在此覆盖**：本抽屉曾按主题各取一档（亮色 --color-surface / 暗色 --color-surface-alt），
      为的是与侧栏、与抽屉内卡片（--color-drawer-card）都拉开层次。2026-09-15 复算后统一改用
      .em-glass 的默认基色——暗色那档的收益实测只有 ΔL* 2.47（本就处于"勉强能分"的边缘，用户看不出
