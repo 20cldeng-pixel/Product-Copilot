@@ -964,7 +964,8 @@ export class AgentService {
         pr.chatId = chatId;
         broadcast("agent:stream", pr);
         this.bufferEvent(sessionId, pr);
-        broadcast("agent:exit", { runId: chatId, code: 0 });
+        // 载荷带 sessionId：远程通道按订阅会话过滤，缺它会被直接丢弃（手机端靠该事件清「回合结束」状态）
+        broadcast("agent:exit", { runId: chatId, sessionId, code: 0 });
 
         // 上报真实上下文使用率
         setTimeout(() => {
@@ -1007,7 +1008,7 @@ export class AgentService {
         message: compactionBlocked ? "正在整理上下文，请稍候再试" : msg,
         canRetry: compactionBlocked,
       });
-      broadcast("agent:exit", { runId: chatId, code: -1 });
+      broadcast("agent:exit", { runId: chatId, sessionId, code: -1 });
       // 错误/超时/中断回合也刷新使用率——否则 ctxPct 停留旧值,EM 弹窗可能漏触发
       // (error 回合无 usage → getContextUsage 估算,至少让前端看到当前口径)
       setTimeout(() => {
@@ -1056,7 +1057,7 @@ export class AgentService {
         type: "error", sessionId, chatId,
         message: "请求未能成功启动，请重试", canRetry: true,
       });
-      broadcast("agent:exit", { runId: chatId, code: -1 });
+      broadcast("agent:exit", { runId: chatId, sessionId, code: -1 });
     });
   }
 
@@ -2037,7 +2038,7 @@ export class AgentService {
           // 否则前端 busy 残留(打断按钮卡住),且后续消息误走 steer 路径发送失败
           setPendingResult: (ev) => {
             if (ev.type === "turn_end" && opts?.triggerTurn) {
-              broadcast("agent:exit", { runId: chat.chatId, code: 0 });
+              broadcast("agent:exit", { runId: chat.chatId, sessionId, code: 0 });
             }
           },
         });
@@ -2233,7 +2234,7 @@ export class AgentService {
       chat.session?.abort().catch(() => {});
       chat.session?.dispose();
       clearPendingAsks(chat.sessionId);
-      broadcast("agent:exit", { runId: id, code: -1 });
+      broadcast("agent:exit", { runId: id, sessionId: chat.sessionId, code: -1 });
     }
     this.activeChats.clear();
     for (const [id, run] of this.activeRuns) {

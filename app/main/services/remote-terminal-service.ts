@@ -288,6 +288,8 @@ export class RemoteTerminalService extends EventEmitter {
   forwardAppEvent(event: AppEvent): void {
     const allowed = new Set([
       "agent:stream",
+      // 回合结束的权威信号：桌面端靠它清 busy，手机端靠它清「打断按钮」（turn_end 只在部分路径广播）
+      "agent:exit",
       "agent:ask-request",
       "agent:ask-closed",
       "agent:model-changed",
