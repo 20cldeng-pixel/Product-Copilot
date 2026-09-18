@@ -283,8 +283,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("agent:runWorker", { projectPath, prompt }),
     sendMessage: (projectPath: string, message: string, opts?: { sessionId?: string | null; permissionMode?: string; model?: string; isDesigner?: boolean; images?: Array<{ type: "image"; data: string; mimeType: string }>; thinkingLevel?: string; systemPayload?: { customType: string; content: string; display: boolean; details: Record<string, unknown> }; preferredProvider?: string; tabId?: string }) =>
       ipcRenderer.invoke("agent:sendMessage", { projectPath, message, ...opts }),
-    steer: (sessionId: string, text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>) =>
-      ipcRenderer.invoke("agent:steer", { sessionId, text, images }),
+    steer: (sessionId: string, text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, tabId?: string) =>
+      ipcRenderer.invoke("agent:steer", { sessionId, text, images, tabId }),
       stopDelegation: (delegationId: string, taskIndex: number) =>
         ipcRenderer.invoke("agent:stop-delegation", { delegationId, taskIndex }),
     getDelegations: (sessionId: string) =>
@@ -403,8 +403,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on("agent:chat-session", handler);
       return () => ipcRenderer.removeListener("agent:chat-session", handler);
     },
-    onContextSummarizing: (callback: (data: { chatId: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { chatId: string }) => callback(data);
+    onContextSummarizing: (callback: (data: { chatId: string; sessionId?: string; type?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { chatId: string; sessionId?: string; type?: string }) => callback(data);
       ipcRenderer.on("agent:context-summarizing", handler);
       return () => ipcRenderer.removeListener("agent:context-summarizing", handler);
     },
@@ -449,6 +449,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on("agent:thinking-level-changed", handler);
       return () => ipcRenderer.removeListener("agent:thinking-level-changed", handler);
     },
+    onPermissionModeChanged: (callback: (data: { sessionId: string; mode: "readonly" | "standard" | "full" }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { sessionId: string; mode: "readonly" | "standard" | "full" }) => callback(data);
+      ipcRenderer.on("agent:permission-mode-changed", handler);
+      return () => ipcRenderer.removeListener("agent:permission-mode-changed", handler);
+    },
   },
   // ── 设备互联（mDNS 发现 + WS 配对连接） ──
   device: {
@@ -484,6 +489,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
       const h = (_e: Electron.IpcRendererEvent, d: { id: string }) => cb(d);
       ipcRenderer.on("device:offline", h);
       return () => ipcRenderer.removeListener("device:offline", h);
+    },
+  },
+  mobileTerminal: {
+    createOffer: () => ipcRenderer.invoke("mobile-terminal:create-offer"),
+    listDevices: () => ipcRenderer.invoke("mobile-terminal:list-devices"),
+    listPending: () => ipcRenderer.invoke("mobile-terminal:list-pending"),
+    acceptPair: (requestId: string) => ipcRenderer.invoke("mobile-terminal:accept-pair", { requestId }) as Promise<{ ok: boolean }>,
+    rejectPair: (requestId: string) => ipcRenderer.invoke("mobile-terminal:reject-pair", { requestId }) as Promise<{ ok: boolean }>,
+    revoke: (deviceId: string) => ipcRenderer.invoke("mobile-terminal:revoke", { deviceId }) as Promise<{ ok: boolean }>,
+    onPairRequest: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on("mobile-terminal:pair-request", handler);
+      return () => ipcRenderer.removeListener("mobile-terminal:pair-request", handler);
+    },
+    onChanged: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on("mobile-terminal:devices-changed", handler);
+      ipcRenderer.on("mobile-terminal:pair-requests-changed", handler);
+      return () => {
+        ipcRenderer.removeListener("mobile-terminal:devices-changed", handler);
+        ipcRenderer.removeListener("mobile-terminal:pair-requests-changed", handler);
+      };
+    },
+    onError: (callback: (data: { message: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { message: string }) => callback(data);
+      ipcRenderer.on("mobile-terminal:error", handler);
+      return () => ipcRenderer.removeListener("mobile-terminal:error", handler);
     },
   },
   // ── 项目/会话迁移（发送端打包传输 + 接收端恢复） ──

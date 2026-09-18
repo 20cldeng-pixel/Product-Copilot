@@ -95,7 +95,6 @@ interface ActiveChat {
   /** 本会话使用的供应商（查「按模型思考等级」用；缺省时按模型名全局匹配） */
   provider?: string;
   agentType?: "mint" | "builder" | "evaluator" | "designer";
-  status: string;
   firstUserMessage: string;
   assistantUuid: string;
   eventBuffer: PiChatEvent[];
@@ -417,9 +416,29 @@ interface PendingAsk {
   resolve: (text: string) => void;
   sessionId: string;
   questions: Array<{ id: string; question: string; options?: Array<{ value: string; label: string }> }>;
+  allowCustom: boolean;
+  createdAt: number;
 }
 
 const pendingAsks = new Map<string, PendingAsk>();
+
+export function getPendingAskSnapshots(sessionId?: string): Array<{
+  requestId: string;
+  sessionId: string;
+  questions: PendingAsk["questions"];
+  allowCustom: boolean;
+  createdAt: number;
+}> {
+  return [...pendingAsks.entries()]
+    .filter(([, ask]) => !sessionId || ask.sessionId === sessionId)
+    .map(([requestId, ask]) => ({
+      requestId,
+      sessionId: ask.sessionId,
+      questions: ask.questions,
+      allowCustom: ask.allowCustom,
+      createdAt: ask.createdAt,
+    }));
+}
 
 /** 响应 ask_user（IPC handler 调用）。answers 为 null/空 = 用户取消。
  *  返回 requestId 对应 sessionId（前端按此过滤），未找到返回 null */
@@ -596,12 +615,10 @@ async function createAskUserTool(sessionId: string): Promise<ToolDefinition> {
       // 新会话时工具闭包绑定的 sessionId 是临时 UUID（buildExtraTools 时尚未创建 Pi 会话），
       // 前端 sid 已迁移为真实 ID——广播前解析为真实 ID（同委派通知机制），否则前端会话过滤不匹配
       const realSid = resolveParentSessionId(sessionId);
-      broadcast("agent:ask-request", {
-        requestId,
-        sessionId: realSid,
-        questions,
-        allowCustom: params.allow_custom !== false,
-      });
+      const allowCustom = params.allow_custom !== false;
+      // 与快照（getPendingAskSnapshots）同一个创建时间：广播与快照两条路径字段必须一致，
+      // 手机端把事件体直接当 PendingAsk 用，缺该字段会拿到 undefined。
+      const createdAt = Date.now();
       const answer = await new Promise<string>((resolve) => {
         const onAbort = () => {
           if (!pendingAsks.has(requestId)) return;
@@ -617,6 +634,8 @@ async function createAskUserTool(sessionId: string): Promise<ToolDefinition> {
         pendingAsks.set(requestId, {
           sessionId: realSid,
           resolve: wrappedResolve,
+          allowCustom,
+          createdAt,
           questions: questions.map((q) => ({
             id: String(q.id),
             question: String(q.question),
@@ -631,6 +650,14 @@ async function createAskUserTool(sessionId: string): Promise<ToolDefinition> {
         });
         // run 级 signal：用户打断 / killChat 时 abort → 取消挂起并通知前端关闭卡片
         signal?.addEventListener("abort", onAbort, { once: true });
+        // 先登记 pending，再广播；新终端收到事件后立即拉快照也不会错过问题。
+        broadcast("agent:ask-request", {
+          requestId,
+          sessionId: realSid,
+          questions,
+          allowCustom,
+          createdAt,
+        });
       });
       return { content: [{ type: "text" as const, text: answer }] };
     },
@@ -858,7 +885,7 @@ export class AgentService {
       const usage = session.getContextUsage();
       if (usage) {
         broadcast("agent:context-usage", {
-          chatId, percentage: usage.percent ?? null,
+          sessionId, chatId, percentage: usage.percent ?? null,
           totalTokens: usage.tokens ?? 0, maxTokens: usage.contextWindow,
         });
       }
@@ -944,7 +971,7 @@ export class AgentService {
           const usage = session.getContextUsage();
           if (usage) {
             broadcast("agent:context-usage", {
-              chatId,
+              sessionId, chatId,
               percentage: usage.percent ?? null,
               totalTokens: usage.tokens ?? 0,
               maxTokens: usage.contextWindow,
@@ -987,7 +1014,7 @@ export class AgentService {
         const usage = session.getContextUsage();
         if (usage) {
           broadcast("agent:context-usage", {
-            chatId,
+            sessionId, chatId,
             percentage: usage.percent ?? null,
             totalTokens: usage.tokens ?? 0,
             maxTokens: usage.contextWindow,
@@ -1140,7 +1167,9 @@ export class AgentService {
     for (const id of ownedIds) backgroundShellRegistry.stopBySession(id);
     abortDelegations(parentId, "user");
     await closeMcpContexts(ids);
-    if (chat && chat.status !== "idle") await this.abort(chat.chatId);
+    // 切档不中止主会话正在跑的回合——用户 2026-09-18 明确要求「切换权限不打断回答」。
+    // 这里曾按「降级后继续跑等于绕过刚做的收紧」在中止一行（原判据 chat.status !== "idle" 因字段恒 idle 从未生效），
+    // 已按用户口径移除；不要加回来。旧权限执行上下文的撤销仍由下面 revokeWindowsExecutionOwners 与停后台任务承担。
     await revokeWindowsExecutionOwners([...ownedIds]);
   }
 
@@ -1205,7 +1234,7 @@ export class AgentService {
     preferredProvider?: string,
     /** 前端发起发送的 tab id(透传回 chat-session 广播,前端精确绑定 tab,防多新 tab 错配) */
     tabId?: string,
-  ): Promise<{ chatId: string }> {
+  ): Promise<{ chatId: string; sessionId: string }> {
     const resolvedPath = path.resolve(resolveHome(projectPath));
     // 无项目时 cwd 是 workspace 兜底目录——确保存在(不存在则 Pi 会话创建失败)
     if (!fs.existsSync(resolvedPath)) fs.mkdirSync(resolvedPath, { recursive: true });
@@ -1236,7 +1265,7 @@ export class AgentService {
           await existing.session.waitForIdle().catch(() => {});
         }
         this.launchPrompt(existing.session, resumeSessionId, existing.chatId, message, existing, images, systemPayload);
-        return { chatId: existing.chatId };
+        return { chatId: existing.chatId, sessionId: existing.sessionId };
       }
     }
 
@@ -1339,7 +1368,6 @@ export class AgentService {
       abortController: new AbortController(),
       projectPath: resolvedPath,
       agentType: undefined,
-      status: "idle",
       // 系统消息(custom payload)作为首条时,用 kind 中文标签作标题——
       // SDK 的 buildSessionInfo 过滤 custom 角色消息,不兜底会显示 "(no messages)"
       firstUserMessage: systemPayload
@@ -1392,7 +1420,7 @@ export class AgentService {
     // 发起第一轮对话
     this.launchPrompt(session, chat.sessionId, chatId, message, chat, images, systemPayload);
 
-    return { chatId };
+    return { chatId, sessionId: chat.sessionId };
   }
 
   findActiveChat(sessionId: string): ActiveChat | undefined {
@@ -1403,9 +1431,19 @@ export class AgentService {
     return undefined;
   }
 
-  getChatStatus(sessionId: string): string {
+  /** 会话是否有进行中的回合。
+   *  判据是 EM 自己的 activePromptSessions 而不是 SDK 的 session.isStreaming——后者在超时中断
+   *  等异常路径上会残留 true（见 promptAndBridge/steer 处的残留复位），拿它当运行态会误报。 */
+  isSessionRunning(sessionId: string): boolean {
     const chat = this.findActiveChat(sessionId);
-    return chat?.status ?? "idle";
+    return !!chat && this.activePromptSessions.has(chat.sessionId);
+  }
+
+  /** 会话状态（IPC agent:chatStatus 与远程快照共用）。
+   *  实时从运行态推导，不缓存成字段：缓存字段没有维护点，历史实现里它恒为 "idle"，
+   *  远程快照据此判定永远空闲（手机重开会话看不到运行中）。 */
+  getChatStatus(sessionId: string): "running" | "idle" {
+    return this.isSessionRunning(sessionId) ? "running" : "idle";
   }
 
   private bufferEvent(key: string, event: PiChatEvent): void {
@@ -1427,6 +1465,14 @@ export class AgentService {
       this.streamBuffer.delete(chat.chatId);
       events.push(...chatEvents);
     }
+    return events;
+  }
+
+  /** 远程终端快照读取：不消费缓冲，避免影响桌面渲染进程恢复。 */
+  peekBufferedStream(sessionId: string): unknown[] {
+    const events: unknown[] = [...(this.streamBuffer.get(sessionId) ?? [])];
+    const chat = this.findActiveChat(sessionId);
+    if (chat) events.push(...(this.streamBuffer.get(chat.chatId) ?? []));
     return events;
   }
 
@@ -1471,7 +1517,7 @@ export class AgentService {
       // windowOnly:只更新窗口(percent 传 undefined = 前端保持原百分比)——
       // 无 usage 可算时传 null 会把圆环清成「—」,反而像回退
       broadcast("agent:context-usage", {
-        chatId: chat.chatId,
+        sessionId: chat.sessionId, chatId: chat.chatId,
         percentage: windowOnly ? undefined : (usage?.percent ?? null),
         totalTokens: usage?.tokens ?? 0,
         maxTokens: window,
@@ -1536,14 +1582,14 @@ export class AgentService {
     const contextWindow = usage?.contextWindow ?? 0;
     if (typeof estimatedAfter === "number" && estimatedAfter > 0 && contextWindow > 0) {
       broadcast("agent:context-usage", {
-        chatId: chat.chatId, percentage: (estimatedAfter / contextWindow) * 100,
+        sessionId: chat.sessionId, chatId: chat.chatId, percentage: (estimatedAfter / contextWindow) * 100,
         totalTokens: estimatedAfter, maxTokens: contextWindow,
       });
       return;
     }
     if (usage) {
       broadcast("agent:context-usage", {
-        chatId: chat.chatId, percentage: usage.percent ?? null,
+        sessionId: chat.sessionId, chatId: chat.chatId, percentage: usage.percent ?? null,
         totalTokens: usage.tokens ?? 0, maxTokens: usage.contextWindow,
       });
     }
@@ -2043,7 +2089,6 @@ export class AgentService {
       projectPath,
       currentModel: cached?.model,
       provider: cached?.provider,
-      status: "idle",
       firstUserMessage: "",
       assistantUuid: randomUUID(),
       eventBuffer: [],
@@ -2068,7 +2113,8 @@ export class AgentService {
       console.error(`[compact] 未找到活跃会话: ${sessionId}（activeChats=${this.activeChats.size}）`);
       return;
     }
-    broadcast("agent:context-summarizing", { chatId: chat.chatId, type: "compact" });
+    // sessionId 是远程通道的订阅过滤键（remote-terminal-service 按它判会话订阅），缺了会被丢弃
+    broadcast("agent:context-summarizing", { chatId: chat.chatId, sessionId, type: "compact" });
     // 手动压缩桥接：compact() 直接调 SDK（不经 promptAndBridge 的 subscribe），
     // compaction_start/end 事件无人转发 → 前端收不到 compacted、压缩后使用率不刷新
     // （ctxPct 残留旧值）。这里临时订阅，把压缩生命周期事件桥到前端并刷新 usage。
@@ -2137,7 +2183,7 @@ export class AgentService {
     } finally {
       unsub();
       // 无论成败都清除蒙版(compaction_end 的 compacted 可能因 aborted/无 result 不广播)
-      broadcast("agent:context-summarizing", { chatId: chat.chatId, type: "done" });
+      broadcast("agent:context-summarizing", { chatId: chat.chatId, sessionId, type: "done" });
     }
   }
 

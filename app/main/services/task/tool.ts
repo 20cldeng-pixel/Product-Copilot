@@ -224,6 +224,7 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
       // 否则并发受限(默认 4)时初始只显示前 N 个,排队的任务要等启动才出现
       broadcast("agent:delegation-init", {
         chatId: ctx.chatId,
+        sessionId: record.parentSessionId,
         delegationId: record.delegationId,
         tasks: record.tasks.map((t, i) => ({
           index: i,
@@ -286,6 +287,7 @@ export async function createTaskTool(ctx: TaskToolContext): Promise<ToolDefiniti
         }
         broadcast("agent:delegation-progress", {
           chatId: ctx.chatId,
+          sessionId: record.parentSessionId,
           delegationId: record.delegationId,
           progress,
         });

@@ -91,7 +91,11 @@ import { Store } from "./services/store";
 import { syncNativeModels } from "./services/pi-init";
 import { migrateExtraModels, migrateModelIdentity } from "./services/extra-models-migration";
 import { cleanupOrphanCaches, cleanupTempCaches } from "./services/session-cache";
-import { trackProjectWindow } from "./services/window-manager";
+import { watchProjectWindow } from "./services/window-manager";
+import { SessionCoordinator } from "./services/session-coordinator";
+import { RemoteCommandRouter } from "./services/remote-command-router";
+import { RemoteTerminalService } from "./services/remote-terminal-service";
+import { appEventBus } from "./services/app-event-bus";
 import { applyDockIcon } from "./utils/dock-icon";
 import { shutdownWindowsExecutionWorkers } from "./services/sandbox/windows-execution-manager";
 
@@ -116,6 +120,7 @@ let sharedServices: {
   projectService: ProjectService;
   fileService: FileService;
   agentService: AgentService;
+  remoteTerminalService: RemoteTerminalService;
 } | null = null;
 
 export async function createWindow(hash?: string, _isMain = false): Promise<BrowserWindow> {
@@ -141,6 +146,7 @@ export async function createWindow(hash?: string, _isMain = false): Promise<Brow
       sandbox: false,
     },
   });
+  watchProjectWindow(window);
 
   // macOS：启动即铺满可用屏幕（非全屏，保留菜单栏/Dock）——避免固定 1400×900 在小屏上呈「满高不满宽」
   if (process.platform === "darwin") {
@@ -157,12 +163,27 @@ export async function createWindow(hash?: string, _isMain = false): Promise<Brow
   // additional windows reuse the same services via the preload bridge.
   if (!sharedServices) {
     const store = new Store();
+    const projectService = new ProjectService(store);
+    const fileService = new FileService();
+    const agentService = new AgentService(store);
+    const coordinator = new SessionCoordinator(projectService, agentService);
+    const commandRouter = new RemoteCommandRouter(coordinator, agentService, store, window);
+    const remoteTerminalService = new RemoteTerminalService((deviceId, command) =>
+      commandRouter.handle(deviceId, command));
+    appEventBus.subscribe((event) => remoteTerminalService.forwardAppEvent(event));
     sharedServices = {
       store,
-      projectService: new ProjectService(store),
-      fileService: new FileService(),
-      agentService: new AgentService(store),
+      projectService,
+      fileService,
+      agentService,
+      remoteTerminalService,
     };
+    // 已配对手机应能在应用重启后直接重连；首次使用前不监听额外端口。
+    if (remoteTerminalService.listDevices().length > 0) {
+      void remoteTerminalService.ensureStarted().catch((error: unknown) => {
+        console.error("[mobile-terminal] 启动失败:", error instanceof Error ? error.message : String(error));
+      });
+    }
     setMainWindow(window);
     // Seed default Agent templates on first launch
     const { seedDefaults } = require("./services/agent-templates");
@@ -330,7 +351,10 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => { app.quit(); });
 
 app.on("before-quit", () => {
-  if (sharedServices) sharedServices.agentService.shutdown();
+  if (sharedServices) {
+    sharedServices.agentService.shutdown();
+    sharedServices.remoteTerminalService.close();
+  }
   void shutdownWindowsExecutionWorkers();
 });
 
@@ -338,11 +362,17 @@ app.on("before-quit", () => {
 // 后台 shell 会变孤儿进程——显式挂信号监听调 shutdown 后退出。
 // 注意:注册监听会替换 Node 默认行为,必须显式 app.quit()(shutdown 幂等,重复执行无害)
 process.on("SIGINT", () => {
-  if (sharedServices) sharedServices.agentService.shutdown();
+  if (sharedServices) {
+    sharedServices.agentService.shutdown();
+    sharedServices.remoteTerminalService.close();
+  }
   app.quit();
 });
 process.on("SIGTERM", () => {
-  if (sharedServices) sharedServices.agentService.shutdown();
+  if (sharedServices) {
+    sharedServices.agentService.shutdown();
+    sharedServices.remoteTerminalService.close();
+  }
   app.quit();
 });
 
@@ -391,8 +421,7 @@ ipcMain.handle("window:open-project", async (_e, { projectId, sessionId, init })
   const qs = params.toString();
   const hash = qs ? `/project/${projectId}?${qs}` : `/project/${projectId}`;
   if (sharedServices) sharedServices.store.setLastProjectId(projectId);
-  const win = await createWindow(hash);
-  trackProjectWindow(win, projectId);
+  await createWindow(hash);
 });
 
 ipcMain.handle("window:new", () => {

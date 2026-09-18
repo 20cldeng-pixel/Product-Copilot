@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, dialog, app, shell } from "electron";
 import p from "path";
 import fs from "fs";
 import os from "os";
+import { randomUUID } from "node:crypto";
 import { ProjectService } from "./services/project-service";
 import { FileService } from "./services/file-service";
 import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-service";
@@ -20,7 +21,7 @@ import { execShell } from "./services/shell-service";
 import { pathHitsAny, protectedCredentialPaths } from "./services/permission/access-policy";
 import { backgroundShellRegistry } from "./services/background-shell/registry";
 import { getRunningSummary } from "./services/task/registry";
-import { closeProjectWindows } from "./services/window-manager";
+import { closeProjectWindows, listOpenProjectIds } from "./services/window-manager";
 import { detectGit } from "./utils/git-detector";
 import { detectNode } from "./utils/node-detector";
 import { detectCodegraph } from "./utils/codegraph-detector";
@@ -88,6 +89,7 @@ import { detectRunnable, startProcess, stopProcess, restartProcess, getStatus, g
 import { networkService } from "./services/network-service";
 import { migrationService, readIgnoreFileRaw, saveIgnoreFileRaw, DEFAULT_IGNORE_CONTENT } from "./services/migration-service";
 import { listTodos, addTodo, updateTodo, toggleTodo, removeTodo } from "./services/todo-service";
+import type { RemoteTerminalService } from "./services/remote-terminal-service";
 import { testProvider } from "./services/provider-test";
 import {
   getProviderAuthStatus,
@@ -104,9 +106,10 @@ interface Services {
   fileService: FileService;
   agentService: AgentService;
   store: Store;
+  remoteTerminalService: RemoteTerminalService;
 }
 
-export function registerIpcHandlers({ mainWindow, projectService, fileService, agentService, store }: Services): void {
+export function registerIpcHandlers({ mainWindow, projectService, fileService, agentService, store, remoteTerminalService }: Services): void {
   /**
    * file:* / shell 日志通道的可信根解析：目标路径必须落在某个已登记项目根之内
    * （`~/.ssh/id_rsa`、`/etc/passwd`、`~/Documents/../.ssh/id_rsa` 均无项目根包含 → 拒绝）。
@@ -168,13 +171,7 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   ipcMain.handle("project:check-dir", (_e, { dir, name }: { dir: string; name: string }) => projectService.checkTargetDir(dir, name));
   // 所有窗口当前打开的项目 id（hash 路由 #/project/{id}）——正被任何窗口打开的项目禁止删除
   ipcMain.handle("project:opened-in-windows", () => {
-    const ids = new Set<string>();
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (win.isDestroyed()) continue;
-      const m = win.webContents.getURL().match(/#\/project\/([^/?]+)/);
-      if (m) ids.add(m[1]);
-    }
-    return [...ids];
+    return listOpenProjectIds();
   });
   ipcMain.handle("project:delete", async (_e, { id }) => {
     if (closeProjectWindows) closeProjectWindows(id);
@@ -271,7 +268,16 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   });
   ipcMain.handle("agent:sendMessage", async (_e, { projectPath, message, sessionId, permissionMode, model, isDesigner, images, thinkingLevel, systemPayload, preferredProvider, tabId }) => {
     try {
-      return await agentService.sendMessage(projectPath, message, sessionId ?? null, permissionMode, mainWindow, model, isDesigner, images, thinkingLevel, systemPayload, preferredProvider, tabId);
+      const result = await agentService.sendMessage(projectPath, message, sessionId ?? null, permissionMode, mainWindow, model, isDesigner, images, thinkingLevel, systemPayload, preferredProvider, tabId);
+      broadcast("agent:stream", {
+        type: "user_message",
+        sessionId: result.sessionId,
+        chatId: result.chatId,
+        text: message,
+        timestamp: Date.now(),
+        details: { sourceTabId: tabId, messageId: randomUUID() },
+      });
+      return result;
     } catch (e) {
       console.error("[ipc] sendMessage 失败:", (e as Error).message);
       throw e;
@@ -295,8 +301,16 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
       id: s.id, command: s.command, startedAt: s.startedAt, status: s.status, logPath: s.logPath, sessionId: s.sessionId,
     })),
   }));
-  ipcMain.handle("agent:steer", (_e, { sessionId, text, images }) => {
-    void agentService.steer(sessionId, text, images).catch((err: unknown) => {
+  ipcMain.handle("agent:steer", (_e, { sessionId, text, images, tabId }) => {
+    void agentService.steer(sessionId, text, images).then(() => {
+      broadcast("agent:stream", {
+        type: "user_message",
+        sessionId,
+        text,
+        timestamp: Date.now(),
+        details: { sourceTabId: tabId, messageId: randomUUID() },
+      });
+    }).catch((err: unknown) => {
       const raw = err instanceof Error ? err.message : String(err);
       console.error(`[ipc] agent:steer 失败 sessionId=${sessionId}:`, raw);
       // 插话投递失败 → 广播 error 让对应会话清 busy 并提示重试,避免前端无响应悬挂
@@ -887,6 +901,20 @@ const filePath = p.join(projectPath, "task.json");
   ipcMain.handle("device:connect", (_e, { id }) => net.connectToDevice(id));
   // 预留:会话/项目迁移通道（网络层就绪,迁移逻辑后续实现）
   ipcMain.handle("device:sendMessage", (_e, { id, message }) => ({ ok: net.sendToDevice(id, message) }));
+
+  // ── mobile-terminal:* — 手机局域网终端（二维码配对 + 加密命令通道） ──
+  remoteTerminalService.on("pair-request", (request) => broadcast("mobile-terminal:pair-request", request));
+  remoteTerminalService.on("pair-requests-changed", () => broadcast("mobile-terminal:pair-requests-changed", {}));
+  remoteTerminalService.on("devices-changed", () => broadcast("mobile-terminal:devices-changed", {}));
+  remoteTerminalService.on("error", (error: Error) => {
+    broadcast("mobile-terminal:error", { message: error.message });
+  });
+  ipcMain.handle("mobile-terminal:create-offer", () => remoteTerminalService.createPairingOffer());
+  ipcMain.handle("mobile-terminal:list-devices", () => remoteTerminalService.listDevices());
+  ipcMain.handle("mobile-terminal:list-pending", () => remoteTerminalService.listPendingPairs());
+  ipcMain.handle("mobile-terminal:accept-pair", (_e, { requestId }: { requestId: string }) => ({ ok: remoteTerminalService.acceptPair(requestId) }));
+  ipcMain.handle("mobile-terminal:reject-pair", (_e, { requestId }: { requestId: string }) => ({ ok: remoteTerminalService.rejectPair(requestId) }));
+  ipcMain.handle("mobile-terminal:revoke", (_e, { deviceId }: { deviceId: string }) => ({ ok: remoteTerminalService.revokeDevice(deviceId) }));
 
   // 启动时:已配对设备自动连接（保持常驻心跳）
   net.startKeepalive();

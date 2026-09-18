@@ -6,7 +6,10 @@
  * 输出收集(尾部截断 + 完整落盘)、会话清理。
  *
  * 通知/停止闭环(对齐 task 工具优化经验):
- * - 完整输出落盘 <cwd>/.easymint/shell-logs/<id>.log(保留 7 天自动清理),通知只带尾部预览
+ * - 完整输出落盘 <cwd>/.easymint/shell-logs/<id>.log(保留 7 天自动清理),通知只带尾部预览。
+ *   **可回看范围仅限本次运行**:registry 是内存态、启动不 rehydrate,前端 delegation-store
+ *   也不持久化 logPath ⇒ 重启后旧日志在 UI 上不可达(2026-09-17 用户拍板:日志本就是临时的,
+ *   不为此补 rehydrate;保留期只用于兜住"长期不重启"时的磁盘积累)
  * - stop() 立即置 stopping 并广播(前端即时反馈),5s 未退出 SIGKILL 兜底
  */
 
@@ -172,7 +175,7 @@ class BackgroundShellRegistry {
   private flushStream(shell: BackgroundShell): void {
     if (shell.flushTimer) { clearTimeout(shell.flushTimer); shell.flushTimer = null; }
     if (shell.streamBuf) {
-      broadcast("agent:shell-output", { id: shell.id, chunk: shell.streamBuf });
+      broadcast("agent:shell-output", { id: shell.id, chunk: shell.streamBuf, sessionId: shell.sessionId });
       shell.streamBuf = "";
     }
   }
@@ -188,8 +191,8 @@ class BackgroundShellRegistry {
   ): { id: string; logPath: string } {
     const display = displayCommand ?? (typeof command === "string" ? command : "command" in command ? command.command : "(沙盒命令)");
     const id = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    // 完整输出落盘项目级 .easymint/shell-logs/(持久可回看);
-    // 启动时顺带清理超过保留期的旧日志,防积累
+    // 完整输出落盘项目级 .easymint/shell-logs/(本次运行内可回看,跨重启不回看——见文件头注释);
+    // 启动命令时顺带清理超过保留期的旧日志,防积累(清理策略见 cleanupOldLogs)
     const logDir = path.join(cwd, ".easymint", "shell-logs");
     const logPath = path.join(logDir, `${id}.log`);
     let logStream: WriteStream | null = null;

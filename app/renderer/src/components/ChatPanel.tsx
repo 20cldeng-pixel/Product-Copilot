@@ -1318,6 +1318,27 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
   useEffect(() => {
     const unsub = window.electronAPI.agent.onStream((event: StreamEvent) => {
       if (event.source === "worker") return;
+      // 用户消息由主进程确认后广播给其它终端。发送它的 tab 已做乐观追加，按 sourceTabId 跳过；
+      // 其它窗口/手机发来的消息在这里补入，保证同一会话多终端一致。
+      if (event.type === "user_message" && event.sessionId === sidRef.current) {
+        if (event.details?.sourceTabId === tabId) return;
+        const messageId = typeof event.details?.messageId === "string" ? event.details.messageId : undefined;
+        const existing = useChatStore.getState().messagesBySession[sidRef.current] || [];
+        if (messageId && existing.some((message) => message.sourceMessageId === messageId)) return;
+        useChatStore.getState().insertUserMsgAt(sidRef.current, {
+          role: "user",
+          text: event.text ?? "",
+          timestamp: event.timestamp ?? Date.now(),
+          streaming: true,
+          sourceMessageId: messageId,
+        }, event.timestamp ?? Date.now());
+        latestAiIdRef.current = 0;
+        busyRef.current = true;
+        setBusy(true);
+        useStatusStore.getState().pushSignal(sidRef.current, "request", "等待模型响应...");
+        onActivity?.();
+        return;
+      }
       // 门卫读实时值（见 existingSidRef 声明处的说明），不看订阅时捕获的 existingSid
       if (!acceptStreamEvent({
         currentChatId: currentChatRef.current,
@@ -1637,6 +1658,11 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
       setCappedThinkingLevel(level === desired ? null : level);
       setThinkingLevel((prev) => (prev === level ? prev : level));
     });
+    const unsubPermission = window.electronAPI.agent.onPermissionModeChanged(({ sessionId: permissionSid, mode }) => {
+      if (sidRef.current && sidRef.current !== permissionSid) return;
+      if (!sidRef.current && existingSid && permissionSid !== existingSid) return;
+      setPermissionMode(mode);
+    });
     // Context rotation events — filter by chatId
     const unsubCtxSum = window.electronAPI.agent.onContextSummarizing(({ chatId: ctxChatId, type }: { chatId: string; type?: string }) => {
       if (!currentChatRef.current) return;
@@ -1699,7 +1725,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
       // 使用率显著回落（压缩完成）后允许再次触发
       if (pct != null && pct < threshold - 20) ctxThresholdFiredRef.current = 0;
     });
-    return () => { unsub(); unsubExit(); unsubSid(); unsubModel(); unsubLevel(); unsubCtxSum(); unsubCtxUsage(); if (sidRef.current) { useTabStore.getState().setSessionRunning(sidRef.current, false); if (!sidRef.current.startsWith("__new_")) { window.electronAPI.agent.scheduleIdleTimeout(sidRef.current, 10 * 60 * 1000); } } useStatusStore.getState().reset(sidRef.current); };
+    return () => { unsub(); unsubExit(); unsubSid(); unsubModel(); unsubLevel(); unsubPermission(); unsubCtxSum(); unsubCtxUsage(); if (sidRef.current) { useTabStore.getState().setSessionRunning(sidRef.current, false); if (!sidRef.current.startsWith("__new_")) { window.electronAPI.agent.scheduleIdleTimeout(sidRef.current, 10 * 60 * 1000); } } useStatusStore.getState().reset(sidRef.current); };
   }, []);
 
   // Summarizing timeout — 120s safety net
@@ -1928,7 +1954,7 @@ export function ChatPanel({ projectPath, sessionId: existingSid, tabId, isDesign
     if (busy && currentChatRef.current && existingSid) {
       steeringRef.current = true;
       try {
-        await window.electronAPI.agent.steer(existingSid, agentText, images.length > 0 ? images : undefined);
+        await window.electronAPI.agent.steer(existingSid, agentText, images.length > 0 ? images : undefined, tabId);
       } catch { /* steer 失败不影响 UI */ }
       return;
     }

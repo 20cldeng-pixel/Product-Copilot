@@ -5,8 +5,11 @@
  */
 
 import { BrowserWindow } from "electron";
+import { appEventBus } from "./app-event-bus";
 
 export function broadcast(channel: string, data: unknown): void {
+  // 主进程事件先进入统一总线。Electron 窗口和后续手机终端都消费同一份权威事件。
+  appEventBus.publish(channel, data);
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) win.webContents.send(channel, data);
   });

@@ -75,10 +75,10 @@ export function ToolboxPanel({ open, onClose, onOpenDevicePanel }: ToolboxPanelP
           </svg>
           <span className="min-w-0">
             <span className="block text-xs text-text-primary leading-tight">
-              项目迁移
+              设备互联
               <span className="ml-1.5 text-[length:var(--text-3xs)] px-1 py-px rounded-[var(--radius-lg)] bg-accent-soft text-accent align-middle">实验</span>
             </span>
-            <span className="block text-[length:var(--text-2xs)] text-text-muted leading-tight">跨设备迁移会话与项目</span>
+            <span className="block text-[length:var(--text-2xs)] text-text-muted leading-tight">手机终端与项目迁移</span>
           </span>
         </button>
       </div>

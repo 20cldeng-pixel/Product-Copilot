@@ -255,7 +255,7 @@ interface ElectronAPI {
   agent: {
     runWorker: (projectPath: string, prompt: string) => Promise<{ runId: string }>;
     sendMessage: (projectPath: string, message: string, opts?: { sessionId?: string | null; permissionMode?: string; model?: string; isDesigner?: boolean; images?: Array<{ type: "image"; data: string; mimeType: string }>; thinkingLevel?: string; systemPayload?: { customType: string; content: string; display: boolean; details: Record<string, unknown> }; preferredProvider?: string; tabId?: string }) => Promise<{ chatId: string }>;
-    steer: (sessionId: string, text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>) => Promise<void>;
+    steer: (sessionId: string, text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, tabId?: string) => Promise<void>;
     stopDelegation: (delegationId: string, taskIndex: number) => Promise<void>;
     getDelegations: (sessionId: string) => Promise<DelegationSnapshotItem[]>;
     /** 运行态快照（渲染层挂载/刷新时拉取一次；广播不重播，不拉取会空白） */
@@ -319,7 +319,7 @@ interface ElectronAPI {
     onShellCount: (callback: (data: { id: string; command: string; startedAt: number; status: "running" | "stopping"; logPath: string }[]) => void) => () => void;
     onShellOutput: (callback: (data: ShellOutputEvent) => void) => () => void;
     onChatSession: (callback: (data: { chatId: string; sessionId: string; tabId?: string; projectPath?: string }) => void) => () => void;
-    onContextSummarizing: (callback: (data: { chatId: string }) => void) => () => void;
+    onContextSummarizing: (callback: (data: { chatId: string; sessionId?: string; type?: string }) => void) => () => void;
     onContextRotated: (callback: (data: { chatId: string; sessionId: string }) => void) => () => void;
     onContextUsage: (callback: (data: { chatId: string; percentage: number | null; totalTokens: number; maxTokens: number }) => void) => () => void;
     onTaskStatus: (callback: (data: { taskId: string; status: string; projectPath: string }) => void) => () => void;
@@ -328,6 +328,7 @@ interface ElectronAPI {
     onSessionRenamed: (callback: (data: { sessionId: string; title: string }) => void) => () => void;
     onModelChanged: (callback: (data: { sessionId: string; model: string }) => void) => () => void;
     onThinkingLevelChanged: (callback: (data: { sessionId: string; level: string; available?: string[] }) => void) => () => void;
+    onPermissionModeChanged: (callback: (data: { sessionId: string; mode: "readonly" | "standard" | "full" }) => void) => () => void;
   };
   device: {
     getSelf: () => Promise<{ id: string; name: string; discoverable: boolean }>;
@@ -346,6 +347,38 @@ interface ElectronAPI {
     onChanged: (cb: () => void) => () => void;
     onOnline: (cb: (d: { id: string }) => void) => () => void;
     onOffline: (cb: (d: { id: string }) => void) => () => void;
+  };
+  mobileTerminal: {
+    createOffer: () => Promise<{
+      uri: string;
+      token: string;
+      pcId: string;
+      pcName: string;
+      addresses: string[];
+      port: number;
+      publicKey: string;
+      expiresAt: number;
+    }>;
+    listDevices: () => Promise<Array<{
+      id: string;
+      name: string;
+      pairedAt: number;
+      lastSeen: number;
+      online: boolean;
+    }>>;
+    listPending: () => Promise<Array<{
+      requestId: string;
+      deviceId: string;
+      deviceName: string;
+      verificationCode: string;
+      expiresAt: number;
+    }>>;
+    acceptPair: (requestId: string) => Promise<{ ok: boolean }>;
+    rejectPair: (requestId: string) => Promise<{ ok: boolean }>;
+    revoke: (deviceId: string) => Promise<{ ok: boolean }>;
+    onPairRequest: (callback: (data: unknown) => void) => () => void;
+    onChanged: (callback: () => void) => () => void;
+    onError: (callback: (data: { message: string }) => void) => () => void;
   };
   migration: {
     accept: (transferId: string, targetPath: string) => Promise<{ ok: boolean; error?: string }>;
