@@ -123,6 +123,18 @@ let sharedServices: {
   remoteTerminalService: RemoteTerminalService;
 } | null = null;
 
+/**
+ * 渲染进程健康诊断：渲染进程非正常退出后，窗口会变成「帧已销毁、窗口对象还在」的僵尸状态，
+ * 之后每次广播都会抛「Render frame was disposed before WebFrameMain could be accessed」。
+ * 只看那串刷屏判断不出真正原因（崩溃？被系统杀死？页面重载？）——这里把原因打出来。
+ * 不自动恢复：崩溃应当被看见，自动重载会把它藏起来（且会与持续崩溃形成重启循环）。
+ */
+function watchRendererGone(window: BrowserWindow): void {
+  window.webContents.on("render-process-gone", (_event, details) => {
+    console.error(`[renderer] 渲染进程退出: reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+}
+
 export async function createWindow(hash?: string, _isMain = false): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     width: 1400,
@@ -257,6 +269,8 @@ export async function createWindow(hash?: string, _isMain = false): Promise<Brow
   }
 
   loadApp(window, hash);
+
+  watchRendererGone(window);
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -441,6 +455,7 @@ ipcMain.handle("editor:open", (_e, filePath?: string) => {
       preload: path.join(__dirname, "..", "..", "preload", "dist", "preload.cjs"),
     },
   });
+  watchRendererGone(editorWin);
   if (filePath && fs.existsSync(filePath)) {
     editorWin.loadFile(editorPath);
     editorWin.webContents.on("did-finish-load", () => {
