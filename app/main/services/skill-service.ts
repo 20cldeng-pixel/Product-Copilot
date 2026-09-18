@@ -626,12 +626,13 @@ export function seedBundledSkills(): void {
 
 // migrateBuiltinSkills removed — no longer auto-clean global skill/MCP dirs.
 
-/** Skills owned by EM — only injected as builtin, never installed to global. CC cannot see them. */
-const EM_SKILLS = ["ui-sync", "creation-guide", "creation-flow-intent", "creation-flow-features", "creation-flow-cost", "creation-flow-prototype", "creation-flow-techspec", "project-run", "dev-docs", "ui-aesthetic", "ui-ux-pro-max", "untrusted-source-check"];
+/** Skills owned by EM — only injected as builtin, never installed to global. CC cannot see them.
+ *  导出供测试断言（含各名字必须有对应资源目录）。 */
+export const EM_SKILLS = ["ui-sync", "creation-guide", "creation-flow-intent", "creation-flow-features", "creation-flow-cost", "creation-flow-prototype", "creation-flow-techspec", "project-run", "dev-docs", "ui-aesthetic", "ui-ux-pro-max", "untrusted-source-check", "brand-tokens"];
 
 /** Skills bundled with EM for convenience — auto-seeded to global on first launch if missing.
  *  Global copy takes priority (user can customize), builtin acts as fallback. CC can use them. */
-const BUNDLED_SKILLS = ["ponytail", "ponytail-review", "ponytail-audit"];
+export const BUNDLED_SKILLS = ["ponytail", "ponytail-review", "ponytail-audit"];
 
 // buildSkillsPrompt 已退役（期 1b）：skill 注入收敛到 Pi 原生 <available_skills>，
 // 四来源经 pi-session 的 skillsOverride 并入（authored/managed 不在 Pi 扫描路径）。

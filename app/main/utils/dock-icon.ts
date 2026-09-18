@@ -23,7 +23,7 @@ type EffectiveTheme = "light" | "dark";
 
 /** 运行时 Dock 图标绝对路径。
  *  打包后由 electron-builder 的 extraResources 输出到 asar 外的 Resources/ 根，
- *  与项目其它运行时资源（template / skills / em-html-editor / brand-tokens）同一口径：
+ *  与项目其它运行时资源（template / skills / em-html-editor）同一口径：
  *  路径基准统一是 process.resourcesPath；dev 下取项目根的 assets/。 */
 function getDockIconPath(theme: EffectiveTheme): string {
   const fileName = `appicon-${theme}.png`;

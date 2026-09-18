@@ -9,11 +9,14 @@ vi.mock("electron", () => ({ app: { isPackaged: false, getPath: () => os.tmpdir(
  * 播种是「委派 mint-designer 也能拿到种子模板」的关键一环（2026-09-16 补的洞）：
  * 此前只在主会话以 designer 类型启动时播种，委派路径永不播种，
  * 子 Agent 于是开局去翻一个不存在的 .easymint/templates/。
+ *
+ * 品牌库已改为内置 skill（resources/skills/brand-tokens/），**不再播种**——见
+ * __brand-skill.test.ts。本文件的反向断言就是防它被加回来。
  */
 describe("ensureDesignerTemplates", () => {
   const newProject = (): string => mkdtempSync(path.join(os.tmpdir(), "em-designer-seed-"));
 
-  it("把 4 个种子模板与品牌库播进项目 .easymint/", async () => {
+  it("只把 4 个种子模板播进项目 .easymint/，品牌库不再落盘", async () => {
     const { ensureDesignerTemplates } = await import("./designer-seed");
     const { DESIGNER_TEMPLATE_FILES } = await import("../../shared/designer-templates");
     const project = newProject();
@@ -26,7 +29,9 @@ describe("ensureDesignerTemplates", () => {
       // 内容来自 resources/em-html-editor/（非空，且是 HTML）
       expect(readFileSync(p, "utf-8")).toContain("<");
     }
-    expect(existsSync(path.join(project, ".easymint", "brand-tokens"))).toBe(true);
+    // 反向锚定：品牌库已改为内置 skill，项目里重新出现这个目录就是回退
+    expect(existsSync(path.join(project, ".easymint", "brand-tokens"))).toBe(false);
+    expect(existsSync(path.join(project, ".easymint", "templates"))).toBe(true);
   });
 
   it("重复调用是幂等的，且不覆盖项目里已存在的模板（用户改过的要留住）", async () => {

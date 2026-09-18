@@ -31,6 +31,19 @@ describe("设计起点契约", () => {
     expect(MINT_DESIGN_BOOST).toContain("委派时把品牌名一并写进 prompt");
   });
 
+  it("品牌库是内置 skill：两个宿主都只给 skill 相对路径，不再提项目内路径", () => {
+    // 旧布局是按项目播种 .easymint/brand-tokens（每个项目 2.5MB）—— 提它就是回退
+    expect(DESIGNER_AGENT_PROMPT).not.toContain(".easymint/brand-tokens");
+    expect(MINT_DESIGN_BOOST).not.toContain(".easymint/brand-tokens");
+    // 子 Agent 没有 use_skill，只能靠 available_skills 的 <location> 定位技能目录 —— 提示词必须说清这条依据
+    expect(DESIGNER_AGENT_PROMPT).toContain("available_skills");
+    expect(DESIGNER_AGENT_PROMPT).toContain("brands/<品牌>/DESIGN.md");
+    expect(MINT_DESIGN_BOOST).toContain("brands/<品牌>/DESIGN.md");
+    // 硬编码品牌数量是漂移源头（曾写死"74 个品牌"），清单归生成的 brands.md
+    expect(DESIGNER_AGENT_PROMPT).not.toContain("74 个品牌");
+    expect(MINT_DESIGN_BOOST).not.toContain("74 个品牌");
+  });
+
   it("主会话版给出清单 + 指定要求（含委派写法）", () => {
     for (const f of DESIGNER_TEMPLATE_FILES) {
       expect(MINT_DESIGN_BOOST).toContain(f);

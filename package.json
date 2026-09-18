@@ -19,8 +19,10 @@
     "build:renderer": "vite build --config app/renderer/vite.config.ts",
     "build:main": "node scripts/build.cjs main",
     "build:preload": "node scripts/build.cjs preload",
-    "lint": "eslint app/ --cache && concurrently --kill-others-on-fail --names main,preload,renderer \"tsc --noEmit -p app/main/tsconfig.json\" \"tsc --noEmit -p app/preload/tsconfig.json\" \"tsc --noEmit -p app/renderer/tsconfig.json\" && node scripts/check-deps.mjs",
+    "lint": "eslint app/ --cache && concurrently --kill-others-on-fail --names main,preload,renderer \"tsc --noEmit -p app/main/tsconfig.json\" \"tsc --noEmit -p app/preload/tsconfig.json\" \"tsc --noEmit -p app/renderer/tsconfig.json\" && node scripts/check-deps.mjs && node scripts/gen-brand-index.mjs --check",
     "check:deps": "node scripts/check-deps.mjs",
+    "gen:brands": "node scripts/gen-brand-index.mjs",
+    "check:brands": "node scripts/gen-brand-index.mjs --check",
     "typecheck": "concurrently --kill-others-on-fail --names main,preload,renderer \"tsc --noEmit -p app/main/tsconfig.json\" \"tsc --noEmit -p app/preload/tsconfig.json\" \"tsc --noEmit -p app/renderer/tsconfig.json\"",
     "test": "vitest run"
   },
@@ -122,10 +124,6 @@
         "to": "em-html-editor"
       },
       {
-        "from": "resources/brand-tokens",
-        "to": "brand-tokens"
-      },
-      {
         "from": "assets/appicon-light.png",
         "to": "appicon-light.png"
       },
@@ -146,7 +144,7 @@
       "artifactName": "${productName}-macOS-${arch}.${ext}",
       "notarize": false,
       "signIgnore": [
-        "brand-tokens/linear.app"
+        "skills/brand-tokens/brands/linear.app"
       ]
     },
     "dmg": {

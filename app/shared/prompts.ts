@@ -5,7 +5,7 @@
  * main 和 renderer 直接 import，不需要 IPC。
  */
 
-import { DESIGNER_BRAND_DIR, DESIGNER_TEMPLATE_DIR, designerTemplateTable } from "./designer-templates";
+import { DESIGNER_TEMPLATE_DIR, designerTemplateTable } from "./designer-templates";
 
 
 // ── 系统身份提示词 ──────────────────────────────────
@@ -736,9 +736,10 @@ const DESIGN_SPEC = `## 起点：种子模板与自由设计
 
 ## 品牌库
 
-项目 .easymint/brand-tokens/ 目录下内置了 74 个品牌的 DESIGN.md（Airbnb、Stripe、Vercel、Apple、Notion、Linear、Spotify、GitHub、Figma 等），YAML frontmatter 格式，可直接解析提取 token。
+品牌库是一个内置 skill（\`brand-tokens\`）：品牌清单在技能目录的 \`./brands.md\`，单个品牌规范在 \`./brands/<品牌>/DESIGN.md\`。
+技能目录 = available_skills 里 brand-tokens 条目的 \`<location>\` 去掉末尾 \`/SKILL.md\`——解析成绝对路径再 Read。
 
-用户选择品牌后，Read 对应 DESIGN.md，从 YAML frontmatter 提取：
+用户指定品牌后，只 Read 那一个 DESIGN.md，从 YAML frontmatter 提取：
 - colors.primary → --accent
 - colors.ink / colors.body → --fg
 - colors.muted → --muted
@@ -796,8 +797,9 @@ export const DESIGNER_AGENT_PROMPT = `你是 Mint-D，EasyMint 的 UI 设计师�
 任务指定的模板文件不存在时，在总结里说明并**按自由设计继续**——不要去搜索替代模板（白耗回合，
 还会把输出预算耗在无关阅读上）。
 
-**品牌同理**：任务里给了品牌名 → Read \`${DESIGNER_BRAND_DIR}/<品牌>/DESIGN.md\` 提 token；
-没给就用下方设计规范的色系。**不要遍历 brand-tokens 目录去挑品牌**（74 个品牌文件，翻起来就是灾难）。
+**品牌同理**：任务里给了品牌名 → 在 available_skills 里找到 brand-tokens 条目，取它的 \`<location>\` 去掉
+末尾 \`/SKILL.md\` 得到技能目录，Read 该目录下 \`./brands/<品牌>/DESIGN.md\` 提 token；
+没给就用下方设计规范的色系。**不要遍历 brand-tokens 目录去挑品牌**（几十个品牌，翻起来就是灾难）。
 
 你看不到主对话历史。Mint 会在调度你的 prompt 里写明本次要设计的任务（产品描述、功能需求、风格方向、目标文件）。你只按任务产出原型，**不向用户确认需求、不询问反馈**——需求确认、预览（show_prototype）与反馈循环由 Mint 主会话负责。
 
@@ -841,7 +843,7 @@ ${designerTemplateTable()}
 
 ### 品牌选择
 
-如果用户在讨论风格但还没选定品牌，可以说"EasyMint 内置了几十个品牌的设计方案（如 Airbnb、Stripe、Apple 等），需要的话我可以列出品牌名称供你选择"。选定品牌后 Read 对应 DESIGN.md 提取 token（见上方品牌库）。
+如果用户在讨论风格但还没选定品牌，可以说"EasyMint 内置了几十个品牌的设计方案（如 Airbnb、Stripe、Apple 等），需要的话我可以列出品牌名称供你选择"；要列清单就 Read 品牌库 skill 目录下的 \`./brands.md\`。选定品牌后 Read \`./brands/<品牌>/DESIGN.md\` 提取 token（见上方品牌库）。
 **委派时把品牌名一并写进 prompt**（子 Agent 看不到主对话历史，也不会自己去 brand-tokens 里挑）。
 
 ### 产出流程
