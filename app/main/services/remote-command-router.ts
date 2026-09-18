@@ -35,7 +35,7 @@ const attachmentSchema = z.object({
 type RemoteAttachment = z.infer<typeof attachmentSchema>;
 type PiImage = { type: "image"; data: string; mimeType: string };
 
-function saveRemoteAttachments(raw: unknown, sessionId?: string): { markers: string[]; images: PiImage[]; details: Array<{ name: string; path: string; kind: "image" | "doc" }> } {
+function saveRemoteAttachments(raw: unknown): { markers: string[]; images: PiImage[]; details: Array<{ name: string; path: string; kind: "image" | "doc" }> } {
   const attachments = z.array(attachmentSchema).max(10).default([]).parse(raw);
   const uploadDir = path.join(os.homedir(), ".easymint", "uploads");
   if (attachments.length) fs.mkdirSync(uploadDir, { recursive: true });
@@ -52,7 +52,7 @@ function saveRemoteAttachments(raw: unknown, sessionId?: string): { markers: str
     const storedName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeBase}`;
     const filePath = path.join(uploadDir, storedName);
     fs.writeFileSync(filePath, buffer);
-    trackUpload(storedName, buffer.length, sessionId);
+    trackUpload(storedName, buffer.length);
     markers.push(`[${attachment.kind === "image" ? "Image" : "File"} #${index + 1}: ${filePath}]`);
     details.push({ name: attachment.name, path: filePath, kind: attachment.kind });
     if (attachment.kind === "image") images.push({ type: "image", data: attachment.data, mimeType: attachment.mimeType });
@@ -122,7 +122,7 @@ export class RemoteCommandRouter {
     const text = textSchema.parse(data.text);
     const project = this.coordinator.getOpenProject(projectId);
     if (command.sessionId) await this.coordinator.requireSession(projectId, command.sessionId);
-    const attached = saveRemoteAttachments(data.attachments, command.sessionId);
+    const attached = saveRemoteAttachments(data.attachments);
     if (!text && attached.markers.length === 0) throw Object.assign(new Error("消息或附件不能为空"), { code: "INVALID_COMMAND" });
     const agentText = [...attached.markers, ...(text ? [text] : [])].join("\n");
     const permission = permissionSchema.optional().parse(data.permissionMode) ?? "standard";
@@ -157,7 +157,7 @@ export class RemoteCommandRouter {
     await this.coordinator.requireSession(projectId, sessionId);
     const data = dataObject(command);
     const text = textSchema.parse(data.text);
-    const attached = saveRemoteAttachments(data.attachments, sessionId);
+    const attached = saveRemoteAttachments(data.attachments);
     if (!text && attached.markers.length === 0) throw Object.assign(new Error("消息或附件不能为空"), { code: "INVALID_COMMAND" });
     const agentText = [...attached.markers, ...(text ? [text] : [])].join("\n");
     await this.agentService.steer(sessionId, agentText, attached.images.length ? attached.images : undefined);

@@ -14,7 +14,6 @@ import os from "node:os";
 export interface FileMeta {
   size: number;
   created: number;
-  refs: string[]; // session IDs
 }
 
 export interface UploadStatsItem {
@@ -52,31 +51,13 @@ function writeMeta(meta: Record<string, FileMeta>): void {
 }
 
 /** Register an uploaded file in metadata (called by saveUpload) */
-export function trackUpload(filename: string, size: number, sessionId?: string): void {
+export function trackUpload(filename: string, size: number): void {
   const meta = readMeta();
   const existing = meta[filename];
   meta[filename] = {
     size,
     created: existing?.created || Date.now(),
-    refs: existing?.refs || [],
   };
-  if (sessionId && !meta[filename]!.refs.includes(sessionId)) {
-    meta[filename]!.refs.push(sessionId);
-  }
-  writeMeta(meta);
-}
-
-/** Remove session reference; delete file if no refs remain */
-export function untrackSession(sessionId: string): void {
-  const meta = readMeta();
-  const toDelete: string[] = [];
-  for (const [name, m] of Object.entries(meta)) {
-    m.refs = m.refs.filter((r) => r !== sessionId);
-    if (m.refs.length === 0) toDelete.push(name);
-  }
-  for (const name of toDelete) {
-    deleteUploadFile(meta, name);
-  }
   writeMeta(meta);
 }
 
@@ -112,24 +93,13 @@ export function getUploadStats(sortBy: "time" | "size" = "time"): UploadStats {
 // ── Cleanup ────────────────────────────────────────
 
 /** 上传文件名安全校验:必须是顶层文件名（无路径分隔符/穿越段）且 resolve 后落在 UPLOAD_DIR 内。
- *  cleanFiles/untrackSession 收到渲染层传入的文件名——`../../x` 之类经 path.join 会逃出目录删任意文件 */
+ *  cleanFiles 收到渲染层传入的文件名——`../../x` 之类经 path.join 会逃出目录删任意文件 */
 function isSafeUploadName(name: string): boolean {
   if (!name || typeof name !== "string") return false;
   if (path.basename(name) !== name) return false;
   const base = path.resolve(UPLOAD_DIR);
   const target = path.resolve(base, name);
   return target === base ? false : target.startsWith(base + path.sep);
-}
-
-/** 删除单个上传文件（含元数据条目）。跳过不安全/不存在的目标 */
-function deleteUploadFile(meta: Record<string, FileMeta>, name: string): void {
-  if (!isSafeUploadName(name)) {
-    console.warn(`[upload-cache] 跳过不安全的删除目标: ${name}`);
-    return;
-  }
-  const filePath = path.join(UPLOAD_DIR, name);
-  if (existsSync(filePath)) unlinkSync(filePath);
-  delete meta[name];
 }
 
 /** Delete specified files */
