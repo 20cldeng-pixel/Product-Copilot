@@ -311,12 +311,14 @@ export function Sidebar({
           </button>
         </div>
       </div>
-      {/* 工具箱弹层:相对 sidebar 定位(底部按钮上方弹出,不受按钮容器尺寸影响) */}
+      {/* 工具箱弹层:相对 sidebar 定位(底部按钮上方弹出,不受按钮容器尺寸影响)。
+          两个抽屉都是 fixed 全覆盖浮层,同时打开会叠在一起——开一个先关另一个,
+          不依赖遮罩挡住工具箱这个隐式前提(将来加托盘/快捷键入口就不成立了) */}
       <ToolboxPanel
         open={toolboxOpen}
         onClose={() => setToolboxOpen(false)}
-        onOpenMigrationPanel={() => setDevicePanelOpen(true)}
-        onOpenMobilePanel={() => setMobilePanelOpen(true)}
+        onOpenMigrationPanel={() => { setMobilePanelOpen(false); setDevicePanelOpen(true); }}
+        onOpenMobilePanel={() => { setDevicePanelOpen(false); setMobilePanelOpen(true); }}
       />
       {/* 项目迁移浮层:fixed 覆盖整个视口(电脑↔电脑迁移项目) */}
       <DevicePanel open={devicePanelOpen} onClose={() => setDevicePanelOpen(false)} />

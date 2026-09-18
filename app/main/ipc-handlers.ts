@@ -909,6 +909,10 @@ const filePath = p.join(projectPath, "task.json");
   remoteTerminalService.on("error", (error: Error) => {
     broadcast("mobile-terminal:error", { message: error.message });
   });
+  // Windows 防火墙放行提示(连接手机首次监听端口时一次;与项目迁移共用同一条前端提示通道)
+  remoteTerminalService.once("firewall-hint", ({ port }: { port: number }) => {
+    broadcast("device:firewall-hint", { port });
+  });
   ipcMain.handle("mobile-terminal:create-offer", () => remoteTerminalService.createPairingOffer());
   ipcMain.handle("mobile-terminal:list-devices", () => remoteTerminalService.listDevices());
   ipcMain.handle("mobile-terminal:list-pending", () => remoteTerminalService.listPendingPairs());

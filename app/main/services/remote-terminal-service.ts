@@ -162,6 +162,10 @@ export class RemoteTerminalService extends EventEmitter {
         server.on("error", (error) => this.emit("error", error));
         this.server = server;
         this.startPromise = null;
+        // Windows 防火墙:不监听就没提示,但这里监听是懒启动(点「扫码配对」才 listen),
+        // 所以提示发在 listening 之后——否则用户点了配对、端口被拦,界面上什么都没有。
+        // 与 network-service 的同名事件一样由 ipc-handlers 用 once 接,只广播一次。
+        if (process.platform === "win32") this.emit("firewall-hint", { port: this.listeningPort() });
         resolve();
       });
       server.on("connection", (socket) => this.handleConnection(socket));

@@ -159,7 +159,7 @@ export function App(): JSX.Element {
     return () => { unsubCompleted(); };
   }, []);
 
-  // Windows 防火墙放行提示(设备互联,一次性,可关闭)
+  // Windows 防火墙放行提示(项目迁移/连接手机,各通道一次,可关闭)
   const [firewallHint, setFirewallHint] = useState<number | null>(null);
   useEffect(() => {
     return window.electronAPI.onFirewallHint(({ port }) => setFirewallHint(port));
@@ -253,10 +253,10 @@ export function App(): JSX.Element {
             </div>
           </div>
         )}
-        {/* Windows 防火墙放行提示(设备互联端口,一次性) */}
+        {/* Windows 防火墙放行提示(项目迁移/连接手机端口,各通道一次) */}
         {firewallHint !== null && (
           <div className="fixed top-3 left-1/2 -translate-x-1/2 z-toast flex items-center gap-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-surface-alt shadow-lg text-xs text-text-primary">
-            <span>项目迁移需要 Windows 防火墙放行端口 {firewallHint}——首次弹窗时请勾选「专用网络」并允许访问</span>
+            <span>项目迁移与连接手机需要 Windows 防火墙放行端口 {firewallHint}——首次弹窗时请勾选「专用网络」并允许访问</span>
             <button className="text-text-secondary hover:text-text-primary shrink-0" onClick={() => setFirewallHint(null)}>✕</button>
           </div>
         )}

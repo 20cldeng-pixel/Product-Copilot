@@ -184,7 +184,7 @@ class NetworkService extends EventEmitter {
 
   // ── WS 服务端（入站连接） ──
   private startWsServer(): void {
-    // Windows 防火墙:首次监听局域网端口需用户放行——提示一次(不打扰,见设备互联面板)
+    // Windows 防火墙:首次监听局域网端口需用户放行——提示一次(不打扰,见项目迁移面板)
     if (process.platform === "win32") {
       this.emit("firewall-hint", { port: WS_PORT });
     }
