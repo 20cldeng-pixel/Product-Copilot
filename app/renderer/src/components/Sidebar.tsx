@@ -8,6 +8,7 @@ import { IssuePanel } from "./IssuePanel";
 import { RunPanel } from "./RunPanel";
 import { ToolboxPanel } from "./toolbox/ToolboxPanel";
 import { DevicePanel } from "./device/DevicePanel";
+import { MobileTerminalPanel } from "./device/MobileTerminalPanel";
 import { useThemeStore } from "../stores/theme-store";
 import { useEnvStore, subscribeEnvReport } from "../stores/env-store";
 import { readVersion, markRead } from "../lib/update-notice";
@@ -46,6 +47,7 @@ export function Sidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [toolboxOpen, setToolboxOpen] = useState(false);
   const [devicePanelOpen, setDevicePanelOpen] = useState(false);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   // 归档恢复后自增,触发 SessionHistory 主列表刷新(受控 sessionRefreshKey 无法直接改)
   const [archivedRefresh, setArchivedRefresh] = useState(0);
   const menuWrapRef = useRef<HTMLDivElement>(null);
@@ -313,10 +315,13 @@ export function Sidebar({
       <ToolboxPanel
         open={toolboxOpen}
         onClose={() => setToolboxOpen(false)}
-        onOpenDevicePanel={() => setDevicePanelOpen(true)}
+        onOpenMigrationPanel={() => setDevicePanelOpen(true)}
+        onOpenMobilePanel={() => setMobilePanelOpen(true)}
       />
-      {/* 设备互联浮层:fixed 覆盖整个视口 */}
+      {/* 项目迁移浮层:fixed 覆盖整个视口(电脑↔电脑迁移项目) */}
       <DevicePanel open={devicePanelOpen} onClose={() => setDevicePanelOpen(false)} />
+      {/* 连接手机浮层:fixed 覆盖整个视口(手机扫码配对) */}
+      <MobileTerminalPanel open={mobilePanelOpen} onClose={() => setMobilePanelOpen(false)} />
     </aside>
   );
 }

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useDeviceStore, type PairedDevice, type DiscoveredDevice } from "../../stores/device-store";
 import { TransferModal } from "./TransferModal";
-import { MobileTerminalSection } from "./MobileTerminalSection";
 
 /**
- * 设备互联悬浮浮层(内嵌 absolute 覆盖主界面):
+ * 项目迁移悬浮浮层(内嵌 absolute 覆盖主界面):电脑↔电脑迁移项目。
  * - 可被发现开关(配对模式,5 分钟自动退出)
  * - 已配对设备列表(在线绿点/离线灰点 + 最后连接时间)
  * - 可用设备列表(发现 + 配对)
  * 交互对齐蓝牙:配对期高频,配对后零广播,离线低频探测(主进程负责)。
+ * 手机连接是另一条链路,已独立为「连接手机」浮层(MobileTerminalPanel)。
  */
 
 interface DevicePanelProps {
@@ -174,13 +174,11 @@ export function DevicePanel({ open, onClose }: DevicePanelProps): JSX.Element | 
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-3 pb-1">
-          <span className="text-sm font-medium text-text-primary">设备互联</span>
+          <span className="text-sm font-medium text-text-primary">项目迁移</span>
           <button type="button" className="text-text-secondary hover:text-text-primary transition-colors text-sm px-1" onClick={onClose}>✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 pt-1 pb-6 space-y-4 flex flex-col">
-          <MobileTerminalSection />
-
           {/* 本机信息 + 可被发现开关 */}
           <div className="bg-surface rounded-[var(--radius-lg)] border border-border px-3.5 py-3 shrink-0">
             <div className="flex items-center justify-between gap-2">
