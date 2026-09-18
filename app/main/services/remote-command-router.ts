@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import type { RemoteCommandEnvelope } from "../../shared/remote-protocol";
@@ -18,9 +21,44 @@ import {
 import { readCache, writeCache } from "./session-cache";
 import type { Store } from "./store";
 import type { SessionCoordinator } from "./session-coordinator";
+import { trackUpload } from "./upload-cache";
 
-const textSchema = z.string().trim().min(1).max(100_000);
+const textSchema = z.string().trim().max(100_000).default("");
 const permissionSchema = z.enum(["readonly", "standard", "full"]);
+const attachmentSchema = z.object({
+  name: z.string().min(1).max(255),
+  kind: z.enum(["image", "doc"]),
+  mimeType: z.string().min(1).max(120),
+  data: z.string().max(21_000_000),
+}).strict();
+
+type RemoteAttachment = z.infer<typeof attachmentSchema>;
+type PiImage = { type: "image"; data: string; mimeType: string };
+
+function saveRemoteAttachments(raw: unknown, sessionId?: string): { markers: string[]; images: PiImage[]; details: Array<{ name: string; path: string; kind: "image" | "doc" }> } {
+  const attachments = z.array(attachmentSchema).max(10).default([]).parse(raw);
+  const uploadDir = path.join(os.homedir(), ".easymint", "uploads");
+  if (attachments.length) fs.mkdirSync(uploadDir, { recursive: true });
+  const markers: string[] = [];
+  const images: PiImage[] = [];
+  const details: Array<{ name: string; path: string; kind: "image" | "doc" }> = [];
+  let totalBytes = 0;
+  attachments.forEach((attachment: RemoteAttachment, index) => {
+    const buffer = Buffer.from(attachment.data, "base64");
+    if (buffer.length > 15 * 1024 * 1024) throw Object.assign(new Error(`${attachment.name} 超过 15 MB`), { code: "ATTACHMENT_TOO_LARGE" });
+    totalBytes += buffer.length;
+    if (totalBytes > 15 * 1024 * 1024) throw Object.assign(new Error("单次发送的附件总量不能超过 15 MB"), { code: "ATTACHMENT_TOO_LARGE" });
+    const safeBase = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "attachment";
+    const storedName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeBase}`;
+    const filePath = path.join(uploadDir, storedName);
+    fs.writeFileSync(filePath, buffer);
+    trackUpload(storedName, buffer.length, sessionId);
+    markers.push(`[${attachment.kind === "image" ? "Image" : "File"} #${index + 1}: ${filePath}]`);
+    details.push({ name: attachment.name, path: filePath, kind: attachment.kind });
+    if (attachment.kind === "image") images.push({ type: "image", data: attachment.data, mimeType: attachment.mimeType });
+  });
+  return { markers, images, details };
+}
 
 function dataObject(command: RemoteCommandEnvelope): Record<string, unknown> {
   const data = command.payload.data;
@@ -84,16 +122,19 @@ export class RemoteCommandRouter {
     const text = textSchema.parse(data.text);
     const project = this.coordinator.getOpenProject(projectId);
     if (command.sessionId) await this.coordinator.requireSession(projectId, command.sessionId);
+    const attached = saveRemoteAttachments(data.attachments, command.sessionId);
+    if (!text && attached.markers.length === 0) throw Object.assign(new Error("消息或附件不能为空"), { code: "INVALID_COMMAND" });
+    const agentText = [...attached.markers, ...(text ? [text] : [])].join("\n");
     const permission = permissionSchema.optional().parse(data.permissionMode) ?? "standard";
     const result = await this.agentService.sendMessage(
       project.path,
-      text,
+      agentText,
       command.sessionId ?? null,
       permission,
       this.mainWindow,
       typeof data.model === "string" ? data.model : undefined,
       false,
-      undefined,
+      attached.images.length ? attached.images : undefined,
       typeof data.thinkingLevel === "string" ? data.thinkingLevel : undefined,
       undefined,
       typeof data.provider === "string" ? data.provider : undefined,
@@ -103,9 +144,9 @@ export class RemoteCommandRouter {
       type: "user_message",
       sessionId: result.sessionId,
       chatId: result.chatId,
-      text,
+      text: text || attached.details.map((item) => item.name).join("、"),
       timestamp: Date.now(),
-      details: { source: "mobile", sourceDeviceId: deviceId, messageId: randomUUID() },
+      details: { source: "mobile", sourceDeviceId: deviceId, messageId: randomUUID(), attachments: attached.details },
     });
     return result;
   }
@@ -114,14 +155,18 @@ export class RemoteCommandRouter {
     const projectId = requireProjectId(command);
     const sessionId = requireSessionId(command);
     await this.coordinator.requireSession(projectId, sessionId);
-    const text = textSchema.parse(dataObject(command).text);
-    await this.agentService.steer(sessionId, text);
+    const data = dataObject(command);
+    const text = textSchema.parse(data.text);
+    const attached = saveRemoteAttachments(data.attachments, sessionId);
+    if (!text && attached.markers.length === 0) throw Object.assign(new Error("消息或附件不能为空"), { code: "INVALID_COMMAND" });
+    const agentText = [...attached.markers, ...(text ? [text] : [])].join("\n");
+    await this.agentService.steer(sessionId, agentText, attached.images.length ? attached.images : undefined);
     broadcast("agent:stream", {
       type: "user_message",
       sessionId,
-      text,
+      text: text || attached.details.map((item) => item.name).join("、"),
       timestamp: Date.now(),
-      details: { source: "mobile", sourceDeviceId: deviceId, messageId: randomUUID() },
+      details: { source: "mobile", sourceDeviceId: deviceId, messageId: randomUUID(), attachments: attached.details },
     });
     return { ok: true };
   }
