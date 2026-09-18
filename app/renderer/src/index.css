@@ -913,7 +913,7 @@ html[data-platform="win32"] .tabbar-v3 { padding-right: 120px; }
 .permission-mode-trigger {
   display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
   min-height: 26px; padding: 4px 7px 4px 6px; border: none;
-  border-radius: var(--radius-lg); background: transparent; cursor: pointer;
+  border-radius: var(--radius-lg); background: var(--color-input-field); cursor: pointer;
   font-size: var(--text-xs); line-height: 1; transition: color 120ms, background 120ms;
 }
 .permission-mode-trigger:hover,
