@@ -4,7 +4,7 @@ import type { ProductStage } from "../../shared/product-workflow";
 
 const PLANNING_TOOLS = new Set([
   "get_product_plan", "save_product_draft", "read", "ls", "grep", "find", "glob",
-  "web_search", "web_fetch", "ask_user", "use_skill", "describe_image",
+  "web_search", "web_fetch", "ask_user", "use_skill", "describe_image", "todo_write",
 ]);
 
 /** 产品计划启动后，已批准开发前的文件写入只允许当前项目的原型目录。 */

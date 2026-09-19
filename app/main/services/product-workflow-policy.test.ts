@@ -13,6 +13,7 @@ describe("产品计划的预开发工具边界", () => {
     dirs.push(project);
     expect(productToolDenial("draft", project, "web_search", { query: "examples" })).toBeNull();
     expect(productToolDenial("draft", project, "save_product_draft", {})).toBeNull();
+    expect(productToolDenial("draft", project, "todo_write", { todos: [] })).toBeNull();
     for (const tool of ["write", "edit", "bash", "task", "show_confirm_dev", "mcp__unknown__write"]) {
       expect(productToolDenial("draft", project, tool, { path: "app.ts" })).toBeTruthy();
     }
