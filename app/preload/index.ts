@@ -30,6 +30,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     renameExec: (oldPath: string, newName: string) => ipcRenderer.invoke("project:rename-exec", { oldPath, newName }) as Promise<{ ok: boolean; error?: string }>,
     saveProfile: (projectPath: string, platformSpec: string) => ipcRenderer.invoke("project:saveProfile", { projectPath, platformSpec }),
   },
+  productWorkflow: {
+    get: (projectId: string) => ipcRenderer.invoke("product-workflow:get", { projectId }),
+    activate: (projectId: string, expectedRevision: number, commandId: string) =>
+      ipcRenderer.invoke("product-workflow:activate", { projectId, expectedRevision, commandId }),
+    saveDraft: (projectId: string, expectedRevision: number, commandId: string, draft: unknown) =>
+      ipcRenderer.invoke("product-workflow:save-draft", { projectId, expectedRevision, commandId, draft }),
+    confirmScope: (projectId: string, expectedRevision: number, commandId: string) =>
+      ipcRenderer.invoke("product-workflow:confirm-scope", { projectId, expectedRevision, commandId }),
+    submitPrototype: (projectId: string, expectedRevision: number, commandId: string, filePath: string) =>
+      ipcRenderer.invoke("product-workflow:submit-prototype", { projectId, expectedRevision, commandId, filePath }),
+    confirmDevelopment: (projectId: string, expectedRevision: number, commandId: string) =>
+      ipcRenderer.invoke("product-workflow:confirm-development", { projectId, expectedRevision, commandId }),
+  },
   file: {
     readTree: (dirPath: string) => ipcRenderer.invoke("file:readTree", { dirPath }),
     readContent: (filePath: string) => ipcRenderer.invoke("file:readContent", { filePath }),

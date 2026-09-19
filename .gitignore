@@ -22,8 +22,9 @@ task-*.png
 .workbuddy/
 prototype/
 
-# 本地开发文档与数据(不开源):docs 含开发记录/设计思路/本地路径,
+# 本地开发文档与数据(不开源):docs 默认忽略；docs/product 是公开产品规格,
 # task.json 为运行数据,.npmrc 为本地 npm 源配置(CI 用 env 覆盖官方源,不受影响)
-docs/
+docs/*
+!docs/product/
 task.json
 .npmrc

@@ -234,6 +234,24 @@ interface ElectronAPI {
     renameExec: (oldPath: string, newName: string) => Promise<{ ok: boolean; error?: string }>;
     saveProfile: (projectPath: string, platformSpec: string) => Promise<{ ok: boolean; error?: string }>;
   };
+  productWorkflow: {
+    get: (projectId: string) => Promise<import("../shared/product-workflow").ProductWorkflowSnapshot>;
+    activate: (projectId: string, expectedRevision: number, commandId: string) => Promise<{
+      snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot; replayed: boolean; appliedRevision: number;
+    }>;
+    saveDraft: (projectId: string, expectedRevision: number, commandId: string, draft: import("../shared/product-workflow").ProductDraft) => Promise<{
+      snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot; replayed: boolean; appliedRevision: number;
+    }>;
+    confirmScope: (projectId: string, expectedRevision: number, commandId: string) => Promise<{
+      snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot; replayed: boolean; appliedRevision: number;
+    }>;
+    submitPrototype: (projectId: string, expectedRevision: number, commandId: string, filePath: string) => Promise<{
+      snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot; replayed: boolean; appliedRevision: number;
+    }>;
+    confirmDevelopment: (projectId: string, expectedRevision: number, commandId: string) => Promise<{
+      snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot; replayed: boolean; appliedRevision: number;
+    }>;
+  };
   file: {
     readTree: (dirPath: string) => Promise<FileNode[]>;
     readContent: (filePath: string) => Promise<string>;

@@ -35,6 +35,9 @@ import { backgroundShellRegistry, type BackgroundShell } from "./background-shel
 import { systemMessage, SYSTEM_MESSAGE_LABELS, compactionCardFields, type SystemMessageKind, type SystemMessagePayload } from "../../shared/prompts";
 import { normalizeApiError } from "../../shared/api-errors";
 import { createProductTools } from "./builtin-mcp";
+import { createProductWorkflowTools } from "./tools/product-workflow-tool";
+import { ProductWorkflowService, ProductWorkflowStore } from "./product-workflow-service";
+import { productToolDenial } from "./product-workflow-policy";
 import { closeMcpContexts, loadMcpTools } from "./permission/mcp-adapter";
 import { revokeWindowsExecutionOwners } from "./sandbox/windows-execution-manager";
 import { permissionService } from "./permission/agent-permission-service";
@@ -715,13 +718,32 @@ export class AgentService {
   }> {
     // 权限回调：按 sessionId 隔离白名单，由 createPiSession 统一包装所有工具（含基础 coding 工具）。
     // cwd 用于标准（半沙盒）模式的越界写判定——只允许写当前工作空间内的文件。
-    const canUseTool = permissionService.createCanUseTool(
+    const baseCanUseTool = permissionService.createCanUseTool(
       sessionId,
       projectPath,
       // 权限缓存 key 对齐：新会话绑定的是临时 randomUUID，前端切换模式后写缓存用的是
       // 真实 SDK sid——按临时→真实映射解析后再读 session-cache，否则会话内切「完全访问」不生效
       resolveParentSessionId,
     );
+    const productStore = new ProductWorkflowStore();
+    const registeredProductProject = this.store.getProjects().find((item) => item.path === projectPath);
+    const productWorkflow = registeredProductProject
+      ? new ProductWorkflowService((id) => id === registeredProductProject.id ? projectPath : undefined, productStore)
+      : null;
+    const canUseTool: CanUseToolFn = async (toolName, input, options) => {
+      if (registeredProductProject && productStore.exists(registeredProductProject.id)) {
+        const state = productStore.read(registeredProductProject.id);
+        const reason = productToolDenial(state.stage, projectPath, toolName, input);
+        if (reason) return { behavior: "deny", message: reason };
+        if (state.stage === "development_authorized" && productWorkflow && !productWorkflow.isDevelopmentCurrent(registeredProductProject.id)) {
+          const name = toolName.toLowerCase();
+          if (name !== "get_product_plan" && name !== "read" && name !== "ls") {
+            return { behavior: "deny", message: "原型或批准版本已变化，请重新核对后确认开发。" };
+          }
+        }
+      }
+      return baseCanUseTool(toolName, input, options);
+    };
 
     try {
       const taskTool = await createTaskTool({
@@ -760,6 +782,10 @@ export class AgentService {
         onTaskCompleted: (sid, text) => this.injectSystemMessage(sid, text, "delegation"),
       });
       const productTools = await createProductTools(projectPath);
+      const registeredProject = this.store.getProjects().find((item) => item.path === projectPath);
+      if (registeredProject && !opts?.worker) {
+        productTools.push(...(await createProductWorkflowTools(registeredProject.id, projectPath)));
+      }
       const resolveMode = () => {
         const sid = resolveParentSessionId(sessionId);
         return normalizePermissionMode(readCache(sid)?.permissionMode);
@@ -839,6 +865,23 @@ export class AgentService {
     if (env) parts.push(env);
     const profile = buildProjectProfileSection(readProjectProfile(projectPath));
     if (profile) parts.push(profile);
+
+    const productProject = this.store.getProjects().find((item) => item.path === projectPath);
+    if (productProject) {
+      const planStore = new ProductWorkflowStore();
+      if (planStore.exists(productProject.id)) {
+        const plan = planStore.read(productProject.id);
+        parts.push([
+          "<product_workflow>",
+          `本项目已启用产品计划，当前阶段：${plan.stage}，版本：${plan.revision}。`,
+          "先用 get_product_plan 读取当前已保存需求；需求草案可用 save_product_draft 更新。",
+          "用户在「产品计划」页确认范围和原型，Agent 不能代替批准。批准前只能做调研与原型工作，工具能力由宿主限制。",
+          "只有宿主确认开发资格后才能写应用代码；普通 task.json 的 done 不代表产品需求验收通过。",
+          "如果旧创建指引与这里的产品计划阶段冲突，以已保存的产品计划及其批准记录为准。",
+          "</product_workflow>",
+        ].join("\n"));
+      }
+    }
 
     // 权限边界（两模式 + 绝对禁区）——提前告知模型边界与「被拒后如何应对」，
     // 减少无谓的越界尝试；工具被拒时错误消息会带统一策略的规则、目标和阶段

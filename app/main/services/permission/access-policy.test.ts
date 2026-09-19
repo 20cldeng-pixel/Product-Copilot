@@ -99,6 +99,7 @@ describe("统一资源策略", () => {
   it("EasyMint 权限状态与可执行配置属于写保护控制面", () => {
     const controls = protectedControlPaths(cwd);
     expect(controls).toContain(path.join(os.homedir(), ".easymint", "session-cache"));
+    expect(controls).toContain(path.join(os.homedir(), ".easymint", "product-workflows"));
     expect(controls).toContain(path.join(cwd, ".easymint", "mcp.json"));
     expect(controls).toContain(path.join(cwd, ".mcp.json"));
     expect(controls).not.toContain(path.join(os.homedir(), ".easymint", "skills"));

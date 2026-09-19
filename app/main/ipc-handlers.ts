@@ -4,6 +4,8 @@ import fs from "fs";
 import os from "os";
 import { randomUUID } from "node:crypto";
 import { ProjectService } from "./services/project-service";
+import { ProductWorkflowService } from "./services/product-workflow-service";
+import type { ProductDraft } from "../shared/product-workflow";
 import { FileService } from "./services/file-service";
 import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-service";
 import { Store } from "./services/store";
@@ -110,6 +112,10 @@ interface Services {
 }
 
 export function registerIpcHandlers({ mainWindow, projectService, fileService, agentService, store, remoteTerminalService }: Services): void {
+  const productWorkflow = new ProductWorkflowService((projectId) => {
+    const project = projectService.get(projectId);
+    return project?.exists ? project.path : undefined;
+  });
   /**
    * file:* / shell 日志通道的可信根解析：目标路径必须落在某个已登记项目根之内
    * （`~/.ssh/id_rsa`、`/etc/passwd`、`~/Documents/../.ssh/id_rsa` 均无项目根包含 → 拒绝）。
@@ -178,6 +184,27 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
     await projectService.delete(id);
   });
   ipcMain.handle("project:get", (_e, { id }) => projectService.get(id));
+  // Product Copilot：模型只提交草案；确认由独立的用户界面动作调用，主进程校验版本和条件。
+  const productRead = z.object({ projectId: z.string().uuid() }).strict();
+  const productCommand = productRead.extend({
+    expectedRevision: z.number().int().nonnegative(), commandId: z.string().uuid(),
+  });
+  ipcMain.handle("product-workflow:get", guard(productRead, ({ projectId }) => productWorkflow.get(projectId)));
+  ipcMain.handle("product-workflow:activate", guard(productCommand,
+    ({ projectId, expectedRevision, commandId }) =>
+      productWorkflow.activate(projectId, expectedRevision, commandId)));
+  ipcMain.handle("product-workflow:save-draft", guard(productCommand.extend({ draft: z.unknown() }),
+    ({ projectId, expectedRevision, commandId, draft }) =>
+      productWorkflow.saveDraft(projectId, expectedRevision, commandId, draft as ProductDraft)));
+  ipcMain.handle("product-workflow:confirm-scope", guard(productCommand,
+    ({ projectId, expectedRevision, commandId }) =>
+      productWorkflow.confirmScope(projectId, expectedRevision, commandId)));
+  ipcMain.handle("product-workflow:submit-prototype", guard(productCommand.extend({ filePath: pathString }),
+    ({ projectId, expectedRevision, commandId, filePath }) =>
+      productWorkflow.submitPrototype(projectId, expectedRevision, commandId, filePath)));
+  ipcMain.handle("product-workflow:confirm-development", guard(productCommand,
+    ({ projectId, expectedRevision, commandId }) =>
+      productWorkflow.confirmDevelopment(projectId, expectedRevision, commandId)));
   ipcMain.handle("project:update", (_e, { id, patch }) => projectService.update(id, patch));
   ipcMain.handle("project:import", (_e, { dirPath }) => projectService.import_(dirPath));
 

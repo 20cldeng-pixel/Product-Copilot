@@ -4,6 +4,7 @@ import { Sidebar } from "../components/Sidebar";
 import { TabBar } from "../components/TabBar";
 import { EditorPanel } from "../components/EditorPanel";
 import { ChatPanel } from "../components/ChatPanel";
+import { ProductWorkspace } from "../components/ProductWorkspace";
 import { ImageViewer } from "../components/ImageViewer";
 import { isImagePath } from "@shared/image-files";
 import { SettingsDialog, type SettingsTab } from "../components/SettingsDialog";
@@ -377,6 +378,13 @@ export function ProjectPage(): JSX.Element {
               </div>
             );
           }
+          if (tab.type === "product") {
+            return (
+              <div key={tab.id} className="absolute inset-0 overflow-y-auto" style={{ display: isActive ? "block" : "none" }}>
+                {projectId && projectPath && <ProductWorkspace projectId={projectId} projectPath={projectPath} />}
+              </div>
+            );
+          }
           return null;
         })}
       </>
@@ -403,7 +411,7 @@ export function ProjectPage(): JSX.Element {
       />
 
       <main className="main-area">
-        <TabBar />
+        <TabBar projectId={projectId && projectExists ? projectId : undefined} />
         {/* tab 内容全部保持挂载、按 activeTabId 切显隐(不卸载)：卸载会丢会话/编辑器的组件内状态(输入框草稿、滚动位置) */}
         <div className="flex-1 min-h-0 relative">
           {renderTabContent()}

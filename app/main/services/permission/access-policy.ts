@@ -96,6 +96,8 @@ export function protectedPersistencePaths(cwd: string, platform: NodeJS.Platform
     path.join(home, ".easymint", "mcp.json"),
     path.join(home, ".easymint", "agent", "settings.json"),
     path.join(home, ".easymint", "agent", "models.json"),
+    // 产品批准与验收版本是后续执行的控制面，只能由宿主服务修改。
+    path.join(home, ".easymint", "product-workflows"),
     path.join(home, ".config", "autostart"),
     path.join(home, ".config", "systemd"),
     path.join(home, ".config", "environment.d"),

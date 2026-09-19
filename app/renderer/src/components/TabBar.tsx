@@ -30,11 +30,12 @@ function runningHint(
   return "确认关闭吗？";
 }
 
-export function TabBar(): JSX.Element | null {
+export function TabBar({ projectId }: { projectId?: string }): JSX.Element | null {
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const setActiveTab = useTabStore((s) => s.setActiveTab);
   const closeTab = useTabStore((s) => s.closeTab);
+  const openTab = useTabStore((s) => s.openTab);
   const runningSessions = useTabStore((s) => s.runningSessions);
   // 委派/后台 shell 实时状态(关闭提醒用:委派运行中回合可能已结束,runningSessions 覆盖不到)
   const agentTasks = useDelegationStore((s) => s.agentTasks);
@@ -44,16 +45,25 @@ export function TabBar(): JSX.Element | null {
   // 初始空会话 tab 无 sessionId——它是一个特殊会话页,但此时不显示标签是刻意设计(避免空壳标签)；
   // 发送后 sessionId 绑定,标签自动出现。
   // 空 tab 时仍渲染空拖拽条（min-height 40px）：窗口顶部需要可拖拽区域
-  const hasRealTabs = useTabStore((s) => s.tabs.some((t) => (t.type === "chat" && t.sessionId) || t.type === "file"));
+  const hasRealTabs = useTabStore((s) => s.tabs.some((t) => (t.type === "chat" && t.sessionId) || t.type === "file" || t.type === "product"));
+  const productButton = projectId ? (
+    <button
+      className="tab-v3"
+      onClick={() => openTab({ id: "product-plan", type: "product", title: "产品计划" })}
+      title="打开产品计划"
+    >产品计划</button>
+  ) : null;
   if (!hasRealTabs) return (
     <div className="tabbar-v3">
       <WindowControls />
+      {productButton}
     </div>
   );
 
   return (
     <div className="tabbar-v3">
       <WindowControls />
+      {productButton}
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeTabId;
         return (

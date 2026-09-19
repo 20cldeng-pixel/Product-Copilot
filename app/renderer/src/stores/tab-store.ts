@@ -4,7 +4,7 @@ import { useChatStore } from "./chat-store";
 
 export interface Tab {
   id: string;
-  type: "file" | "chat";
+  type: "file" | "chat" | "product";
   title: string;
   filePath?: string;
   sessionId?: string;
@@ -60,6 +60,7 @@ export const useTabStore = create<TabState>()(
         const existing = tabs.find(
           (t) =>
             (tab.type === "file" && t.type === "file" && t.filePath === tab.filePath) ||
+            (tab.type === "product" && t.type === "product") ||
             // Only dedup by sessionId if it's a real SDK session (not undefined=new)
             (tab.type === "chat" && t.type === "chat" && tab.sessionId && t.sessionId === tab.sessionId)
         );
@@ -73,7 +74,7 @@ export const useTabStore = create<TabState>()(
         }
         // 打开 file tab 会让标签栏首次显形,首页空会话 tab 是占位而非真实 tab,
         // 留在数组里会跟着一起露出来 —— 与 openSession 一样先清掉
-        if (tab.type === "file") get().closeEmptyTab();
+        if (tab.type === "file" || tab.type === "product") get().closeEmptyTab();
         const newTab: Tab = { ...tab, id: tab.id || genId() };
         set((s) => ({ tabs: [...s.tabs, newTab], activeTabId: newTab.id }));
       },
@@ -129,7 +130,7 @@ export const useTabStore = create<TabState>()(
         return { runningSessions: next };
       }),
 
-      hasRealTabs: () => get().tabs.some((t) => (t.type === "chat" && t.sessionId) || t.type === "file"),
+      hasRealTabs: () => get().tabs.some((t) => (t.type === "chat" && t.sessionId) || t.type === "file" || t.type === "product"),
 
       closeEmptyTab: () => {
         const empty = get().tabs.find((t) => t.type === "chat" && !t.sessionId);
