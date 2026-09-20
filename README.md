@@ -60,13 +60,24 @@ npm run build:preload
 
 本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。GitHub CI 是否通过以仓库实际运行记录为准。桌面安装包和代码签名不在上述检查范围内。
 
+## 运行 Gather 示例
+
+```sh
+cd examples/gather
+npm ci
+npm test
+npm run dev
+```
+
+示例使用固定模拟身份和浏览器本地存储；包含已验证的 V2 代码及本地事件导出。源码快照摘要见 `examples/gather/SOURCE.json`。
+
 ## 结构
 
 | 路径 | 职责 |
 |---|---|
 | `app/main/services/product-*` | 产品状态、批准、开发、证据与复盘服务 |
 | `app/shared/product-*` | 数据契约与共享逻辑 |
-| `app/renderer/src/components/product/` | 产品计划界面 |
+| `app/renderer/src/components/Product*.tsx` | 产品计划界面 |
 | `evaluation/` | 校准、预实验及证据索引 |
 | `docs/product/` | PRD、需求合同和开发记录 |
 

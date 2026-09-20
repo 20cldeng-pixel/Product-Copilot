@@ -1,0 +1,41 @@
+{
+  "sourceCommit": "9eb1e074bd3057c993c6a80ecc4bafc12613893c",
+  "files": {
+    ".gitignore": "417237901450b3e304921c9525a64ed6b3b9ef1336dafa2d02c81988232d4c19",
+    "README.md": "57adb445c2695ae3d6c13e5acb52487a22d97884cfc9287bf53d4a222adeca5e",
+    "app/App.test.tsx": "7b283ad5443bdbb8e33ccc54b44caa6303e68d7e040755b2a490ca0af33c1136",
+    "app/App.tsx": "5ffc4d9c187e42197091de1f241eee748492073fdaed54a4f2ecb1aac9456c89",
+    "app/domain/commands.ts": "1b88e13e920864e941c4cac7cb88e060721317113103d9a451f34c4090cebdb1",
+    "app/domain/domain.test.ts": "e9393c600c14ab08020b42dd93c2a106694938815f9059088dff024e85841031",
+    "app/domain/fixtures.ts": "ce9f9bc5df623dbcecdcecfd057f7826afb033a8cbd92bbf6f71d524809f876f",
+    "app/domain/index.ts": "a4a92a08e311f057f2a1965fc5b5f6222f48a162fc43019a6f8f9f6162030ac7",
+    "app/domain/selectors.ts": "eec77b5fc8c93f7a3911b8cad5ec958bb97dd9d909a23c04715891fb2b623d13",
+    "app/domain/types.ts": "cd15006cb816aa78fa3af41a8ef260527a22c4e52bfe3616096c01d650a1f8ab",
+    "app/main.tsx": "5ff772750ebf064530427ef78f282024b655bd43c7bb715f639219bcd2c6eac0",
+    "app/repository/index.ts": "e90b984170e94f3fb948d71e42a54b93e40fb33e57a0cdc2ea5ecbf09dc46b9f",
+    "app/repository/localStorageRepository.test.ts": "44ef8a4acd9eb1192cafc7cb9f7ab7b3b719dce3c0a4074b0ca0902739d183b7",
+    "app/repository/localStorageRepository.ts": "93d0eee60d04c81f7524b2ac358f8641b5a541d71270d848ad68c70a4bd9c663",
+    "app/styles.css": "7c44174f5ed48276a41eea50a3124febc0182b282712d696b22c4a1b66fd616a",
+    "app/telemetry.ts": "9973354bf24943f65b373b5b7fefeefa2f67046c28c5ce4415ff31267615fc37",
+    "app/test/setup.ts": "91a3c8962a0edcb956206a501d943fe99e1c78c6d4d8b5c9a948a3362c75978c",
+    "app/vite-env.d.ts": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+    "docs/技术架构.md": "43837b5694d39da38a2dbe0953609eb6c600370c23dea132409acb39a9bcf414",
+    "docs/需求文档.md": "05675cf642ed5fda769adad44bf6622c54d6137795fe0196d85113619fc4aab4",
+    "index.html": "a274f23c1e60bf98dd92c8d55074a15b86c6054e1e2d92c6e674e6a201016d6a",
+    "package-lock.json": "121c1b4367fe66cd3e29fabd5dd5232b2b7bdf00c9d4a197919a2776ca5fdab9",
+    "package.json": "1854952b644f39223f5b7d073995fd045588db073e00f16ada47432f90b1d602",
+    "prototype/index.html": "9ff1288005df058a3098d68ceb98b750c0c152b131dc57fb3e1db8be8fec93ca",
+    "tsconfig.app.json": "fab612ffe2d3c2f0b894b1a2ead9f98a36cdeb63463fc7dc004522c96d7d9db2",
+    "tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "tsconfig.node.json": "2fba2f25e1859f193b54edef5d2d2cd08cae2a37fab64c08699f6f8672bea2cc",
+    "vite.config.ts": "b7606de1a8109fd92802a2e31fee1d557187c6f1f93522dc718f9b2b083d9501",
+    "docs/开发记录/2026-09-20.md": "cc95f146525e40a8dab736270354808bc3807711923c676c22646e19209c4bf4"
+  },
+  "excluded": [
+    ".easymint runtime configuration",
+    "task.json execution records",
+    "AGENTS.md agent instructions",
+    "development diary index"
+  ],
+  "note": "Source copy for reproducible demonstration; excludes local runtime data. No new acceptance claim."
+}
