@@ -1,0 +1,303 @@
+{
+  "generatedAt": "2026-09-20T08:38:12.279Z",
+  "node": "v24.19.0",
+  "head": "e42fefc9ef8171b716c61931ebceb94e02d1aad6",
+  "worktree": "M prototype/index.html",
+  "files": [
+    {
+      "file": ".easymint/run.json",
+      "sha256": "9fc9d69e3773f9b4fcc16ae0c24e2adfafeba4421bf5af5f0edfe0ac833c49c7"
+    },
+    {
+      "file": ".gitignore",
+      "sha256": "417237901450b3e304921c9525a64ed6b3b9ef1336dafa2d02c81988232d4c19"
+    },
+    {
+      "file": "AGENTS.md",
+      "sha256": "8c6f83513fc3aa22e7ef28f2a298df7299c68feb7dfca9d291bd0b7d3c2766c9"
+    },
+    {
+      "file": "README.md",
+      "sha256": "57adb445c2695ae3d6c13e5acb52487a22d97884cfc9287bf53d4a222adeca5e"
+    },
+    {
+      "file": "app/App.test.tsx",
+      "sha256": "a4413d2c576308a03eb8432bd3f11ecf3ea5d2a4de162981f63f261235544864"
+    },
+    {
+      "file": "app/App.tsx",
+      "sha256": "75d2cfdc477d26a15c3af1687c941b0646e9d5b09cce7a29839bf642c71bc264"
+    },
+    {
+      "file": "app/domain/commands.ts",
+      "sha256": "1b88e13e920864e941c4cac7cb88e060721317113103d9a451f34c4090cebdb1"
+    },
+    {
+      "file": "app/domain/domain.test.ts",
+      "sha256": "1d37fbaa2fbbc14bd6c8d02c7c629d0f78f9f11e88653629e9731939c1e0e644"
+    },
+    {
+      "file": "app/domain/fixtures.ts",
+      "sha256": "ce9f9bc5df623dbcecdcecfd057f7826afb033a8cbd92bbf6f71d524809f876f"
+    },
+    {
+      "file": "app/domain/index.ts",
+      "sha256": "a4a92a08e311f057f2a1965fc5b5f6222f48a162fc43019a6f8f9f6162030ac7"
+    },
+    {
+      "file": "app/domain/selectors.ts",
+      "sha256": "eec77b5fc8c93f7a3911b8cad5ec958bb97dd9d909a23c04715891fb2b623d13"
+    },
+    {
+      "file": "app/domain/types.ts",
+      "sha256": "cd15006cb816aa78fa3af41a8ef260527a22c4e52bfe3616096c01d650a1f8ab"
+    },
+    {
+      "file": "app/main.tsx",
+      "sha256": "5ff772750ebf064530427ef78f282024b655bd43c7bb715f639219bcd2c6eac0"
+    },
+    {
+      "file": "app/repository/index.ts",
+      "sha256": "e90b984170e94f3fb948d71e42a54b93e40fb33e57a0cdc2ea5ecbf09dc46b9f"
+    },
+    {
+      "file": "app/repository/localStorageRepository.test.ts",
+      "sha256": "0e05c12e769d82ecc47e97815bc03d07febc335f14296bc759efb7a624b3dc89"
+    },
+    {
+      "file": "app/repository/localStorageRepository.ts",
+      "sha256": "93d0eee60d04c81f7524b2ac358f8641b5a541d71270d848ad68c70a4bd9c663"
+    },
+    {
+      "file": "app/styles.css",
+      "sha256": "a707cabcad1cf22ae9a3abd6735ecde872a2ec0c5f6bfc8a27d2f7ba99122329"
+    },
+    {
+      "file": "app/test/setup.ts",
+      "sha256": "91a3c8962a0edcb956206a501d943fe99e1c78c6d4d8b5c9a948a3362c75978c"
+    },
+    {
+      "file": "app/vite-env.d.ts",
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    {
+      "file": "docs/开发记录.md",
+      "sha256": "566808fefb6bef180406a803cad1f775213ce8d62d27e4d87f2e1719f8855170"
+    },
+    {
+      "file": "docs/开发记录/2026-09-20.md",
+      "sha256": "fcf573036cae32660c220ac4dbea2e74caa4747f88ce47be46431f6cd7dccf72"
+    },
+    {
+      "file": "docs/技术架构.md",
+      "sha256": "43837b5694d39da38a2dbe0953609eb6c600370c23dea132409acb39a9bcf414"
+    },
+    {
+      "file": "docs/需求文档.md",
+      "sha256": "05675cf642ed5fda769adad44bf6622c54d6137795fe0196d85113619fc4aab4"
+    },
+    {
+      "file": "index.html",
+      "sha256": "a274f23c1e60bf98dd92c8d55074a15b86c6054e1e2d92c6e674e6a201016d6a"
+    },
+    {
+      "file": "package-lock.json",
+      "sha256": "121c1b4367fe66cd3e29fabd5dd5232b2b7bdf00c9d4a197919a2776ca5fdab9"
+    },
+    {
+      "file": "package.json",
+      "sha256": "1854952b644f39223f5b7d073995fd045588db073e00f16ada47432f90b1d602"
+    },
+    {
+      "file": "prototype/index.html",
+      "sha256": "9ff1288005df058a3098d68ceb98b750c0c152b131dc57fb3e1db8be8fec93ca"
+    },
+    {
+      "file": "task.json",
+      "sha256": "c4cb69b0329820508a8ca240b686161f84104055e79fb0be6ecdc35232cc1881"
+    },
+    {
+      "file": "tsconfig.app.json",
+      "sha256": "fab612ffe2d3c2f0b894b1a2ead9f98a36cdeb63463fc7dc004522c96d7d9db2"
+    },
+    {
+      "file": "tsconfig.json",
+      "sha256": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808"
+    },
+    {
+      "file": "tsconfig.node.json",
+      "sha256": "2fba2f25e1859f193b54edef5d2d2cd08cae2a37fab64c08699f6f8672bea2cc"
+    },
+    {
+      "file": "vite.config.ts",
+      "sha256": "b7606de1a8109fd92802a2e31fee1d557187c6f1f93522dc718f9b2b083d9501"
+    }
+  ],
+  "probeDigest": "95594b54cf88b274d1ad56d1f09c527c82b192e9eaab4e6423982742bc9e7093",
+  "fixtureDigest": "165683c43b40a488c4b781f7e1b76712de5fcd1bff5fd4fc3e4d735ee106cdf5",
+  "checks": [
+    {
+      "id": "VC-01",
+      "name": "首次报名仅增加 A1",
+      "outcome": "pass",
+      "observation": {
+        "counts": [
+          1,
+          0,
+          0
+        ],
+        "rosters": [
+          [
+            "U1"
+          ],
+          [],
+          []
+        ]
+      }
+    },
+    {
+      "id": "VC-02",
+      "name": "同场重复拒绝且无副作用",
+      "outcome": "pass",
+      "observation": {
+        "counts": [
+          1,
+          0,
+          0
+        ],
+        "rosters": [
+          [
+            "U1"
+          ],
+          [],
+          []
+        ]
+      }
+    },
+    {
+      "id": "VC-03",
+      "name": "已报 A1 后仍可报 A2",
+      "outcome": "pass",
+      "observation": {
+        "counts": [
+          1,
+          1,
+          0
+        ],
+        "rosters": [
+          [
+            "U1"
+          ],
+          [
+            "U1"
+          ],
+          []
+        ]
+      }
+    },
+    {
+      "id": "VC-04",
+      "name": "多用户独立与容量控制",
+      "outcome": "pass",
+      "observation": {
+        "counts": [
+          2,
+          1,
+          0
+        ],
+        "rosters": [
+          [
+            "U1",
+            "U2"
+          ],
+          [
+            "U1"
+          ],
+          []
+        ]
+      }
+    },
+    {
+      "id": "VC-06",
+      "name": "同一存储重新加载保持两场关系",
+      "outcome": "pass",
+      "observation": {
+        "counts": [
+          2,
+          1,
+          0
+        ],
+        "rosters": [
+          [
+            "U1",
+            "U2"
+          ],
+          [
+            "U1"
+          ],
+          []
+        ]
+      }
+    },
+    {
+      "id": "VC-05-domain",
+      "name": "独立 F2 关闭拒绝",
+      "outcome": "pass",
+      "observation": {
+        "counts": [
+          0,
+          0,
+          0
+        ],
+        "rosters": [
+          [],
+          [],
+          []
+        ]
+      }
+    },
+    {
+      "id": "VC-07",
+      "name": "真实 V1 旧快照升级后保留旧报名并允许跨场",
+      "outcome": "pass",
+      "observation": {
+        "before": {
+          "counts": [
+            1,
+            0,
+            0
+          ],
+          "rosters": [
+            [
+              "U1"
+            ],
+            [],
+            []
+          ]
+        },
+        "afterReload": {
+          "counts": [
+            1,
+            1,
+            0
+          ],
+          "rosters": [
+            [
+              "U1"
+            ],
+            [
+              "U1"
+            ],
+            []
+          ]
+        },
+        "storedSchema": 2,
+        "baselineCommit": "4b1aa611c1b5a9888987a617da526f693513b09c"
+      }
+    }
+  ],
+  "remaining": [
+    "VC-05 页面展示、VC-08 真实页面状态需单独核验",
+    "本报告不是自动确认的产品计划 Evidence，也不是独立未见评测"
+  ]
+}
