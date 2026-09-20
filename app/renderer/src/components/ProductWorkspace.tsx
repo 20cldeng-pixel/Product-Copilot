@@ -212,7 +212,7 @@ export function ProductWorkspace({ projectId, projectPath }: { projectId: string
       {(snapshot.stage === "development_authorized" || snapshot.runs.length > 0) && <>
         <ProductBuild key={`build-${projectId}`} snapshot={snapshot} onChange={setSnapshot} />
         <ProductVerification key={projectId} snapshot={snapshot} onChange={setSnapshot} />
-        <ProductReview snapshot={snapshot} />
+        <ProductReview snapshot={snapshot} projectPath={projectPath} />
       </>}
 
       <button className="text-xs text-text-secondary" onClick={() => void load().catch((cause) => setError(String(cause)))}>刷新状态</button>

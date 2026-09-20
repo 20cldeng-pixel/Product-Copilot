@@ -1,14 +1,19 @@
 import { useMemo, useState } from "react";
 import type { ProductWorkflowSnapshot } from "@shared/product-workflow";
-import { calculateBusinessReview, calculateDeliveryReview, reviewExportSchema, type ReviewEvent, type ReviewFilter } from "@shared/product-review";
+import { buildReviewExplanationPrompt, calculateBusinessReview, calculateDeliveryReview, reviewExportSchema, type ReviewEvent, type ReviewFilter } from "@shared/product-review";
+import { postToAgent } from "../lib/agent-stream";
 
-export function ProductReview({ snapshot }: { snapshot: ProductWorkflowSnapshot }): JSX.Element {
+export function ProductReview({ snapshot, projectPath }: { snapshot: ProductWorkflowSnapshot; projectPath: string }): JSX.Element {
   const [events, setEvents] = useState<ReviewEvent[]>([]);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<ReviewFilter>({});
+  const [explanation, setExplanation] = useState<{ key: string; text: string } | null>(null);
+  const [explaining, setExplaining] = useState(false);
+  const [explanationError, setExplanationError] = useState("");
   const delivery = useMemo(() => calculateDeliveryReview(snapshot), [snapshot]);
   const business = useMemo(() => calculateBusinessReview(events, filter), [events, filter]);
+  const reviewKey = JSON.stringify({ delivery, business, filter });
   const versions = [...new Set(events.map((event) => event.artifactVersion))].sort();
   const activities = [...new Set(events.map((event) => event.activityId))].sort();
   const input = "rounded border border-border bg-surface p-2 text-sm";
@@ -26,9 +31,23 @@ export function ProductReview({ snapshot }: { snapshot: ProductWorkflowSnapshot 
     } catch (cause) { setError(`无法读取事件文件：${String(cause)}`); }
   }
 
+  async function explainReview() {
+    if (explaining) return;
+    setExplaining(true);
+    setExplanationError("");
+    try {
+      const prompt = buildReviewExplanationPrompt(delivery, business, filter);
+      const result = await postToAgent({ cwd: projectPath, sessionId: null, permissionMode: "readonly" }, prompt);
+      const reply = await result.replyText;
+      if (!reply) throw new Error("Mint 未返回解释");
+      setExplanation({ key: reviewKey, text: reply });
+    } catch (cause) { setExplanationError(`解读失败：${String(cause)}`); }
+    finally { setExplaining(false); }
+  }
+
   return <section className="rounded-[var(--radius-lg)] border border-border p-4 space-y-4">
     <h2 className="font-medium">数据复盘</h2>
-    <p className="text-xs text-text-secondary">交付结果来自当前产品计划的运行与证据。业务观察仅分析你选取的本地 JSON；导入数据不会发送到模型或修改需求。</p>
+    <p className="text-xs text-text-secondary">交付结果来自当前产品计划的运行与证据。业务观察仅分析你选取的本地 JSON；导入本身不会发送数据到模型或修改需求。</p>
     <div className="space-y-1 text-sm">
       <h3 className="font-medium">交付质量</h3>
       <p>P0 条件 {delivery.criteria} 项：通过 {delivery.pass} · 失败 {delivery.fail} · 未判定 {delivery.inconclusive}</p>
@@ -65,5 +84,11 @@ export function ProductReview({ snapshot }: { snapshot: ProductWorkflowSnapshot 
       : Object.keys(business.rejectedByReason).length
         ? "按当前拒绝原因选择一个高频场景访谈，核实是否需要更清楚的名额或开放状态提示。"
         : "继续积累不同活动与身份的本地试用，并核对浏览到提交的真实路径。"} 这只是待验证假设；用户采纳后才进入新草案或变更提案。</p>
+    <div className="space-y-2 border-t border-border pt-3 text-sm">
+      <button className="rounded border border-border px-3 py-2 disabled:opacity-50" disabled={explaining} onClick={() => void explainReview()}>{explaining ? "Mint 正在解读…" : "请 Mint 解读汇总"}</button>
+      <p className="text-xs text-text-secondary">点击后仅向当前模型发送汇总数字、来源类型和筛选状态；不发送原始事件文件、模拟身份 ID 或自由文本。解读不自动修改需求，可能产生模型用量。</p>
+      {explanationError && <p role="alert" className="text-red-500">{explanationError}</p>}
+      {explanation?.key === reviewKey && <div className="whitespace-pre-wrap rounded bg-surface-hover p-3">{explanation.text}</div>}
+    </div>
   </section>;
 }
