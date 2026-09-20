@@ -44,7 +44,15 @@ const snapshotSchema = z.object({
     executionStatus: z.enum(["queued", "running", "completed", "failed", "interrupted", "cancelled"]),
     verificationStatus: z.enum(["not_run", "pass", "fail", "inconclusive", "stale"]),
     createdAt: z.iso.datetime(),
-    kind: z.literal("verification").optional(), criteria: z.array(criterionSchema).optional(),
+    kind: z.enum(["verification", "build"]).optional(), criteria: z.array(criterionSchema).optional(),
+    build: z.object({
+      startedAt: z.iso.datetime(), finishedAt: z.iso.datetime().optional(), stopRequested: z.boolean().optional(),
+      artifactBefore: text.optional(), artifactAfter: text.optional(),
+      result: z.object({
+        status: z.enum(["completed", "failed", "cancelled"]), sessionId: text.optional(), model: text.optional(), provider: text.optional(),
+        summary: z.string(), error: z.string().optional(), toolCalls: z.number().int().nonnegative(), toolErrors: z.number().int().nonnegative(),
+      }).strict().optional(),
+    }).strict().optional(),
     plan: verificationPlanSchema.optional(), report: verificationReportSchema.optional(),
   }).strict()),
   evidence: z.array(z.object({
@@ -252,6 +260,9 @@ export class ProductWorkflowService {
   submitPrototype(projectId: string, expectedRevision: number, commandId: string, filePath: string): ProductCommandResult {
     const projectRoot = this.projectPath(projectId);
     return this.store.transact(projectId, commandId, expectedRevision, "submit_prototype", { filePath }, (snapshot) => {
+      if (snapshot.runs.some((run) => run.kind === "build" && ["queued", "running"].includes(run.executionStatus))) {
+        throw new Error("请先等待当前开发结束或停止后再登记原型");
+      }
       if (snapshot.stage !== "scope_confirmed" && snapshot.stage !== "prototype_ready" && snapshot.stage !== "development_authorized") {
         throw new Error("请先确认首版范围");
       }

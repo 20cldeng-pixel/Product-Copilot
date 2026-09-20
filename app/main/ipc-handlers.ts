@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { ProjectService } from "./services/project-service";
 import { ProductWorkflowService } from "./services/product-workflow-service";
 import { ProductVerificationService } from "./services/product-verification-service";
+import { ProductBuildService } from "./services/product-build-service";
 import type { ProductDraft } from "../shared/product-workflow";
 import { FileService } from "./services/file-service";
 import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-service";
@@ -118,6 +119,9 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
     return project?.exists ? project.path : undefined;
   });
   const productVerification = new ProductVerificationService((id) => projectService.get(id)?.path, productWorkflow);
+  const productBuild = new ProductBuildService((id) => projectService.get(id)?.path, productWorkflow,
+    (root, runId, prompt, signal) => agentService.executeProductBuild(root, runId, prompt, signal),
+    (root) => agentService.isProjectBusy(root));
   /**
    * file:* / shell 日志通道的可信根解析：目标路径必须落在某个已登记项目根之内
    * （`~/.ssh/id_rsa`、`/etc/passwd`、`~/Documents/../.ssh/id_rsa` 均无项目根包含 → 拒绝）。
@@ -191,13 +195,18 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   const productCommand = productRead.extend({
     expectedRevision: z.number().int().nonnegative(), commandId: z.string().uuid(),
   });
-  ipcMain.handle("product-workflow:get", guard(productRead, ({ projectId }) => productVerification.get(projectId)));
+  ipcMain.handle("product-workflow:get", guard(productRead, ({ projectId }) => {
+    productBuild.get(projectId);
+    return productVerification.get(projectId);
+  }));
+  ipcMain.handle("product-workflow:start-build", guard(productCommand,
+    ({ projectId, expectedRevision, commandId }) => productBuild.start(projectId, expectedRevision, commandId)));
+  ipcMain.handle("product-workflow:stop-build", guard(productCommand.extend({ runId: z.uuid() }),
+    ({ projectId, expectedRevision, commandId, runId }) => productBuild.stop(projectId, expectedRevision, commandId, runId)));
   ipcMain.handle("product-workflow:verify", guard(productCommand,
     ({ projectId, expectedRevision, commandId }) => {
       const projectPath = projectService.get(projectId)?.path;
-      const occupied = agentService.listActiveSessions().some((sessionId) =>
-        agentService.findActiveChat(sessionId)?.projectPath === projectPath
-        && (agentService.isSessionRunning(sessionId) || agentService.getRunningDelegationsSnapshot(sessionId).length > 0));
+      const occupied = projectPath && agentService.isProjectBusy(projectPath);
       if (occupied) throw new Error("请等待当前项目的 Agent 任务结束后再验收");
       return productVerification.run(projectId, expectedRevision, commandId);
     }));

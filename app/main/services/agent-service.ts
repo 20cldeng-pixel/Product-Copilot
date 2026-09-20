@@ -38,6 +38,9 @@ import { createProductTools } from "./builtin-mcp";
 import { createProductWorkflowTools } from "./tools/product-workflow-tool";
 import { ProductWorkflowService, ProductWorkflowStore } from "./product-workflow-service";
 import { productToolDenial } from "./product-workflow-policy";
+import { productBuildRuntime } from "./product-build-runtime";
+import { executeProductBuildSession } from "./product-build-runner";
+import type { ProductBuildResult } from "../../shared/product-build";
 import { closeMcpContexts, loadMcpTools } from "./permission/mcp-adapter";
 import { revokeWindowsExecutionOwners } from "./sandbox/windows-execution-manager";
 import { permissionService } from "./permission/agent-permission-service";
@@ -77,6 +80,7 @@ const SYSTEM_KIND_TITLES: Record<string, string> = {
 
 interface ActiveRun {
   runId: string;
+  projectPath?: string;
   session: AgentSession | null;
   abortController: AbortController;
 }
@@ -733,6 +737,10 @@ export class AgentService {
     const canUseTool: CanUseToolFn = async (toolName, input, options) => {
       if (registeredProductProject && productStore.exists(registeredProductProject.id)) {
         const state = productStore.read(registeredProductProject.id);
+        if (productBuildRuntime.get(registeredProductProject.id)
+          && !["read", "ls", "grep", "find", "glob", "get_product_plan"].includes(toolName.toLowerCase())) {
+          return { behavior: "deny", message: "产品计划中的 Builder 正在执行，请等待结束或先停止开发。" };
+        }
         if (state.runs.some((run) => run.kind === "verification" && run.executionStatus === "running")
           && !["read", "ls", "grep", "find", "glob", "get_product_plan"].includes(toolName.toLowerCase())) {
           return { behavior: "deny", message: "项目正在验收，请等待运行结束后再修改产物。" };
@@ -1110,6 +1118,41 @@ export class AgentService {
 
   // ── Worker（one-shot，接口保持） ──────────────────
 
+  isProjectBusy(projectPath: string): boolean {
+    const root = path.resolve(projectPath);
+    return [...this.activeRuns.values()].some((run) => run.projectPath && path.resolve(run.projectPath) === root)
+      || [...this.activeChats.values()].some((chat) => path.resolve(chat.projectPath) === root
+      && (this.isSessionRunning(chat.sessionId) || this.getRunningDelegationsSnapshot(chat.sessionId).length > 0));
+  }
+
+  async executeProductBuild(projectPath: string, runId: string, prompt: string, signal: AbortSignal): Promise<ProductBuildResult> {
+    const project = this.store.getProjects().find((entry) => path.resolve(entry.path) === path.resolve(projectPath));
+    if (!project) throw new Error("产品项目不存在");
+    const workflow = new ProductWorkflowService((id) => id === project.id ? projectPath : undefined);
+    const permission = permissionService.createCanUseTool(runId, projectPath);
+    let modelInfo: { model: string; provider: string } | undefined;
+    const result = await executeProductBuildSession(async () => {
+      const model = await this.getModel(this.store);
+      if (!model) throw new Error("未配置模型，请先在设置中选择供应商和模型");
+      if (signal.aborted) throw new Error("开发已停止，未创建模型会话");
+      modelInfo = { model: model.id, provider: model.provider };
+      return createPiSession({
+        cwd: projectPath, agentDir: this.getAgentDir(), model, thinkingLevel: "medium", store: this.store,
+        systemPrompt: "你负责实施用户已批准的产品需求。执行边界和本轮任务在用户消息中给出。" + PERMISSION_RULES_PROMPT,
+        extraTools: [],
+        canUseTool: async (name, input, options) => {
+          if (signal.aborted) return { behavior: "deny", message: "开发已收到停止请求" };
+          if (productBuildRuntime.get(project.id)?.runId !== runId || !workflow.isDevelopmentCurrent(project.id)) {
+            return { behavior: "deny", message: "开发授权或执行归属已变化，请停止" };
+          }
+          if (input.background === true) return { behavior: "deny", message: "产品开发仅支持前台有限命令，请勿启动后台任务" };
+          return permission(name, input, options);
+        },
+      });
+    }, prompt, signal);
+    return { ...result, ...modelInfo };
+  }
+
   async runWorker(
     projectPath: string,
     prompt: string,
@@ -1117,7 +1160,7 @@ export class AgentService {
   ): Promise<{ runId: string }> {
     const runId = `run-${++this.runCounter}`;
     const abortController = new AbortController();
-    const run: ActiveRun = { runId, session: null, abortController };
+    const run: ActiveRun = { runId, projectPath, session: null, abortController };
     this.activeRuns.set(runId, run);
 
     (async () => {
@@ -2276,6 +2319,7 @@ export class AgentService {
   }
 
   shutdown(): void {
+    productBuildRuntime.abortAll();
     for (const [id, chat] of this.activeChats) {
       chat.abortController.abort();
       chat.session?.abort().catch(() => {});

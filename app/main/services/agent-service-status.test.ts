@@ -31,6 +31,15 @@ function serviceWithChat(sessionId: string): {
 }
 
 describe("AgentService 会话运行状态", () => {
+  it("同项目活跃 Worker 占用开发入口，其他项目不受影响", () => {
+    const service = new AgentService({} as unknown as Store);
+    const internals = service as unknown as { activeRuns: Map<string, { projectPath: string }> };
+    internals.activeRuns.set("worker", { projectPath: "/tmp/project-one" });
+    expect(service.isProjectBusy("/tmp/project-one")).toBe(true);
+    expect(service.isProjectBusy("/tmp/project-two")).toBe(false);
+    internals.activeRuns.delete("worker");
+    expect(service.isProjectBusy("/tmp/project-one")).toBe(false);
+  });
   it("无活跃会话 → idle", () => {
     const service = new AgentService({} as unknown as Store);
     expect(service.isSessionRunning("session-1")).toBe(false);

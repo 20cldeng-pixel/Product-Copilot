@@ -62,7 +62,7 @@ export class ProductVerificationService {
     const root = this.root(projectId);
     const bindings = bindingsSchema.parse(input);
     const result = this.store.transact(projectId, commandId, revision, "approve_verification_plan", bindings, (state) => {
-      if (this.active.size && state.runs.some((run) => this.active.has(run.id))) throw new Error("请等待当前验收结束");
+      if (state.runs.some((run) => ["queued", "running"].includes(run.executionStatus))) throw new Error("请等待当前开发或验收结束");
       if (!this.workflow.isDevelopmentCurrent(projectId)) throw new Error("请先确认当前开发范围");
       const artifactDigest = productArtifactDigest(root);
       const recent = [...state.runs].reverse().find((run) => run.report?.artifactDigest === artifactDigest
@@ -147,6 +147,7 @@ export class ProductVerificationService {
     const root = this.root(projectId);
     const entry = manualInputSchema.parse(input);
     return this.store.transact(projectId, commandId, revision, "record_manual_verification", entry, (state) => {
+      if (state.runs.some((run) => ["queued", "running"].includes(run.executionStatus))) throw new Error("请等待当前开发或验收结束");
       const run: ProductRun | undefined = state.runs.find((item) => item.id === entry.runId);
       if (!run?.report || !run.criteria?.some((c) => c.id === entry.criterionId)) throw new Error("请先运行本条验收");
       const artifactDigest = productArtifactDigest(root);

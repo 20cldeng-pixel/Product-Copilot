@@ -21,6 +21,7 @@ export function ProductVerification({ snapshot, onChange }: {
   const latest = runs.at(-1);
   const criteria = productCriteria(snapshot.draft);
   const mappingDirty = JSON.stringify(bindings) !== JSON.stringify(snapshot.verificationPlan?.bindings ?? {});
+  const occupied = snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
   const api = window.electronAPI.productWorkflow;
   const button = "rounded-[var(--radius-lg)] border border-border px-3 py-2 text-sm disabled:opacity-50";
 
@@ -35,7 +36,7 @@ export function ProductVerification({ snapshot, onChange }: {
   return <section className="rounded-[var(--radius-lg)] border border-border p-4 space-y-4">
     <h2 className="font-medium">开发产物与验收证据</h2>
     <p className="text-sm text-text-secondary">先运行项目测试，再选择覆盖各项条件的用例。确认关联后重跑，才能得到逐项结果。测试通过仍需检查用例是否真正覆盖业务要求。</p>
-    <button className={`${button} bg-accent text-white`} disabled={busy || mappingDirty} onClick={() => void perform((id) => api.verify(snapshot.projectId, snapshot.revision, id))}>
+    <button className={`${button} bg-accent text-white`} disabled={busy || mappingDirty || occupied} onClick={() => void perform((id) => api.verify(snapshot.projectId, snapshot.revision, id))}>
       {busy ? "正在处理…" : "运行测试并收集证据"}
     </button>
     {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
@@ -61,7 +62,7 @@ export function ProductVerification({ snapshot, onChange }: {
           <summary className="text-sm cursor-pointer text-accent">关联验证用例（已选 {selected.length} 项）</summary>
           <div className="max-h-48 overflow-auto space-y-2 py-2">
             {latest.report.cases.map((test) => <label key={test.key} className="block text-xs break-words">
-              <input type="checkbox" disabled={busy} checked={selected.includes(test.key)} onChange={(event) => setBindings((current) => ({
+              <input type="checkbox" disabled={busy || occupied} checked={selected.includes(test.key)} onChange={(event) => setBindings((current) => ({
                 ...current, [criterion.id]: event.target.checked ? [...selected, test.key] : selected.filter((key) => key !== test.key),
               }))} /> {test.name} · {test.status === "passed" ? "通过" : test.status === "failed" ? "失败" : "未执行"}
               <span className="block text-text-secondary pl-4">{test.file}</span>
@@ -75,7 +76,7 @@ export function ProductVerification({ snapshot, onChange }: {
             onChange={(event) => setReason((current) => ({ ...current, [criterion.id]: event.target.value }))} />
           <div className="flex gap-2">
             {(["verified", "exception"] as const).map((decision) => <button key={decision} className={button}
-              disabled={busy || !reason[criterion.id]?.trim() || latest.verificationStatus === "stale"}
+              disabled={busy || occupied || !reason[criterion.id]?.trim() || latest.verificationStatus === "stale"}
               onClick={() => void perform((id) => api.manualVerification(snapshot.projectId, snapshot.revision, id, {
                 runId: latest.id, criterionId: criterion.id, decision, reason: reason[criterion.id] ?? "",
               }))}>{decision === "verified" ? "记录人工核验通过" : "接受当前例外"}</button>)}
@@ -85,7 +86,7 @@ export function ProductVerification({ snapshot, onChange }: {
         {manual.map((entry) => <p key={entry.id} className="text-xs">{entry.decision === "verified" ? "人工核验" : "人工接受例外"}：{entry.reason}</p>)}
       </div>;
     })}
-    {!!latest?.report?.cases.length && <button className={button} disabled={busy} onClick={() => void perform((id) => api.approveVerification(snapshot.projectId, snapshot.revision, id, bindings))}>确认当前用例关联</button>}
+    {!!latest?.report?.cases.length && <button className={button} disabled={busy || occupied} onClick={() => void perform((id) => api.approveVerification(snapshot.projectId, snapshot.revision, id, bindings))}>确认当前用例关联</button>}
     {(snapshot.verificationPlan || mappingDirty) && <p className="text-xs text-text-secondary">{mappingDirty ? "关联有未确认的修改，请先确认。" : "关联已确认，请重新运行以取得当前结果。"}没有关联的条件保持未判定。</p>}
     {runs.length > 1 && <details><summary className="text-sm cursor-pointer">历史运行（{runs.length} 次）</summary>
       {runs.slice().reverse().map((run) => <details key={run.id} className="my-2 text-xs">

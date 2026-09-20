@@ -1,4 +1,5 @@
 import type { Criterion, ManualVerification, VerificationPlan, VerificationReport } from "./product-verification";
+import type { ProductBuildRecord } from "./product-build";
 
 /** Product Copilot 的正式状态。聊天记录与导出的 PRD 只是它的视图。 */
 export type ProductStage = "draft" | "scope_confirmed" | "prototype_ready" | "development_authorized";
@@ -63,7 +64,8 @@ export interface ProductRun {
   executionStatus: "queued" | "running" | "completed" | "failed" | "interrupted" | "cancelled";
   verificationStatus: "not_run" | "pass" | "fail" | "inconclusive" | "stale";
   createdAt: string;
-  kind?: "verification";
+  kind?: "verification" | "build";
+  build?: ProductBuildRecord;
   criteria?: Criterion[];
   plan?: VerificationPlan;
   report?: VerificationReport;
