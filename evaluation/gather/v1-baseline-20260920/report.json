@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-09-20T08:16:29.843Z",
+  "node": "v24.19.0",
+  "source": {
+    "commit": "4b1aa611c1b5a9888987a617da526f693513b09c",
+    "sourceDigest": "a1ed007f92a98ec72d300b903f7420ac636580fd972eb9e32c8aa034d1ad3f67",
+    "digestMethod": "sorted git tracked file path + byte length + content sha256",
+    "files": [
+      {
+        "file": ".easymint/run.json",
+        "sha256": "9fc9d69e3773f9b4fcc16ae0c24e2adfafeba4421bf5af5f0edfe0ac833c49c7"
+      },
+      {
+        "file": ".gitignore",
+        "sha256": "417237901450b3e304921c9525a64ed6b3b9ef1336dafa2d02c81988232d4c19"
+      },
+      {
+        "file": "AGENTS.md",
+        "sha256": "60ddf6d5474dbb07e5bce59e5f29daa82fc978178ad4cb3ab7deb1a6974c6213"
+      },
+      {
+        "file": "README.md",
+        "sha256": "fd708a277dc9e3337bb6058fe163549c57ad191f4451b29a15fa049f6329ca27"
+      },
+      {
+        "file": "app/App.test.tsx",
+        "sha256": "76bda3c5339e1d84b8d436b3b996c6117e4273d64411452f52cbb10204581b92"
+      },
+      {
+        "file": "app/App.tsx",
+        "sha256": "995804702cf3025d2417aab1dd8df61469fb37a04456a18f0e40977e0c61580a"
+      },
+      {
+        "file": "app/domain/commands.ts",
+        "sha256": "4623cd5a30346c5d5ee41a4ada00e1d242797a502a08f07b91867094ff2f00f5"
+      },
+      {
+        "file": "app/domain/domain.test.ts",
+        "sha256": "f44614ede495bf4988e0effef40e80f9559408bcd198264b78f3eeca90eaafa6"
+      },
+      {
+        "file": "app/domain/fixtures.ts",
+        "sha256": "9b28ee6f1152893e52f1ca28a408113801c973e23f7b48bb6489a2fc3208c708"
+      },
+      {
+        "file": "app/domain/index.ts",
+        "sha256": "a4a92a08e311f057f2a1965fc5b5f6222f48a162fc43019a6f8f9f6162030ac7"
+      },
+      {
+        "file": "app/domain/selectors.ts",
+        "sha256": "9e11f46885da13f7f8ec8e65a5e24fa11a2956de445c737ad8f448beabbb615f"
+      },
+      {
+        "file": "app/domain/types.ts",
+        "sha256": "10a6d8fe5629aa9495bc8cbe0b1e941f171122965200c5494984dd69adc06f55"
+      },
+      {
+        "file": "app/main.tsx",
+        "sha256": "5ff772750ebf064530427ef78f282024b655bd43c7bb715f639219bcd2c6eac0"
+      },
+      {
+        "file": "app/repository/index.ts",
+        "sha256": "e90b984170e94f3fb948d71e42a54b93e40fb33e57a0cdc2ea5ecbf09dc46b9f"
+      },
+      {
+        "file": "app/repository/localStorageRepository.test.ts",
+        "sha256": "29cca20d30013578b8f0ad0e8e8c33ed0f06b148b987f28bf13b04fe6d31bbb2"
+      },
+      {
+        "file": "app/repository/localStorageRepository.ts",
+        "sha256": "904cd3920eb4fea95671cd676aec69d64547e2527f9faed171a547646a17a440"
+      },
+      {
+        "file": "app/styles.css",
+        "sha256": "a707cabcad1cf22ae9a3abd6735ecde872a2ec0c5f6bfc8a27d2f7ba99122329"
+      },
+      {
+        "file": "app/test/setup.ts",
+        "sha256": "91a3c8962a0edcb956206a501d943fe99e1c78c6d4d8b5c9a948a3362c75978c"
+      },
+      {
+        "file": "app/vite-env.d.ts",
+        "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+      },
+      {
+        "file": "docs/开发记录.md",
+        "sha256": "8b2bd39360b4dbd0c7ed202f8288b2a1df9fbfdd965f6697c7cec99d27dcd193"
+      },
+      {
+        "file": "docs/开发记录/2026-09-20.md",
+        "sha256": "a55e3a241d01a164a6b34a0d8682f8a145c3b98ce1bf170d78ad075cc7fd012d"
+      },
+      {
+        "file": "docs/技术架构.md",
+        "sha256": "da7a5fa124de3dcd6178a53b3da38c002431ccd668a8f8cb7d3b6ac036055fa5"
+      },
+      {
+        "file": "docs/需求文档.md",
+        "sha256": "5dac188fb91378b358b01ebb87d1f569282171604aaea5156187a21f2c862b82"
+      },
+      {
+        "file": "index.html",
+        "sha256": "a274f23c1e60bf98dd92c8d55074a15b86c6054e1e2d92c6e674e6a201016d6a"
+      },
+      {
+        "file": "package-lock.json",
+        "sha256": "121c1b4367fe66cd3e29fabd5dd5232b2b7bdf00c9d4a197919a2776ca5fdab9"
+      },
+      {
+        "file": "package.json",
+        "sha256": "1854952b644f39223f5b7d073995fd045588db073e00f16ada47432f90b1d602"
+      },
+      {
+        "file": "prototype/index.html",
+        "sha256": "61f0302cfe3fd1096928b86564fed04e4ddae7c28d81ba7147b6e1e9bb4c4550"
+      },
+      {
+        "file": "task.json",
+        "sha256": "4ca6d1704ecd3bcd555977bfed6a6fb55f5900c1852d8b3b9aec121cc09362ee"
+      },
+      {
+        "file": "tsconfig.app.json",
+        "sha256": "fab612ffe2d3c2f0b894b1a2ead9f98a36cdeb63463fc7dc004522c96d7d9db2"
+      },
+      {
+        "file": "tsconfig.json",
+        "sha256": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808"
+      },
+      {
+        "file": "tsconfig.node.json",
+        "sha256": "2fba2f25e1859f193b54edef5d2d2cd08cae2a37fab64c08699f6f8672bea2cc"
+      },
+      {
+        "file": "vite.config.ts",
+        "sha256": "b7606de1a8109fd92802a2e31fee1d557187c6f1f93522dc718f9b2b083d9501"
+      }
+    ]
+  },
+  "probeDigest": "382e71d5701a905698316bd9ef396e8fcd420e73013d00aa2bdee9617850a03a",
+  "fixture": {
+    "file": "f1-v1-storage.json",
+    "serializedSha256": "62b9c51262d02dbed5a440fd66bfe0525c137930086f64d26fb556651be3a03f",
+    "fileSha256": "165683c43b40a488c4b781f7e1b76712de5fcd1bff5fd4fc3e4d735ee106cdf5",
+    "storageKey": "gather-app-state",
+    "origin": "F0 synthetic fixed events -> actual V1 register U1/A1 -> actual V1 Repository.save; no user localStorage access"
+  },
+  "checks": [
+    {
+      "id": "BVT-01-data",
+      "name": "活动列表数据、开放状态和容量",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "BVT-02",
+      "name": "首次报名只增加 A1",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "BVT-03",
+      "name": "同场重复拒绝且无副作用",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "BVT-04",
+      "name": "V1 跨场报名拒绝",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "BVT-05",
+      "name": "多用户独立且满额拒绝无副作用",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "BVT-06-persistence",
+      "name": "重新建立 Repository 保留人数和用户关系",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "BVT-07",
+      "name": "关闭活动拒绝且无副作用",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    },
+    {
+      "id": "F1-roundtrip",
+      "name": "V1 序列化的旧报名可重新读取",
+      "outcome": "pass",
+      "method": "actual-v1-domain-and-repository"
+    }
+  ],
+  "calibration": {
+    "id": "VC-03-on-V1",
+    "outcome": "expected-fail",
+    "observed": {
+      "code": "ALREADY_REGISTERED",
+      "userId": "U1",
+      "eventId": "A1"
+    },
+    "assertion": "VC-03: U1 报名 A1 后仍可报名 A2\n\nfalse !== true\n"
+  },
+  "remaining": [
+    "BVT-01 页面展示未在本探针验证",
+    "BVT-06 浏览器刷新与身份显示未在本探针验证",
+    "VC-05 展示及 VC-08 页面行为尚未验证",
+    "正确 V2、漏掉去重与清空旧数据的校准样本尚未验证",
+    "本报告不是产品计划正式 Evidence，也不是独立未见评测"
+  ]
+}

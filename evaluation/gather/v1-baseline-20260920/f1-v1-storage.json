@@ -1,0 +1,1 @@
+{"schemaVersion":1,"state":{"eventsById":{"A1":{"id":"A1","name":"A1 · 社群早餐会","capacity":2,"open":true},"A2":{"id":"A2","name":"A2 · 产品交流夜","capacity":2,"open":true},"A3":{"id":"A3","name":"A3 · 周末工作坊","capacity":2,"open":false}},"eventOrder":["A1","A2","A3"],"registrationsByUserId":{"U1":"A1"}}}
