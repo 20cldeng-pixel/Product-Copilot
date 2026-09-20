@@ -26,4 +26,4 @@ node evaluation/gather/probe-v2.mjs "/path/to/Gather" "/path/to/new-v2-evidence-
 
 探针读取本目录冻结的 V1 F1 并验证摘要，调用真实 V2 领域命令和 Repository；仅使用内存存储。`v2-run-20260920/report.json` 的 7 项检查通过，覆盖 VC-01/02/03/04/06/07 和 VC-05 的领域部分。它不执行真实浏览器，也不自动登记产品计划 Evidence。
 
-该报告生成时 Gather HEAD 为 e42fefc，原型尚未提交；原型随后保存为 5406b97。2026-09-20 复核报告中所有文件 SHA-256 与提交后文件一致，没有把旧报告改写成新运行。正式 Runner、测试关联及页面观察见 [V2 验收记录](./v2-run-20260920/acceptance.md)。VC-08 固定 F0 页面序列尚未完整执行，当前浏览器观察使用保留的旧报名和新建 A4，不混作同一案例。
+首轮报告生成时 Gather HEAD 为 e42fefc，原型尚未提交；原型随后保存为 5406b97。补齐 P0 验收测试后，在干净的 Gather HEAD 03a5135 上重新执行并保存为 `v2-run-20260920-final/report.json`，7 项检查再次通过。正式 Runner、测试关联及隔离浏览器页面观察见 [V2 验收记录](./v2-run-20260920/acceptance.md)。两次报告均保留各自生成时间、提交和文件摘要，不用新结果覆写旧证据。
