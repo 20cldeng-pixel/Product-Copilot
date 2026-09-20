@@ -31,7 +31,7 @@ export class ProductVerificationService {
 
   get(projectId: string): ProductWorkflowSnapshot {
     let state = this.workflow.get(projectId);
-    if (!state.runs.some((run) => run.kind === "verification")) return state;
+    if (!state.runs.some((run) => run.kind === "verification")) return { ...state, developmentCurrent: this.workflow.isDevelopmentCurrent(projectId) };
     if (state.runs.some((run) => run.kind === "verification" && run.executionStatus === "running" && !this.active.has(run.id))) {
       state = this.store.transact(projectId, randomUUID(), state.revision, "recover_verification", null, (current) => {
         for (const run of current.runs) {
@@ -55,7 +55,7 @@ export class ProductVerificationService {
         run.verificationStatus = "stale";
       }
     }
-    return state;
+    return { ...state, developmentCurrent: this.workflow.isDevelopmentCurrent(projectId) };
   }
 
   approvePlan(projectId: string, revision: number, commandId: string, input: unknown) {

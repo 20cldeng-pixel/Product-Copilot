@@ -38,10 +38,10 @@ export function ProductBuild({ snapshot, onChange }: {
     lock.current = true; setBusy(true); setError("");
     try {
       const current = await api.get(snapshot.projectId);
-      const result = stop && latest
-        ? await api.stopBuild(snapshot.projectId, current.revision, crypto.randomUUID(), latest.id)
-        : await api.startBuild(snapshot.projectId, current.revision, crypto.randomUUID());
-      onChange(result.snapshot);
+      await (stop && latest
+        ? api.stopBuild(snapshot.projectId, current.revision, crypto.randomUUID(), latest.id)
+        : api.startBuild(snapshot.projectId, current.revision, crypto.randomUUID()));
+      onChange(await api.get(snapshot.projectId));
     } catch (cause) { setError(String(cause)); }
     finally { lock.current = false; setBusy(false); }
   }
@@ -50,11 +50,12 @@ export function ProductBuild({ snapshot, onChange }: {
     <h2 className="font-medium">按已确认范围开发</h2>
     <p className="text-sm text-text-secondary">Builder 检查现有代码并补齐首版必做需求。运行满 10 分钟或调用 80 次工具后请求停止；退出前保持占用并保留改动，开发结束后仍需验收。</p>
     <div className="flex gap-2">
-      <button className="rounded-[var(--radius-lg)] bg-accent px-4 py-2 text-sm text-white disabled:opacity-50" disabled={busy || occupied || snapshot.stage !== "development_authorized"}
+      <button className="rounded-[var(--radius-lg)] bg-accent px-4 py-2 text-sm text-white disabled:opacity-50" disabled={busy || occupied || snapshot.stage !== "development_authorized" || snapshot.developmentCurrent === false}
         onClick={() => void perform(false)}>{latest ? "继续开发未完成项" : "开始开发"}</button>
       {running && <button className="rounded-[var(--radius-lg)] border border-border px-4 py-2 text-sm disabled:opacity-50"
         disabled={busy || latest?.build?.stopRequested} onClick={() => void perform(true)}>{latest?.build?.stopRequested ? "正在停止…" : "停止本轮开发"}</button>}
     </div>
+    {snapshot.stage === "development_authorized" && snapshot.developmentCurrent === false && <p role="status" className="text-sm text-amber-600">开发批准已失效，请重新登记原型并确认开发范围。</p>}
     {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
     {latest && <div className="space-y-2 text-sm">
       <p role="status">{latest.build?.stopRequested && running ? "已请求停止，等待执行器退出" : labels[latest.executionStatus]}</p>

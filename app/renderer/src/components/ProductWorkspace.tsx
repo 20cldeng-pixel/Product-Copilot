@@ -54,10 +54,8 @@ export function ProductWorkspace({ projectId, projectPath }: { projectId: string
     setBusy(true);
     setError("");
     try {
-      const result = await run(snapshot.revision, crypto.randomUUID());
-      setSnapshot(result.snapshot);
-      setDraft(result.snapshot.draft);
-      setDirty(false);
+      await run(snapshot.revision, crypto.randomUUID());
+      await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -85,7 +83,7 @@ export function ProductWorkspace({ projectId, projectPath }: { projectId: string
           <h1 className="text-xl font-semibold">产品计划</h1>
           <p className="mt-1 text-sm text-text-secondary">需求分析 → 竞品调研 → 优先级与 PRD → 原型 → 开发与验收 → 复盘</p>
         </div>
-        <div className="text-xs text-text-secondary text-right">{snapshot.revision === 0 ? "产品流程未启用" : stages[snapshot.stage]}<br />版本 {snapshot.revision}</div>
+        <div className="text-xs text-text-secondary text-right">{snapshot.revision === 0 ? "产品流程未启用" : snapshot.stage === "development_authorized" && snapshot.developmentCurrent === false ? "开发批准已失效" : stages[snapshot.stage]}<br />版本 {snapshot.revision}</div>
       </div>
 
       {snapshot.revision === 0 && <section className="rounded-[var(--radius-lg)] border border-border p-4 space-y-2">

@@ -7,6 +7,7 @@ import { ProductWorkflowService, ProductWorkflowStore } from "./product-workflow
 import { ProductVerificationService } from "./product-verification-service";
 import { parseVitestReport, productArtifactDigest, runProductVerification } from "./product-verification-runner";
 import { productCriteria } from "../../shared/product-verification";
+import { calculateDeliveryReview } from "../../shared/product-review";
 import type { VerificationReport } from "../../shared/product-verification";
 
 const dirs: string[] = [];
@@ -70,7 +71,12 @@ describe("product verification evidence", () => {
 
   it("refuses running against a changed prototype authorization", async () => {
     const f = fixture();
+    expect(f.service.get(f.projectId).developmentCurrent).toBe(true);
+    expect(calculateDeliveryReview(f.service.get(f.projectId)).currentApprovals).toBe(2);
     writeFileSync(path.join(f.root, "prototype/index.html"), "new prototype");
+    expect(f.service.get(f.projectId).developmentCurrent).toBe(false);
+    expect(calculateDeliveryReview(f.service.get(f.projectId)).currentApprovals).toBe(1);
+    expect(f.store.read(f.projectId)).not.toHaveProperty("developmentCurrent");
     await expect(f.run()).rejects.toThrow("确认");
     expect(f.runner).not.toHaveBeenCalled();
   });

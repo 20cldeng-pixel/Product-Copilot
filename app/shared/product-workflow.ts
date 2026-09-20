@@ -102,6 +102,8 @@ export interface ProductEvidence {
 }
 
 export interface ProductWorkflowSnapshot {
+  /** Read-time authorization check; never persisted as an approval. */
+  developmentCurrent?: boolean;
   schemaVersion: 1;
   projectId: string;
   revision: number;

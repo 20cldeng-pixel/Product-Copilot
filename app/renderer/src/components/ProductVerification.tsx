@@ -27,7 +27,7 @@ function VerificationContent({ snapshot, onChange }: VerificationProps): JSX.Ele
   const latest = runs.at(-1);
   const criteria = productCriteria(snapshot.draft);
   const mappingDirty = JSON.stringify(bindings) !== JSON.stringify(snapshot.verificationPlan?.bindings ?? {});
-  const occupied = snapshot.stage !== "development_authorized" || snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
+  const occupied = snapshot.stage !== "development_authorized" || snapshot.developmentCurrent === false || snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
   const api = window.electronAPI.productWorkflow;
   const button = "rounded-[var(--radius-lg)] border border-border px-3 py-2 text-sm disabled:opacity-50";
 
