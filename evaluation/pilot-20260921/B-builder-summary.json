@@ -1,0 +1,58 @@
+{
+  "sourceSha256": "272f65c7529d9ac20d7038bc6fe8286803a9accb88c4438e6693c9a3bb7c8d1e",
+  "assistantMessages": 31,
+  "userMessages": 1,
+  "toolResults": 52,
+  "toolErrors": 1,
+  "toolErrorStatusUnknown": 0,
+  "tokenFields": {
+    "input": {
+      "knownSubtotal": 61484,
+      "knownMessages": 31,
+      "missingMessages": 0
+    },
+    "output": {
+      "knownSubtotal": 13284,
+      "knownMessages": 31,
+      "missingMessages": 0
+    },
+    "cacheRead": {
+      "knownSubtotal": 1358720,
+      "knownMessages": 31,
+      "missingMessages": 0
+    },
+    "cacheWrite": {
+      "knownSubtotal": 0,
+      "knownMessages": 31,
+      "missingMessages": 0
+    },
+    "reasoning": {
+      "knownSubtotal": 1724,
+      "knownMessages": 31,
+      "missingMessages": 0
+    },
+    "totalTokens": {
+      "knownSubtotal": 1433488,
+      "knownMessages": 31,
+      "missingMessages": 0
+    }
+  },
+  "sdkEstimatedCost": {
+    "knownSubtotal": 1.3853,
+    "knownMessages": 31,
+    "missingMessages": 0
+  },
+  "billedCost": null,
+  "observedMessageSpanMs": 321282,
+  "lastStopReason": "stop",
+  "finalAssistantText": "### 已完成\n\n- 报名规则改为“用户—活动组合唯一”：\n  - 同一身份可报名多场不同活动。\n  - 同一身份不可重复报名同一活动。\n- 成员界面改为按活动展示报名资格，并显示当前身份已报名场数。\n- 管理员报名概览改为统计报名记录总数。\n- localStorage 升级至 `schemaVersion: 2`：\n  - 完整校验组合唯一性、引用和容量约束。\n  - 自动迁移旧版数据，保留已有活动、状态和报名。\n- 同步需求、架构、任务及开发记录。\n- 未增加 P1/P2，未修改批准原型。\n\n### 验证结果\n\n- `npm test -- --run`：3 个测试文件、29 项测试全部通过。\n- `npm run build`：TypeScript 检查及 Vite 生产构建通过。\n- 已提交：\n  - `e047d08 feat: 支持每场活动唯一报名`\n  - `07dc444 docs: 记录报名规则调整`\n- 未推送、未部署、未启动常驻服务。\n\n### 未完成项\n\n- 未进行浏览器人工业务验收，因此以上结果不等同于业务验收通过。\n- `prototype/index.html` 原本存在未提交修改，本轮保持原样且未纳入提交。",
+  "declaredPass": null,
+  "actualPass": null,
+  "limits": [
+    "Includes only this JSONL; delegated sessions must be summarized separately.",
+    "Token fields overlap; do not add reasoning or cached tokens to totalTokens.",
+    "SDK cost is an estimate, not a bill.",
+    "Message span excludes time before first and after last recorded message; not human work time.",
+    "Final stop reason is not business acceptance."
+  ]
+}

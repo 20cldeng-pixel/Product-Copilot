@@ -1,0 +1,58 @@
+{
+  "sourceSha256": "de1af349d3be30312747dd89154dc74d76f2af758eb61e708beff53edbc501eb",
+  "assistantMessages": 22,
+  "userMessages": 4,
+  "toolResults": 34,
+  "toolErrors": 1,
+  "toolErrorStatusUnknown": 0,
+  "tokenFields": {
+    "input": {
+      "knownSubtotal": 102153,
+      "knownMessages": 22,
+      "missingMessages": 0
+    },
+    "output": {
+      "knownSubtotal": 14774,
+      "knownMessages": 22,
+      "missingMessages": 0
+    },
+    "cacheRead": {
+      "knownSubtotal": 1567872,
+      "knownMessages": 22,
+      "missingMessages": 0
+    },
+    "cacheWrite": {
+      "knownSubtotal": 0,
+      "knownMessages": 22,
+      "missingMessages": 0
+    },
+    "reasoning": {
+      "knownSubtotal": 3004,
+      "knownMessages": 22,
+      "missingMessages": 0
+    },
+    "totalTokens": {
+      "knownSubtotal": 1684799,
+      "knownMessages": 22,
+      "missingMessages": 0
+    }
+  },
+  "sdkEstimatedCost": {
+    "knownSubtotal": 1.7379210000000003,
+    "knownMessages": 22,
+    "missingMessages": 0
+  },
+  "billedCost": null,
+  "observedMessageSpanMs": 442563,
+  "lastStopReason": "stop",
+  "finalAssistantText": "已更新并登记待确认原型，原型编辑器已打开。\n\n### 已更新\n\n- 同一身份可报名不同活动。\n- 同一身份不能重复报名同一活动。\n- 身份区域汇总已报名活动，并提示仍可报名其他活动。\n- 保留已有报名数据、容量限制和关闭规则。\n- 自动去除同一活动内的重复身份记录。\n\n### 验证结果\n\n- 已清除原型中的“全局只能报名一次”等旧文案与逻辑。\n- 代码级渲染检查通过：显隐、弹窗、CSS 变量及页面结构无异常。\n- 浏览器自动化受当前产品 Gate 限制，未执行交互自动化验证。\n\n仅修改了 `prototype/index.html`，**未修改 `app/` 正式代码**。请在产品计划页面确认更新后的原型；确认后再从开发入口执行。",
+  "declaredPass": null,
+  "actualPass": null,
+  "limits": [
+    "Includes only this JSONL; delegated sessions must be summarized separately.",
+    "Token fields overlap; do not add reasoning or cached tokens to totalTokens.",
+    "SDK cost is an estimate, not a bill.",
+    "Message span excludes time before first and after last recorded message; not human work time.",
+    "Final stop reason is not business acceptance."
+  ]
+}
