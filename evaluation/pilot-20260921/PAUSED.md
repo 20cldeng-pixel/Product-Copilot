@@ -1,0 +1,10 @@
+# Paused at user request, 2026-09-21
+
+- No model run remains active. B Builder completed: 52 tool calls, one error (missing docs/design search), 29 tests and build passed. Frozen HEAD 07dc444 plus uncommitted prototype are included in local temp/pilot-20260921/B/source.tar. Planning and Builder logs are frozen separately; public summaries are in this directory.
+- A independent browser scoring: IA-01 through IA-11 passed.
+- B independent browser scoring: IA-01 through IA-06 passed. Observed first registration, duplicate rejection, cross-event success, second user filling A1, and U3 full rejection. After refresh admin shows A1=2 with U1/U2, A2=1 with U1, A3=0 closed. IA-07 still needs selecting member view and U1 after that refresh. IA-08 through IA-11 have not run. Overall B result remains unknown.
+- Scoring servers 4181 and 4182 were stopped. Restart B's frozen scoring copy at temp/pilot-20260921/B/score on 4182; retain its browser origin storage. Fixture page is fixtures.html. Main improved app remains running; original 4173 demo remains available.
+- GitHub public repository https://github.com/20cldeng-pixel/Product-Copilot was created. No source was pushed. Remote portfolio points there; origin remains upstream. User clarified Leo is reference only.
+- Official GitHub CLI 2.101.0 installed at ~/.local/bin/gh; archive checksum verified. User explicitly approved GitHub CLI's displayed account permissions. GitHub then required email verification; user must enter that code directly on GitHub. Pending CLI login was cancelled for this pause. On resume check auth status; start a new device login if needed. Never collect or print credentials.
+- Portfolio README/story and demo script prepared. examples/gather includes 29 hashed source files from existing verified example; independent npm ci, 36 tests and build passed. No video recorded.
+- Continue with remaining B scoring and an honest pilot comparison, reliability and unseen-case evaluation, real review explanation, then authenticated push and CI verification. Pilot budgets and contexts differ; do not report a formal equal-budget trial or claim superiority.
