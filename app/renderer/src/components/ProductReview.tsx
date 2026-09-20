@@ -33,6 +33,7 @@ export function ProductReview({ snapshot }: { snapshot: ProductWorkflowSnapshot 
       <h3 className="font-medium">交付质量</h3>
       <p>P0 条件 {delivery.criteria} 项：通过 {delivery.pass} · 失败 {delivery.fail} · 未判定 {delivery.inconclusive}</p>
       <p>开发回合 {delivery.buildRuns} · 测试运行 {delivery.verificationRuns} · 工具调用 {delivery.toolCalls} · 工具错误 {delivery.toolErrors} · 已记录人工决定 {delivery.manualDecisions}</p>
+      <p>当前有效范围/开发确认 {delivery.currentApprovals} · 已记录变更确认 {delivery.changeApprovals}；其余追问与纠错次数未采集。</p>
       <p>已知 Builder 耗时约 {(delivery.buildDurationMs / 60000).toFixed(1)} 分钟；运行中回合不计入。费用：未知。</p>
       <p className="text-xs text-text-secondary break-all">当前测试产物摘要：{delivery.currentArtifact ?? "无当前运行"}</p>
       <p className="text-xs text-text-secondary">缺口：{delivery.missing.join("；")}。</p>

@@ -88,6 +88,8 @@ export function calculateDeliveryReview(snapshot: ProductWorkflowSnapshot) {
     ? Date.parse(run.build.finishedAt) - Date.parse(run.build.startedAt) : 0), 0);
   return { criteria: criteria.length, ...counts, buildRuns: builds.length, verificationRuns: verifications.length,
     toolCalls, toolErrors, buildDurationMs, manualDecisions: snapshot.manualVerifications?.length ?? 0,
+    currentApprovals: Number(Boolean(snapshot.approvals.scope)) + Number(Boolean(snapshot.approvals.development)),
+    changeApprovals: snapshot.proposals.filter((proposal) => Boolean(proposal.confirmation)).length,
     missing: ["澄清、确认、纠错耗时未采集", "主/子 Agent Token 与费用未采集", "独立评分器结果另列，不能由本页推断"],
     currentArtifact: current?.report?.artifactDigest ?? null };
 }
