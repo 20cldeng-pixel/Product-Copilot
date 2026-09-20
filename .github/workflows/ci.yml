@@ -48,3 +48,19 @@ jobs:
 
       - name: Evaluation accounting tests
         run: node --test evaluation/summarize-session.test.mjs
+
+  gather-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install example dependencies
+        run: npm ci --prefix examples/gather
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+      - name: Verify example
+        run: |
+          npm test --prefix examples/gather
+          npm run build --prefix examples/gather

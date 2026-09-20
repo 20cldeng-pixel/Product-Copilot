@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-09-20T18:50:14.034463+00:00",
+  "setup": {
+    "promptCount": 1,
+    "scopeConfirmations": 1,
+    "prototypeConfirmations": 1,
+    "prototypeRegistrations": 1
+  },
+  "changeSoFar": {
+    "initialPromptCount": 1,
+    "clarificationReplies": 1,
+    "continuationInstructions": 1,
+    "scopeConfirmations": 1,
+    "prototypeConfirmations": 1,
+    "prototypeRegistrations": 1,
+    "builderStarts": 1
+  },
+  "observations": [
+    "Model added approval itself as unresolved blocking question Q3. Replied with frozen business script; next proposal became ready.",
+    "Model stated prototype registered after show_prototype, but product plan remained revision 8 without new prototype registration. Operator used register UI to reach revision 9.",
+    "Prototype UI spot check: U2 initially registered A2 can register A1 and see two registrations.",
+    "Builder started at revision 11."
+  ],
+  "humanTimeSeconds": null,
+  "limits": [
+    "Counts recorded from observed operations, not plan revision count.",
+    "Does not measure real user cognitive effort; operator is evaluator."
+  ]
+}
