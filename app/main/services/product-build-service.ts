@@ -75,13 +75,16 @@ export class ProductBuildService {
   }
 
   private prompt(state: ProductWorkflowSnapshot): string {
+    const change = [...state.proposals].reverse().find((entry) => entry.status === "confirmed"
+      && entry.confirmation?.revision === state.approvals.scope?.revision);
     return [
       "按用户已经批准的范围和原型执行一次开发。先检查现有代码，只补齐 P0 缺口，保留已有功能与数据。",
       "不自行增加 P1/P2，不改原型或需求成功标准。遇到范围歧义或不可行项停止并说明。",
       "本轮只有基础编码工具，没有委派或用户问答工具。只用前台有限命令，不启动常驻服务，不使用后台进程，不推送或部署。",
       "完成后说明实际改动、实际检查、未完成项；不能把自己声明完成当成业务验收通过。限 10 分钟、80 次工具调用。",
       JSON.stringify({ brief: state.draft.brief, requirements: state.draft.requirements.filter((r) => r.priority === "P0"),
-        decisions: state.draft.questions.map((q) => ({ question: q.text, resolution: q.resolution })), prototype: state.prototype }),
+        decisions: state.draft.questions.map((q) => ({ question: q.text, resolution: q.resolution })), prototype: state.prototype,
+        change: change ? { target: change.target, preserve: change.preserve, impact: change.impact } : undefined }),
     ].join("\n\n");
   }
 

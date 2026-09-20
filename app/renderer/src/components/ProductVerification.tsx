@@ -9,9 +9,15 @@ const executionLabels: Record<ProductRun["executionStatus"], string> = {
   queued: "等待执行", running: "正在运行测试", completed: "测试执行完成", failed: "测试执行失败", interrupted: "执行中断，请重跑", cancelled: "已取消",
 };
 
-export function ProductVerification({ snapshot, onChange }: {
+type VerificationProps = {
   snapshot: ProductWorkflowSnapshot; onChange: (state: ProductWorkflowSnapshot) => void;
-}): JSX.Element {
+};
+
+export function ProductVerification(props: VerificationProps): JSX.Element {
+  return <VerificationContent key={`${props.snapshot.projectId}:${props.snapshot.approvals.scope?.revision ?? 0}`} {...props} />;
+}
+
+function VerificationContent({ snapshot, onChange }: VerificationProps): JSX.Element {
   const [bindings, setBindings] = useState<Record<string, string[]>>(snapshot.verificationPlan?.bindings ?? {});
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -21,7 +27,7 @@ export function ProductVerification({ snapshot, onChange }: {
   const latest = runs.at(-1);
   const criteria = productCriteria(snapshot.draft);
   const mappingDirty = JSON.stringify(bindings) !== JSON.stringify(snapshot.verificationPlan?.bindings ?? {});
-  const occupied = snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
+  const occupied = snapshot.stage !== "development_authorized" || snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
   const api = window.electronAPI.productWorkflow;
   const button = "rounded-[var(--radius-lg)] border border-border px-3 py-2 text-sm disabled:opacity-50";
 

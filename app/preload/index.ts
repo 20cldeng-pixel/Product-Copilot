@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     saveProfile: (projectPath: string, platformSpec: string) => ipcRenderer.invoke("project:saveProfile", { projectPath, platformSpec }),
   },
   productWorkflow: {
+    saveChange: (projectId: string, expectedRevision: number, commandId: string, input: unknown) =>
+      ipcRenderer.invoke("product-workflow:save-change", { projectId, expectedRevision, commandId, input }),
+    confirmChange: (projectId: string, expectedRevision: number, commandId: string, proposalId: string) =>
+      ipcRenderer.invoke("product-workflow:confirm-change", { projectId, expectedRevision, commandId, proposalId }),
+    rejectChange: (projectId: string, expectedRevision: number, commandId: string, proposalId: string) =>
+      ipcRenderer.invoke("product-workflow:reject-change", { projectId, expectedRevision, commandId, proposalId }),
     startBuild: (projectId: string, expectedRevision: number, commandId: string) =>
       ipcRenderer.invoke("product-workflow:start-build", { projectId, expectedRevision, commandId }),
     stopBuild: (projectId: string, expectedRevision: number, commandId: string, runId: string) =>

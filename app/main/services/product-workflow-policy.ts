@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ProductStage } from "../../shared/product-workflow";
 
 const PLANNING_TOOLS = new Set([
-  "get_product_plan", "save_product_draft", "read", "ls", "grep", "find", "glob",
+  "get_product_plan", "save_product_draft", "propose_product_change", "read", "ls", "grep", "find", "glob",
   "web_search", "web_fetch", "ask_user", "use_skill", "describe_image", "todo_write",
 ]);
 

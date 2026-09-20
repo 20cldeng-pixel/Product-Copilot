@@ -10,7 +10,7 @@ import type {
 
 const id = z.string().uuid();
 const text = z.string().trim().min(1);
-const draftSchema = z.object({
+export const draftSchema = z.object({
   brief: z.object({
     idea: z.string(), targetUser: z.string(), scenario: z.string(), constraints: z.array(z.string()),
   }).strict(),
@@ -28,6 +28,31 @@ const draftSchema = z.object({
   questions: z.array(z.object({ id: text, text: z.string(), blocking: z.boolean(), resolution: z.string().optional() }).strict()),
 }).strict();
 
+export function assertProductScopeReady(draft: ProductDraft): void {
+  if (!draft.brief.idea.trim() || !draft.brief.targetUser.trim() || !draft.brief.scenario.trim()) {
+    throw new Error("请先填写想法、目标用户和使用场景");
+  }
+  if (draft.researchStatus === "pending") throw new Error("竞品调研尚未完成或说明资料不足");
+  if (draft.researchStatus === "complete" && (draft.research.length === 0 || draft.research.some((item) => !item.sourceUrl && !item.materialRef))) {
+    throw new Error("调研缺少可追溯来源");
+  }
+  if (draft.research.some((item) => !item.subject.trim() || !item.fact.trim())) throw new Error("调研来源仍有未填完的名称或事实");
+  if (draft.requirements.some((item) => !item.title.trim() || !item.behavior.trim() || item.acceptance.some((criterion) => !criterion.trim()))) {
+    throw new Error("需求标题、行为或验收条件仍未填完");
+  }
+  if (draft.questions.some((item) => !item.text.trim())) throw new Error("待回答问题尚未填写");
+  for (const items of [draft.research, draft.requirements, draft.questions]) {
+    if (new Set(items.map((item) => item.id)).size !== items.length) throw new Error("来源、需求或问题 ID 重复");
+  }
+  if (draft.questions.some((q) => q.blocking && !q.resolution?.trim())) throw new Error("仍有未解决的关键问题");
+  if (!draft.requirements.some((r) => r.priority === "P0" && r.acceptance.some((criterion) => criterion.trim()))) {
+    throw new Error("至少需要一项具有验收条件的首版需求");
+  }
+  if (draft.requirements.some((r) => r.priority === "P0" && r.acceptance.length === 0)) {
+    throw new Error("每项首版必做需求都需要验收条件");
+  }
+}
+
 const approvalSchema = z.object({ at: z.iso.datetime(), contentDigest: text, revision: z.number().int().nonnegative() }).strict();
 const snapshotSchema = z.object({
   schemaVersion: z.literal(1), projectId: id, revision: z.number().int().nonnegative(),
@@ -38,6 +63,11 @@ const snapshotSchema = z.object({
   proposals: z.array(z.object({
     id: text, baseRevision: z.number().int().nonnegative(), target: text,
     preserve: z.array(text), status: z.enum(["draft", "ready", "confirmed", "rejected", "superseded"]),
+    readinessIssue: text.optional(),
+    baseScopeDigest: text.optional(), baseArtifactDigest: text.optional(), baseDraft: draftSchema.optional(), nextDraft: draftSchema.optional(),
+    baseApprovals: z.object({ scope: approvalSchema.optional(), development: approvalSchema.optional() }).strict().optional(),
+    impact: z.array(z.object({ area: text, reason: text, files: z.array(z.object({ path: text, digest: text }).strict()) }).strict()).optional(),
+    updatedAt: z.iso.datetime().optional(), confirmation: approvalSchema.optional(),
   }).strict()),
   runs: z.array(z.object({
     id, scopeDigest: text, prototypeDigest: text,
@@ -225,28 +255,7 @@ export class ProductWorkflowService {
     const result = this.store.transact(projectId, commandId, expectedRevision, "confirm_scope", null, (snapshot) => {
       if (snapshot.stage !== "draft") throw new Error("当前阶段不能确认首版范围");
       const { draft } = snapshot;
-      if (!draft.brief.idea.trim() || !draft.brief.targetUser.trim() || !draft.brief.scenario.trim()) {
-        throw new Error("请先填写想法、目标用户和使用场景");
-      }
-      if (draft.researchStatus === "pending") throw new Error("竞品调研尚未完成或说明资料不足");
-      if (draft.researchStatus === "complete" && (draft.research.length === 0 || draft.research.some((item) => !item.sourceUrl && !item.materialRef))) {
-        throw new Error("调研缺少可追溯来源");
-      }
-      if (draft.research.some((item) => !item.subject.trim() || !item.fact.trim())) throw new Error("调研来源仍有未填完的名称或事实");
-      if (draft.requirements.some((item) => !item.title.trim() || !item.behavior.trim() || item.acceptance.some((criterion) => !criterion.trim()))) {
-        throw new Error("需求标题、行为或验收条件仍未填完");
-      }
-      if (draft.questions.some((item) => !item.text.trim())) throw new Error("待回答问题尚未填写");
-      for (const items of [draft.research, draft.requirements, draft.questions]) {
-        if (new Set(items.map((item) => item.id)).size !== items.length) throw new Error("来源、需求或问题 ID 重复");
-      }
-      if (draft.questions.some((q) => q.blocking && !q.resolution?.trim())) throw new Error("仍有未解决的关键问题");
-      if (!draft.requirements.some((r) => r.priority === "P0" && r.acceptance.some((criterion) => criterion.trim()))) {
-        throw new Error("至少需要一项具有验收条件的首版需求");
-      }
-      if (draft.requirements.some((r) => r.priority === "P0" && r.acceptance.length === 0)) {
-        throw new Error("每项首版必做需求都需要验收条件");
-      }
+      assertProductScopeReady(draft);
       snapshot.approvals.scope = {
         at: new Date().toISOString(), contentDigest: digest(draft), revision: snapshot.revision + 1,
       };

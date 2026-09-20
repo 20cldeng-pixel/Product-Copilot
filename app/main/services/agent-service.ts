@@ -887,6 +887,7 @@ export class AgentService {
           "<product_workflow>",
           `本项目已启用产品计划，当前阶段：${plan.stage}，版本：${plan.revision}。`,
           "先用 get_product_plan 读取当前已保存需求；需求草案可用 save_product_draft 更新。",
+          "已确认需求的修改用 propose_product_change 保存目标、保留项和影响，等待用户在产品计划确认；不得直接改正式需求或抢先执行提案。",
           "用户在「产品计划」页确认范围和原型，Agent 不能代替批准。批准前只能做调研与原型工作，工具能力由宿主限制。",
           "只有宿主确认开发资格后才能写应用代码；普通 task.json 的 done 不代表产品需求验收通过。",
           "如果旧创建指引与这里的产品计划阶段冲突，以已保存的产品计划及其批准记录为准。",

@@ -78,6 +78,15 @@ export interface ProductChangeProposal {
   target: string;
   preserve: string[];
   status: "draft" | "ready" | "confirmed" | "rejected" | "superseded";
+  readinessIssue?: string;
+  baseScopeDigest?: string;
+  baseArtifactDigest?: string;
+  baseDraft?: ProductDraft;
+  baseApprovals?: ProductWorkflowSnapshot["approvals"];
+  nextDraft?: ProductDraft;
+  impact?: Array<{ area: string; reason: string; files: Array<{ path: string; digest: string }> }>;
+  updatedAt?: string;
+  confirmation?: ProductApproval;
 }
 
 export interface ProductEvidence {

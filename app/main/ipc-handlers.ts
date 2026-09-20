@@ -7,6 +7,7 @@ import { ProjectService } from "./services/project-service";
 import { ProductWorkflowService } from "./services/product-workflow-service";
 import { ProductVerificationService } from "./services/product-verification-service";
 import { ProductBuildService } from "./services/product-build-service";
+import { ProductChangeService } from "./services/product-change-service";
 import type { ProductDraft } from "../shared/product-workflow";
 import { FileService } from "./services/file-service";
 import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-service";
@@ -122,6 +123,7 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   const productBuild = new ProductBuildService((id) => projectService.get(id)?.path, productWorkflow,
     (root, runId, prompt, signal) => agentService.executeProductBuild(root, runId, prompt, signal),
     (root) => agentService.isProjectBusy(root));
+  const productChange = new ProductChangeService((id) => projectService.get(id)?.path, productWorkflow, (root) => agentService.isProjectBusy(root));
   /**
    * file:* / shell 日志通道的可信根解析：目标路径必须落在某个已登记项目根之内
    * （`~/.ssh/id_rsa`、`/etc/passwd`、`~/Documents/../.ssh/id_rsa` 均无项目根包含 → 拒绝）。
@@ -201,6 +203,12 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   }));
   ipcMain.handle("product-workflow:start-build", guard(productCommand,
     ({ projectId, expectedRevision, commandId }) => productBuild.start(projectId, expectedRevision, commandId)));
+  ipcMain.handle("product-workflow:save-change", guard(productCommand.extend({ input: z.unknown() }),
+    ({ projectId, expectedRevision, commandId, input }) => productChange.save(projectId, expectedRevision, commandId, input)));
+  ipcMain.handle("product-workflow:confirm-change", guard(productCommand.extend({ proposalId: z.uuid() }),
+    ({ projectId, expectedRevision, commandId, proposalId }) => productChange.confirm(projectId, expectedRevision, commandId, proposalId)));
+  ipcMain.handle("product-workflow:reject-change", guard(productCommand.extend({ proposalId: z.uuid() }),
+    ({ projectId, expectedRevision, commandId, proposalId }) => productChange.reject(projectId, expectedRevision, commandId, proposalId)));
   ipcMain.handle("product-workflow:stop-build", guard(productCommand.extend({ runId: z.uuid() }),
     ({ projectId, expectedRevision, commandId, runId }) => productBuild.stop(projectId, expectedRevision, commandId, runId)));
   ipcMain.handle("product-workflow:verify", guard(productCommand,

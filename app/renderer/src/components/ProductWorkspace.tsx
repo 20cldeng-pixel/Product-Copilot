@@ -6,6 +6,7 @@ import type {
 import { renderProductPrd } from "@shared/product-prd";
 import { ProductVerification } from "./ProductVerification";
 import { ProductBuild } from "./ProductBuild";
+import { ProductChange } from "./ProductChange";
 
 // TypeScript 没有从 ProductDraft 自动导出单条来源类型，这里沿用数组成员。
 type Source = ProductDraft["research"][number];
@@ -203,7 +204,11 @@ export function ProductWorkspace({ projectId, projectPath }: { projectId: string
         </section>
       ) : null}
 
-      {snapshot.stage === "development_authorized" && <>
+      {snapshot.stage !== "draft" && <ProductChange key={`${projectId}-${snapshot.approvals.scope?.revision}`} snapshot={snapshot} onChange={(next) => {
+        setSnapshot(next); setDraft(next.draft); setDirty(false);
+      }} />}
+
+      {(snapshot.stage === "development_authorized" || snapshot.runs.length > 0) && <>
         <ProductBuild key={`build-${projectId}`} snapshot={snapshot} onChange={setSnapshot} />
         <ProductVerification key={projectId} snapshot={snapshot} onChange={setSnapshot} />
       </>}

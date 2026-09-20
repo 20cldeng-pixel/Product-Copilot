@@ -3,6 +3,8 @@ import type { ToolDefinition } from "../pi-sdk";
 import { getDefineToolFn } from "../pi-sdk";
 import { ProductWorkflowService } from "../product-workflow-service";
 import type { ProductDraft } from "../../../shared/product-workflow";
+import { z } from "zod";
+import { ProductChangeService, productChangeInputSchema } from "../product-change-service";
 
 function message(text: string) { return { content: [{ type: "text" as const, text }] }; }
 
@@ -18,6 +20,7 @@ export async function createProductWorkflowTools(
 ): Promise<ToolDefinition[]> {
   const defineTool = await getDefineToolFn();
   const service = new ProductWorkflowService((id) => id === projectId ? projectPath : undefined);
+  const changes = new ProductChangeService((id) => id === projectId ? projectPath : undefined, service);
   const tools: ToolDefinition[] = [];
 
   tools.push(defineTool({
@@ -32,6 +35,9 @@ export async function createProductWorkflowTools(
           active: service.isActive(projectId), revision: state.revision, stage: state.stage, draft: state.draft,
           scopeApproved: Boolean(state.approvals.scope), prototype: state.prototype,
           developmentApproved: Boolean(state.approvals.development),
+          pendingChanges: state.proposals.filter((proposal) => ["draft", "ready"].includes(proposal.status)).map((proposal) => ({
+            id: proposal.id, target: proposal.target, preserve: proposal.preserve, status: proposal.status, readinessIssue: proposal.readinessIssue, baseScopeDigest: proposal.baseScopeDigest,
+          })),
         };
         const serialized = JSON.stringify(view);
         if (serialized.length > 14000) return message("产品计划超过单次上下文上限，请到产品计划界面查看或收窄需求范围。");
@@ -112,6 +118,19 @@ export async function createProductWorkflowTools(
         );
         return message(`草案已保存，当前版本 ${result.snapshot.revision}。用户可在「产品计划」页检查后自行确认范围；模型不能代替确认。`);
       } catch (error) { return message(`保存草案失败：${(error as Error).message}`); }
+    },
+  } as any) as ToolDefinition);
+
+  tools.push(defineTool({
+    name: "propose_product_change", label: "保存需求变更提案", executionMode: "sequential",
+    description: "对已经确认范围的产品保存变更提案。先读取 get_product_plan，提交完整 nextDraft；同步更新冲突的旧约束和问题答案。target 写目标差异，preserve 列必须保留的行为及数据，impact 写影响对象、依据和不确定项，files 可为空或填写项目内文件。proposalId 仅用于修改待确认提案。本工具不能确认变更、启动开发或修改正式需求。",
+    parameters: z.toJSONSchema(z.object({ expectedRevision: z.number().int().nonnegative(), input: productChangeInputSchema }).strict()),
+    async execute(toolCallId: string, params: Record<string, unknown>) {
+      try {
+        const result = changes.save(projectId, params.expectedRevision as number,
+          commandIdFor(projectId, `change:${toolCallId}`), params.input);
+        return message(`变更提案已保存，当前版本 ${result.snapshot.revision}。正式需求尚未变化，请用户在产品计划查看前后差异并确认。`);
+      } catch (error) { return message(`保存变更提案失败：${String(error)}`); }
     },
   } as any) as ToolDefinition);
 
