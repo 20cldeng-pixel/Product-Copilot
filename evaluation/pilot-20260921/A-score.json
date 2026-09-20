@@ -1,0 +1,70 @@
+{
+  "group": "A",
+  "classification": "pilot",
+  "declaredPass": true,
+  "actualPass": true,
+  "scoredAt": "2026-09-20T18:34:59.697278+00:00",
+  "method": "CUA real browser, non-blind, dedicated origin 127.0.0.1:4181; frozen source copy; fixture setup page only, business code unchanged",
+  "checks": [
+    {
+      "id": "IA-01",
+      "status": "pass",
+      "observation": "F0三场可见，开放/开放/关闭，人数均0"
+    },
+    {
+      "id": "IA-02",
+      "status": "pass",
+      "observation": "U1报A1成功，人数1/0"
+    },
+    {
+      "id": "IA-03",
+      "status": "pass",
+      "observation": "重复点击显示不能重复报名，人数不变"
+    },
+    {
+      "id": "IA-04",
+      "status": "pass",
+      "observation": "A2仍可立即报名，成功后1/1"
+    },
+    {
+      "id": "IA-05",
+      "status": "pass",
+      "observation": "U2报A1成功，人数2；刷新管理员名单U1/U2"
+    },
+    {
+      "id": "IA-06",
+      "status": "pass",
+      "observation": "U3点击满员按钮显示活动已满员，人数2/1，管理员名单无U3"
+    },
+    {
+      "id": "IA-07",
+      "status": "pass",
+      "observation": "刷新重新选U1，两场已报名，A1满员2、A2开放1"
+    },
+    {
+      "id": "IA-08",
+      "status": "pass",
+      "observation": "加载真实V1 F1后，新增动作前管理员显示A1=1且名单U1"
+    },
+    {
+      "id": "IA-09",
+      "status": "pass",
+      "observation": "U1重复A1被拒绝，人数仍1/0"
+    },
+    {
+      "id": "IA-10",
+      "status": "pass",
+      "observation": "U1报名A2成功；刷新管理员两场各1且名单均U1；重选U1两场已报名"
+    },
+    {
+      "id": "IA-11",
+      "status": "pass",
+      "observation": "F2零报名，U1点击关闭A3显示暂不接受新报名；三场人数仍0"
+    }
+  ],
+  "limitations": [
+    "One pilot, not formal repeated evaluation.",
+    "UI observations recorded by evaluator; no video captured.",
+    "Does not establish improved version advantage."
+  ]
+}

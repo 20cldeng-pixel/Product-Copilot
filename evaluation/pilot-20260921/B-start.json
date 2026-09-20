@@ -1,0 +1,14 @@
+{
+  "group": "B",
+  "phase": "change",
+  "startedAt": "2026-09-20T18:39:27.062407+00:00",
+  "input": "把规则改成每个用户每场活动只能报名一次。",
+  "baselineRevision": 5,
+  "model": "GPT-5.6 Sol",
+  "thinking": "中",
+  "permission": "标准",
+  "contextDifference": "Continued onboarding session; A began with a fresh session. This is a pilot, not a strict paired trial.",
+  "setupConfirmations": 2,
+  "declaredPass": null,
+  "actualPass": null
+}

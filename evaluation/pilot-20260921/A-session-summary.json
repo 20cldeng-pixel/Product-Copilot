@@ -1,0 +1,58 @@
+{
+  "sourceSha256": "48b7bd103260194766176406bec082ddb7f6d833e0f4d717f50fe3ae9f54f827",
+  "assistantMessages": 47,
+  "userMessages": 1,
+  "toolResults": 70,
+  "toolErrors": 0,
+  "toolErrorStatusUnknown": 0,
+  "tokenFields": {
+    "input": {
+      "knownSubtotal": 93651,
+      "knownMessages": 47,
+      "missingMessages": 0
+    },
+    "output": {
+      "knownSubtotal": 16485,
+      "knownMessages": 47,
+      "missingMessages": 0
+    },
+    "cacheRead": {
+      "knownSubtotal": 3219456,
+      "knownMessages": 47,
+      "missingMessages": 0
+    },
+    "cacheWrite": {
+      "knownSubtotal": 0,
+      "knownMessages": 47,
+      "missingMessages": 0
+    },
+    "reasoning": {
+      "knownSubtotal": 3632,
+      "knownMessages": 47,
+      "missingMessages": 0
+    },
+    "totalTokens": {
+      "knownSubtotal": 3329592,
+      "knownMessages": 47,
+      "missingMessages": 0
+    }
+  },
+  "sdkEstimatedCost": {
+    "knownSubtotal": 2.5725329999999995,
+    "knownMessages": 47,
+    "missingMessages": 0
+  },
+  "billedCost": null,
+  "observedMessageSpanMs": 422428,
+  "lastStopReason": "stop",
+  "finalAssistantText": "已完成：报名规则改为**每个用户每场活动只能报名一次**。\n\n### 已完成\n\n- 同一用户可报名多场不同活动。\n- 重复报名同一活动会被阻止。\n- 成员页面仅禁用已报名活动，其他活动仍可报名。\n- 本地存储升级至 schema v2，旧数据自动迁移。\n- 已同步需求、架构、README、任务及开发记录。\n- 已提交 Git：\n  - `6cad359` 功能实现\n  - `616fa63` 开发记录\n\n### 验证结果\n\n- 自动化测试：**29 项全部通过**\n- TypeScript 与生产构建：**通过**\n- Git 工作区：**干净**",
+  "declaredPass": null,
+  "actualPass": null,
+  "limits": [
+    "Includes only this JSONL; delegated sessions must be summarized separately.",
+    "Token fields overlap; do not add reasoning or cached tokens to totalTokens.",
+    "SDK cost is an estimate, not a bill.",
+    "Message span excludes time before first and after last recorded message; not human work time.",
+    "Final stop reason is not business acceptance."
+  ]
+}

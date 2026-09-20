@@ -1,0 +1,8 @@
+{
+  "group": "B",
+  "phase": "existing-V1-onboarding",
+  "startedAt": "2026-09-20T18:37:11.671915+00:00",
+  "projectId": "ec17dce9-6c50-438b-bdb4-78914b7144a7",
+  "note": "Timestamp recorded after sending setup prompt. Setup uses original V1 documentation only, no V2 hints. Cost counted separately from change run.",
+  "prompt": "仅做现有项目接入产品计划：读取当前 docs/需求文档.md、docs/技术架构.md、AGENTS.md 及必要源码，把现有 V1 已实现范围原样整理为产品草案并保存。不要提出新需求，不要改变现有业务规则，不改任何项目文件，不执行开发或委派，不代替用户批准范围或原型。没有实际竞品资料就标记资料不足按假设继续，不伪造调研。完成后报告草案内容与待确认项。"
+}

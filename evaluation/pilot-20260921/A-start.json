@@ -1,0 +1,12 @@
+{
+  "group": "A",
+  "classification": "pilot-not-formal-ab",
+  "startedAt": "2026-09-20T17:40:07.640025+00:00",
+  "projectId": "c24e11fd-5cd2-4bea-a050-0627e568b679",
+  "observedModel": "GPT-5.6 Sol",
+  "observedThinking": "中",
+  "permission": "标准",
+  "input": "把规则改成每个用户每场活动只能报名一次。",
+  "declaredPass": null,
+  "actualPass": null
+}

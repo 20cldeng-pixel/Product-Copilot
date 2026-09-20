@@ -1,0 +1,14 @@
+{
+  "frozenAt": "2026-09-20T18:30:26.984888+00:00",
+  "head": "616fa63e85fef6c80fa08ed4579e15f944fbcab1",
+  "gitStatus": "",
+  "artifacts": {
+    "session.jsonl": "48b7bd103260194766176406bec082ddb7f6d833e0f4d717f50fe3ae9f54f827",
+    "source.tar": "9b8776dede9dbfc9286d1629fdf03076577e573db6bb336739b9359d3a5050e8"
+  },
+  "declaredPass": true,
+  "actualPass": null,
+  "classification": "pilot",
+  "rawLogs": "Local ignored temp directory; not for publication",
+  "repositoryName": "Product-Copilot"
+}

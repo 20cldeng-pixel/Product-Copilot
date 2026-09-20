@@ -45,3 +45,6 @@ jobs:
 
       - name: Unit tests
         run: npx vitest run
+
+      - name: Evaluation accounting tests
+        run: node --test evaluation/summarize-session.test.mjs
