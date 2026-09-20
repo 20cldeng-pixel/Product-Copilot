@@ -7,6 +7,7 @@ import { renderProductPrd } from "@shared/product-prd";
 import { ProductVerification } from "./ProductVerification";
 import { ProductBuild } from "./ProductBuild";
 import { ProductChange } from "./ProductChange";
+import { ProductReview } from "./ProductReview";
 
 // TypeScript 没有从 ProductDraft 自动导出单条来源类型，这里沿用数组成员。
 type Source = ProductDraft["research"][number];
@@ -211,6 +212,7 @@ export function ProductWorkspace({ projectId, projectPath }: { projectId: string
       {(snapshot.stage === "development_authorized" || snapshot.runs.length > 0) && <>
         <ProductBuild key={`build-${projectId}`} snapshot={snapshot} onChange={setSnapshot} />
         <ProductVerification key={projectId} snapshot={snapshot} onChange={setSnapshot} />
+        <ProductReview snapshot={snapshot} />
       </>}
 
       <button className="text-xs text-text-secondary" onClick={() => void load().catch((cause) => setError(String(cause)))}>刷新状态</button>
