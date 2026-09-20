@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSy
 import path from "node:path";
 import { z } from "zod";
 import { DATA_DIR } from "./store";
+import { criterionSchema, manualVerificationSchema, verificationPlanSchema, verificationReportSchema } from "./product-verification-schema";
 import type {
   ProductDraft, ProductRun, ProductWorkflowSnapshot,
 } from "../../shared/product-workflow";
@@ -43,11 +44,16 @@ const snapshotSchema = z.object({
     executionStatus: z.enum(["queued", "running", "completed", "failed", "interrupted", "cancelled"]),
     verificationStatus: z.enum(["not_run", "pass", "fail", "inconclusive", "stale"]),
     createdAt: z.iso.datetime(),
+    kind: z.literal("verification").optional(), criteria: z.array(criterionSchema).optional(),
+    plan: verificationPlanSchema.optional(), report: verificationReportSchema.optional(),
   }).strict()),
   evidence: z.array(z.object({
     id: text, runId: id, criterionId: text, artifactDigest: text,
     outcome: z.enum(["pass", "fail", "inconclusive"]), observedAt: z.iso.datetime(),
+    method: z.literal("vitest").optional(), testKeys: z.array(text).optional(), observation: z.string().optional(),
   }).strict()),
+  verificationPlan: verificationPlanSchema.optional(),
+  manualVerifications: z.array(manualVerificationSchema).optional(),
   updatedAt: z.iso.datetime(),
 }).strict();
 
@@ -229,6 +235,9 @@ export class ProductWorkflowService {
       if (draft.questions.some((q) => q.blocking && !q.resolution?.trim())) throw new Error("仍有未解决的关键问题");
       if (!draft.requirements.some((r) => r.priority === "P0" && r.acceptance.some((criterion) => criterion.trim()))) {
         throw new Error("至少需要一项具有验收条件的首版需求");
+      }
+      if (draft.requirements.some((r) => r.priority === "P0" && r.acceptance.length === 0)) {
+        throw new Error("每项首版必做需求都需要验收条件");
       }
       snapshot.approvals.scope = {
         at: new Date().toISOString(), contentDigest: digest(draft), revision: snapshot.revision + 1,

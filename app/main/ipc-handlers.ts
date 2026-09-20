@@ -5,6 +5,7 @@ import os from "os";
 import { randomUUID } from "node:crypto";
 import { ProjectService } from "./services/project-service";
 import { ProductWorkflowService } from "./services/product-workflow-service";
+import { ProductVerificationService } from "./services/product-verification-service";
 import type { ProductDraft } from "../shared/product-workflow";
 import { FileService } from "./services/file-service";
 import { AgentService, getDesignSessionIds, respondAsk } from "./services/agent-service";
@@ -116,6 +117,7 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
     const project = projectService.get(projectId);
     return project?.exists ? project.path : undefined;
   });
+  const productVerification = new ProductVerificationService((id) => projectService.get(id)?.path, productWorkflow);
   /**
    * file:* / shell 日志通道的可信根解析：目标路径必须落在某个已登记项目根之内
    * （`~/.ssh/id_rsa`、`/etc/passwd`、`~/Documents/../.ssh/id_rsa` 均无项目根包含 → 拒绝）。
@@ -189,7 +191,20 @@ export function registerIpcHandlers({ mainWindow, projectService, fileService, a
   const productCommand = productRead.extend({
     expectedRevision: z.number().int().nonnegative(), commandId: z.string().uuid(),
   });
-  ipcMain.handle("product-workflow:get", guard(productRead, ({ projectId }) => productWorkflow.get(projectId)));
+  ipcMain.handle("product-workflow:get", guard(productRead, ({ projectId }) => productVerification.get(projectId)));
+  ipcMain.handle("product-workflow:verify", guard(productCommand,
+    ({ projectId, expectedRevision, commandId }) => {
+      const projectPath = projectService.get(projectId)?.path;
+      const occupied = agentService.listActiveSessions().some((sessionId) =>
+        agentService.findActiveChat(sessionId)?.projectPath === projectPath
+        && (agentService.isSessionRunning(sessionId) || agentService.getRunningDelegationsSnapshot(sessionId).length > 0));
+      if (occupied) throw new Error("请等待当前项目的 Agent 任务结束后再验收");
+      return productVerification.run(projectId, expectedRevision, commandId);
+    }));
+  ipcMain.handle("product-workflow:approve-verification", guard(productCommand.extend({ bindings: z.unknown() }),
+    ({ projectId, expectedRevision, commandId, bindings }) => productVerification.approvePlan(projectId, expectedRevision, commandId, bindings)));
+  ipcMain.handle("product-workflow:manual-verification", guard(productCommand.extend({ entry: z.unknown() }),
+    ({ projectId, expectedRevision, commandId, entry }) => productVerification.recordManual(projectId, expectedRevision, commandId, entry)));
   ipcMain.handle("product-workflow:activate", guard(productCommand,
     ({ projectId, expectedRevision, commandId }) =>
       productWorkflow.activate(projectId, expectedRevision, commandId)));

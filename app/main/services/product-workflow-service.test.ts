@@ -32,6 +32,13 @@ const validDraft: ProductDraft = {
 };
 
 describe("ProductWorkflowService", () => {
+  it("requires criteria for every P0 requirement, not just one of them", () => {
+    const { projectId, service } = fixture();
+    const draft = structuredClone(validDraft);
+    draft.requirements.push({ id: "REQ-2", title: "持久化", priority: "P0", behavior: "刷新保留", acceptance: [] });
+    service.saveDraft(projectId, 0, randomUUID(), draft);
+    expect(() => service.confirmScope(projectId, 1, randomUUID())).toThrow("每项首版必做需求");
+  });
   it("activates the planning guard only after an explicit persisted command", () => {
     const { projectId, storeDir, service } = fixture();
     expect(service.get(projectId).revision).toBe(0);

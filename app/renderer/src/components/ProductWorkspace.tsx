@@ -4,6 +4,7 @@ import type {
   ProductWorkflowSnapshot,
 } from "@shared/product-workflow";
 import { renderProductPrd } from "@shared/product-prd";
+import { ProductVerification } from "./ProductVerification";
 
 // TypeScript 没有从 ProductDraft 自动导出单条来源类型，这里沿用数组成员。
 type Source = ProductDraft["research"][number];
@@ -201,7 +202,7 @@ export function ProductWorkspace({ projectId, projectPath }: { projectId: string
         </section>
       ) : null}
 
-      {snapshot.stage === "development_authorized" && <p className="rounded-[var(--radius-lg)] bg-surface-hover p-4 text-sm">开发范围已记录。自动执行与逐项验收接入后，这里会显示真实运行结果。</p>}
+      {snapshot.stage === "development_authorized" && <ProductVerification key={projectId} snapshot={snapshot} onChange={setSnapshot} />}
 
       <button className="text-xs text-text-secondary" onClick={() => void load().catch((cause) => setError(String(cause)))}>刷新状态</button>
     </div>

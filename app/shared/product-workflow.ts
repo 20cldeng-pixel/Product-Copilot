@@ -1,3 +1,5 @@
+import type { Criterion, ManualVerification, VerificationPlan, VerificationReport } from "./product-verification";
+
 /** Product Copilot 的正式状态。聊天记录与导出的 PRD 只是它的视图。 */
 export type ProductStage = "draft" | "scope_confirmed" | "prototype_ready" | "development_authorized";
 export type ResearchStatus = "pending" | "complete" | "insufficient_accepted";
@@ -61,6 +63,10 @@ export interface ProductRun {
   executionStatus: "queued" | "running" | "completed" | "failed" | "interrupted" | "cancelled";
   verificationStatus: "not_run" | "pass" | "fail" | "inconclusive" | "stale";
   createdAt: string;
+  kind?: "verification";
+  criteria?: Criterion[];
+  plan?: VerificationPlan;
+  report?: VerificationReport;
 }
 
 /** 下一阶段的变更与验收结果也归入同一份项目状态。 */
@@ -79,6 +85,9 @@ export interface ProductEvidence {
   artifactDigest: string;
   outcome: "pass" | "fail" | "inconclusive";
   observedAt: string;
+  method?: "vitest";
+  testKeys?: string[];
+  observation?: string;
 }
 
 export interface ProductWorkflowSnapshot {
@@ -92,5 +101,7 @@ export interface ProductWorkflowSnapshot {
   proposals: ProductChangeProposal[];
   runs: ProductRun[];
   evidence: ProductEvidence[];
+  verificationPlan?: VerificationPlan;
+  manualVerifications?: ManualVerification[];
   updatedAt: string;
 }

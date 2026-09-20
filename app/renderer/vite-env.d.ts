@@ -235,6 +235,11 @@ interface ElectronAPI {
     saveProfile: (projectPath: string, platformSpec: string) => Promise<{ ok: boolean; error?: string }>;
   };
   productWorkflow: {
+    verify: (projectId: string, expectedRevision: number, commandId: string) => Promise<{ snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot }>;
+    approveVerification: (projectId: string, expectedRevision: number, commandId: string, bindings: Record<string, string[]>) => Promise<{ snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot }>;
+    manualVerification: (projectId: string, expectedRevision: number, commandId: string, entry: {
+      runId: string; criterionId: string; decision: "verified" | "exception"; reason: string;
+    }) => Promise<{ snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot }>;
     get: (projectId: string) => Promise<import("../shared/product-workflow").ProductWorkflowSnapshot>;
     activate: (projectId: string, expectedRevision: number, commandId: string) => Promise<{
       snapshot: import("../shared/product-workflow").ProductWorkflowSnapshot; replayed: boolean; appliedRevision: number;

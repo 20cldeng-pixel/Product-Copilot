@@ -733,6 +733,10 @@ export class AgentService {
     const canUseTool: CanUseToolFn = async (toolName, input, options) => {
       if (registeredProductProject && productStore.exists(registeredProductProject.id)) {
         const state = productStore.read(registeredProductProject.id);
+        if (state.runs.some((run) => run.kind === "verification" && run.executionStatus === "running")
+          && !["read", "ls", "grep", "find", "glob", "get_product_plan"].includes(toolName.toLowerCase())) {
+          return { behavior: "deny", message: "项目正在验收，请等待运行结束后再修改产物。" };
+        }
         const reason = productToolDenial(state.stage, projectPath, toolName, input);
         if (reason) return { behavior: "deny", message: reason };
         if (state.stage === "development_authorized" && productWorkflow && !productWorkflow.isDevelopmentCurrent(registeredProductProject.id)) {
