@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2026-09-20T13:54:36.466Z",
+  "classification": "public-development-calibration",
+  "limitation": "探针适配 Gather 内部 API；不能作为原版/改进版公平对照或未见任务证据。",
+  "gatherRevision": "9eb1e074bd3057c993c6a80ecc4bafc12613893c",
+  "v1Revision": "4b1aa611c1b5a9888987a617da526f693513b09c",
+  "probeSha256": "95594b54cf88b274d1ad56d1f09c527c82b192e9eaab4e6423982742bc9e7093",
+  "calibratorSha256": "eb565e0c556fd043237dcf6c702430d2ddbd04c894f8f17da4b289bb16a5077c",
+  "results": [
+    {
+      "id": "correct-v2",
+      "sourceRevision": "9eb1e074bd3057c993c6a80ecc4bafc12613893c",
+      "specimenHead": "6873dfacd76f1fa80fa641efdbb8eb6180f23b1a",
+      "mutation": null,
+      "observed": "pass",
+      "failed": [],
+      "inconclusive": [],
+      "passed": [
+        "VC-01",
+        "VC-02",
+        "VC-03",
+        "VC-04",
+        "VC-06",
+        "VC-05-domain",
+        "VC-07"
+      ]
+    },
+    {
+      "id": "unchanged-v1",
+      "sourceRevision": "4b1aa611c1b5a9888987a617da526f693513b09c",
+      "specimenHead": "8731623129aaf38dd93d36a902ff2eba568f6509",
+      "mutation": null,
+      "observed": "fail",
+      "failed": [
+        "VC-03",
+        "VC-04",
+        "VC-06",
+        "VC-07"
+      ],
+      "inconclusive": [],
+      "passed": [
+        "VC-01",
+        "VC-02",
+        "VC-05-domain"
+      ]
+    },
+    {
+      "id": "no-duplicate-check",
+      "sourceRevision": "9eb1e074bd3057c993c6a80ecc4bafc12613893c",
+      "specimenHead": "afb432885f7586aa87c514297cde1a7f83a97d45",
+      "mutation": {
+        "file": "app/domain/commands.ts",
+        "afterSha256": "ba58553e7a691b3def5a1fab8c89b2916290ae898eb2c0f3fa22fd00f5a6bc8e"
+      },
+      "observed": "fail",
+      "failed": [
+        "VC-02",
+        "VC-07"
+      ],
+      "inconclusive": [],
+      "passed": [
+        "VC-01",
+        "VC-03",
+        "VC-04",
+        "VC-06",
+        "VC-05-domain"
+      ]
+    },
+    {
+      "id": "one-user-per-event",
+      "sourceRevision": "9eb1e074bd3057c993c6a80ecc4bafc12613893c",
+      "specimenHead": "33876ea40f527b9033fad29b2eac0c2099ff4bfc",
+      "mutation": {
+        "file": "app/domain/commands.ts",
+        "afterSha256": "4b89a2681b6f41cea8050117d2cd28f7f91ef8e9ac8f3805db0bb28c3c029278"
+      },
+      "observed": "fail",
+      "failed": [
+        "VC-04",
+        "VC-06"
+      ],
+      "inconclusive": [],
+      "passed": [
+        "VC-01",
+        "VC-02",
+        "VC-03",
+        "VC-05-domain",
+        "VC-07"
+      ]
+    },
+    {
+      "id": "discard-v1-data",
+      "sourceRevision": "9eb1e074bd3057c993c6a80ecc4bafc12613893c",
+      "specimenHead": "f2c2c375ffc743e36cb3d3b59435e63d5184eaad",
+      "mutation": {
+        "file": "app/repository/localStorageRepository.ts",
+        "afterSha256": "93f37d1fbfe370624f10080ca769cd6a85e7b1db92726630186e74bcd4ca8b70"
+      },
+      "observed": "fail",
+      "failed": [
+        "VC-01",
+        "VC-02",
+        "VC-03",
+        "VC-04",
+        "VC-06",
+        "VC-05-domain",
+        "VC-07"
+      ],
+      "inconclusive": [],
+      "passed": []
+    }
+  ]
+}
