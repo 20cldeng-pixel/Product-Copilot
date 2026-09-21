@@ -65,7 +65,7 @@ npm run build:main
 npm run build:preload
 ```
 
-本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。[最新公开 CI](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35577506507)已通过主项目质量门禁与 Gather 示例检查。本机已从提交 `60c2261` 重新生成、校验并实际启动 macOS arm64 开发 DMG；窗口显示 Product Copilot，Finder 应用名和包标识保留 EasyMint 兼容名称。该包未签名、未公证，详见[构建记录](evaluation/builds/20260921-macos-arm64.md)，不作为正式 Release。
+本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。[最新公开 CI](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35577506507)已通过主项目质量门禁与 Gather 示例检查。本机已从提交 `60c2261` 重新生成、校验并实际启动 macOS arm64 开发 DMG；窗口显示 Product Copilot，Finder 应用名和包标识保留 EasyMint 兼容名称。该包未签名、未公证，作为[开发预览版下载](https://github.com/20cldeng-pixel/Product-Copilot/releases/tag/product-copilot-v0.1.0-dev)发布，详见[构建记录](evaluation/builds/20260921-macos-arm64.md)。
 
 ## 运行 Gather 示例
 
