@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-09-21",
+  "projectFixture": "Product Workflow Reliability",
+  "pageCancellation": {
+    "startRevision": 15,
+    "stopRequestedRevision": 16,
+    "finishedRevision": 17,
+    "executionStatus": "cancelled",
+    "verificationStatus": "not_run",
+    "toolCalls": 1,
+    "toolErrors": 0,
+    "firstStageArtifactPreserved": true,
+    "delayedArtifactCreated": false,
+    "uiOutcome": "已停止，产物已保留"
+  },
+  "hostKillDuringForegroundShell": {
+    "startRevision": 18,
+    "recoveredRevision": 19,
+    "signal": "SIGKILL",
+    "executionStatus": "interrupted",
+    "verificationStatus": "not_run",
+    "firstStageArtifactPreserved": true,
+    "delayedArtifactCreatedAfterOriginalDelay": false,
+    "guardianAndCommandProcessesRemainingAfterKill": 0,
+    "uiOutcome": "执行中断，产物已保留"
+  },
+  "scope": "Manual desktop observations plus filesystem and process probes. This does not claim rollback of a write already committed by the operating system or real-provider fault injection."
+}

@@ -17,6 +17,7 @@ import { EXECUTION_POLICY } from "../permission/wrap-tool";
 import { createExecutionContext, type ExecutionContext } from "../permission/execution-context";
 import { maskSecrets } from "../../utils/secret-mask";
 import { getOwnedSessionIds } from "../task/registry";
+import { spawnWithParentGuardian } from "./process-guardian";
 
 /**
  * 已编译的执行目标 —— **必须携带环境**。
@@ -101,7 +102,7 @@ export async function executeForeground(
     if (ctx) {
       (opts as { env?: Record<string, string> }).env = composeExecutionEnvironment(opts.env, ctx);
     }
-    const child = spawn(file, args, opts);
+    const child = spawnWithParentGuardian(file, args, opts);
     const outDec = createCodingAwareDecoder();
     const errDec = createCodingAwareDecoder();
     let output = "";

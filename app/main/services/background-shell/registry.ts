@@ -22,6 +22,7 @@ import { readManagedEnvironment } from "../tools/environment-tool";
 import { annotateSandboxFailures } from "../sandbox/manager";
 // 纯类型导入（编译后擦除，不产生运行时循环：tool.ts 运行时依赖本文件）
 import type { ExecutionTarget } from "./tool";
+import { spawnWithParentGuardian } from "./process-guardian";
 
 /** 保留输出尾部上限(内存,通知预览;超出截断,防止内存膨胀) */
 const MAX_OUTPUT_BYTES = 4096;
@@ -240,7 +241,7 @@ class BackgroundShellRegistry {
       }, 0);
       return { id, logPath };
     }
-    const child = spawn(file, args, opts);
+    const child = spawnWithParentGuardian(file, args, opts);
     const shell: BackgroundShell = {
       id, command: display, startedAt: Date.now(), child, output: "", logPath,
       exitCode: null, stopped: false, status: "running", streamBuf: "", flushTimer: null, onExit,
