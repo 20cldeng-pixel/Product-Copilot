@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-09-21T10:02:24.321216+00:00",
+  "classification": "formal-repeated-fixed-change-execution",
+  "groups": {
+    "A": {
+      "runs": 3,
+      "actualPass": 3,
+      "declaredPass": 0,
+      "falsePass": 0,
+      "timeouts": 0,
+      "toolBudgetExceeded": 0,
+      "meanDurationSeconds": 410.718,
+      "meanToolCalls": 58.333,
+      "meanSdkCostEstimate": 1.678224,
+      "individualRuns": [
+        {
+          "runId": "A1",
+          "actualPass": true,
+          "declaredPass": false,
+          "durationSeconds": 427.629,
+          "toolCalls": 62,
+          "costEstimate": 1.661947
+        },
+        {
+          "runId": "A2",
+          "actualPass": true,
+          "declaredPass": false,
+          "durationSeconds": 399.708,
+          "toolCalls": 55,
+          "costEstimate": 1.640803
+        },
+        {
+          "runId": "A3",
+          "actualPass": true,
+          "declaredPass": false,
+          "durationSeconds": 404.818,
+          "toolCalls": 58,
+          "costEstimate": 1.731922
+        }
+      ]
+    },
+    "B": {
+      "runs": 3,
+      "actualPass": 3,
+      "declaredPass": 0,
+      "falsePass": 0,
+      "timeouts": 0,
+      "toolBudgetExceeded": 0,
+      "meanDurationSeconds": 434.758,
+      "meanToolCalls": 59.333,
+      "meanSdkCostEstimate": 1.962034,
+      "individualRuns": [
+        {
+          "runId": "B1",
+          "actualPass": true,
+          "declaredPass": false,
+          "durationSeconds": 435.384,
+          "toolCalls": 57,
+          "costEstimate": 1.973998
+        },
+        {
+          "runId": "B2",
+          "actualPass": true,
+          "declaredPass": false,
+          "durationSeconds": 454.305,
+          "toolCalls": 60,
+          "costEstimate": 1.962741
+        },
+        {
+          "runId": "B3",
+          "actualPass": true,
+          "declaredPass": false,
+          "durationSeconds": 414.584,
+          "toolCalls": 61,
+          "costEstimate": 1.949362
+        }
+      ]
+    }
+  },
+  "observedDifference": {
+    "actualPassRatePercentagePoints": 0.0,
+    "meanDurationPercent": 5.9,
+    "meanToolCallsPercent": 1.7,
+    "meanSdkCostEstimatePercent": 16.9
+  },
+  "conclusion": "两组在本公开固定变更案例中均为 3/3 通过，未观察到 Product Copilot 合同带来的成功率提升。样本量和案例数不足以作显著性或泛化结论。",
+  "budgetEquality": "两组共享 600 秒墙钟和 80 次工具调用上限；没有 Token 或金额硬上限，B 的合同上下文本身更长。"
+}

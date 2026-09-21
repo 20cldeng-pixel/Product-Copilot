@@ -1,0 +1,39 @@
+{
+  "classification": "formal-repeated-fixed-change-execution",
+  "case": "EVAL-01",
+  "runsPerGroup": 3,
+  "runOrder": [
+    "A1",
+    "B1",
+    "B2",
+    "A2",
+    "A3",
+    "B3"
+  ],
+  "userInput": "把规则改成每个用户每场活动只能报名一次。",
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol",
+  "thinking": "medium",
+  "tools": [
+    "read",
+    "bash",
+    "edit",
+    "write"
+  ],
+  "wallTimeSeconds": 600,
+  "toolCallCeiling": 80,
+  "sourceRevision": "4b1aa611c1b5a9888987a617da526f693513b09c",
+  "sourceFixture": "Gather V1",
+  "groupA": "common system instructions plus original user input",
+  "groupB": "same common instructions and input plus frozen Product Copilot contract",
+  "primaryScoring": "independent Gather VC-01 to VC-07 probe after artifact freeze",
+  "limitations": [
+    "This compares fixed change execution, not the full Idea-to-review workflow.",
+    "The Product Copilot contract is frozen from the prior confirmed workflow and is not regenerated in each repetition.",
+    "Time and tool ceilings are equal; no token or monetary cap is enforced, and group B necessarily has a larger input context because the contract is the treatment.",
+    "The case is public calibration material, not an unseen holdout.",
+    "Tool-call ceiling is checked from the frozen trace; wall time is enforced during execution."
+  ],
+  "tokenBudget": null,
+  "costBudget": null
+}

@@ -1,0 +1,49 @@
+{
+  "runId": "B1",
+  "group": "B",
+  "execution": {
+    "run": "B1",
+    "group": "B",
+    "startedAtEpoch": 1789982629.94351,
+    "durationSeconds": 435.384,
+    "exitCode": 0,
+    "timedOut": false
+  },
+  "head": "9b65b4fcd7a3cad5aa4013d370ea16a5373d520b",
+  "worktreeStatus": " M AGENTS.md\n M README.md\n M app/App.test.tsx\n M app/App.tsx\n M app/domain/commands.ts\n M app/domain/domain.test.ts\n M app/domain/fixtures.ts\n M app/domain/selectors.ts\n M app/domain/types.ts\n M app/repository/localStorageRepository.test.ts\n M app/repository/localStorageRepository.ts\n M \"docs/\\345\\274\\200\\345\\217\\221\\350\\256\\260\\345\\275\\225.md\"\n M \"docs/\\346\\212\\200\\346\\234\\257\\346\\236\\266\\346\\236\\204.md\"\n M \"docs/\\351\\234\\200\\346\\261\\202\\346\\226\\207\\346\\241\\243.md\"\n M prototype/index.html\n M task.json\n?? \"docs/\\345\\274\\200\\345\\217\\221\\350\\256\\260\\345\\275\\225/2026-09-21.md\"",
+  "artifactDigest": "2895be86a809ca51f86cdd8ea5acc79fda4fd117d7b7d879084ec891fd423545",
+  "traceSha256": "f920bde7220cb37cdbd30dc27990bfef8e9c28007c946b765b6bd5c2073b68e4",
+  "assistantTurns": 32,
+  "toolCalls": 57,
+  "toolCallCeiling": 80,
+  "withinToolBudget": true,
+  "explicitToolErrors": 5,
+  "observedNonzeroShellResults": 3,
+  "sdkUsageEstimate": {
+    "totalTokensAcrossTurns": 2064235,
+    "cost": 1.973998,
+    "billingStatus": "not_verified"
+  },
+  "finalStopReason": "stop",
+  "finalText": "已完成报名规则调整。\n\n### 已完成\n\n- 报名改为 `userId + eventId` 组合唯一。\n- 同一用户可报名多场不同活动，同一活动不可重复报名。\n- 保留容量、关闭状态、既有名单和持久化失败回滚规则。\n- localStorage 升级至 schema v2，合法 v1 数据会自动迁移并保留。\n- 成员界面、管理员统计、原型、测试及文档已同步更新。\n\n### 验证结果\n\n- 自动化测试：**29 项全部通过**\n- TypeScript 编译：通过\n- Vite 生产构建：通过\n- 原型脚本语法检查：通过\n- `git diff --check`：通过\n\n环境中没有 `npm`；最终通过项目本地的 Vitest、TypeScript 和 Vite 可执行文件完成等价验证。未联网、部署或启动后台进程。代码验证通过不代表独立业务验收已完成。",
+  "declaredPass": false,
+  "declaredPassReason": "最终说明明确保留未进行独立业务或浏览器验收的边界，未宣称独立验收通过。",
+  "independentTests": {
+    "exitCode": 0,
+    "passed": 562
+  },
+  "independentBuild": {
+    "exitCode": 0
+  },
+  "probe": {
+    "passed": 7,
+    "total": 7,
+    "actualPass": true,
+    "report": "runs/B1/probe/report.json"
+  },
+  "interactionCounts": {
+    "clarification": 0,
+    "confirmation": 0,
+    "correction": 0
+  }
+}

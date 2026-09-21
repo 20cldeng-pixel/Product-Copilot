@@ -1,6 +1,6 @@
 # EVAL-01：报名去重作用域变更的独立评测
 
-版本：1。用途：**公开开发校准案例**，不是 hold-out。状态：Starter、改进版产物及 Gather 专用探针已有运行记录；原版/改进版固定配置对照与通用独立评分尚未完成。
+版本：1。用途：**公开开发校准案例**，不是 hold-out。状态：Starter、探针校准、单次页面配对预实验及固定变更执行的 A/B 各 3 次重复对照已完成；结果见 [`formal-ab-20260921`](../formal-ab-20260921/README.md)。该重复实验使用 Gather 专用独立 VC 探针，不等同未见案例或通用页面黑盒评分。
 
 ## 1. 独立性的边界
 
@@ -116,4 +116,4 @@ ActualPass 要求 IA-01～IA-11 全部正确。若暂用人工执行页面观察
 
 runId、group、starterVersion、fixtureVersion、modelConfig、toolConfig、limits、userScriptVersion、proposalFirstCorrect、交互分类计数、artifactRef、productVerdict、声明分类、独立断言结果、failureCategory、耗时/费用、traceRefs、配置是否在本轮后调整。
 
-本节规格制定时没有 EVAL-01 正式对照数据。以上 PASS/FAIL 均为判定规则，不是原版/改进版实际运行结果。后续开发校准见 [Gather 校准报告](../gather/calibration-20260920.json)：正确 V2 通过，未改 V1、放开同场重复、错误限制一场仅一人、丢弃 V1 旧数据均被检出。该探针使用 Gather 内部 API，不能代替本文件要求的组间独立行为评分；报告不包含原版 EasyMint Agent 运行。
+本节规格制定时没有 EVAL-01 正式对照数据，因此以上 PASS/FAIL 仍是预先判定规则。后续 [Gather 校准报告](../gather/calibration-20260920.json)验证正确 V2 通过，未改 V1、放开同场重复、错误限制一场仅一人、丢弃 V1 旧数据均被检出；[正式重复固定变更执行对照](../formal-ab-20260921/README.md)随后按 A/B 各 3 次执行，两组均为 3/3。正式重复仍使用 Gather 内部 API 探针，不代替未见任务或通用页面黑盒评分。

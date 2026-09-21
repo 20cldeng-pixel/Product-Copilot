@@ -1,0 +1,49 @@
+{
+  "runId": "A1",
+  "group": "A",
+  "execution": {
+    "run": "A1",
+    "group": "A",
+    "startedAtEpoch": 1789982180.3262389,
+    "durationSeconds": 427.629,
+    "exitCode": 0,
+    "timedOut": false
+  },
+  "head": "885673afd3350f848895c74817ec65a70a7ebe48",
+  "worktreeStatus": "",
+  "artifactDigest": "a6cefa0fcb20275de1a6a5d605820044b6488b82e6e238216fe991aa277b49ec",
+  "traceSha256": "2e57d6b78fddebd027b16be6579c80b351461a2a1f130f1668e62464b7c1d6bf",
+  "assistantTurns": 35,
+  "toolCalls": 62,
+  "toolCallCeiling": 80,
+  "withinToolBudget": true,
+  "explicitToolErrors": 3,
+  "observedNonzeroShellResults": 2,
+  "sdkUsageEstimate": {
+    "totalTokensAcrossTurns": 1823603,
+    "cost": 1.661947,
+    "billingStatus": "not_verified"
+  },
+  "finalStopReason": "stop",
+  "finalText": "已完成：报名规则改为**每个用户在每场活动中只能报名一次，可报名多场不同活动**。\n\n### 已完成\n\n- 调整领域状态、报名校验、名单与报名统计。\n- 保留活动容量、开放/关闭状态及失败回滚规则。\n- 本地存储升级至 schema v2，合法 v1 数据自动迁移且保留已有报名。\n- 更新成员提示、原型、需求文档、架构文档及测试。\n- 已提交：`885673a 调整报名规则为每场活动唯一`\n\n### 验证结果\n\n- 测试：**3 个测试文件，32 项全部通过**\n- 生产构建：**通过**\n- `git diff --check`：通过\n- 工作区：干净\n\n环境没有 `npm` 命令，因此使用项目本地 `vitest`、`tsc` 和 `vite` 执行了同等测试与构建。未进行独立浏览器业务验收。",
+  "declaredPass": false,
+  "declaredPassReason": "最终说明明确保留未进行独立业务或浏览器验收的边界，未宣称独立验收通过。",
+  "independentTests": {
+    "exitCode": 0,
+    "passed": 562
+  },
+  "independentBuild": {
+    "exitCode": 0
+  },
+  "probe": {
+    "passed": 7,
+    "total": 7,
+    "actualPass": true,
+    "report": "runs/A1/probe/report.json"
+  },
+  "interactionCounts": {
+    "clarification": 0,
+    "confirmation": 0,
+    "correction": 0
+  }
+}
