@@ -1,0 +1,62 @@
+{
+  "stage": "v2",
+  "passed": 4,
+  "total": 12,
+  "pass": false,
+  "checks": [
+    {
+      "id": "C01-artifacts",
+      "pass": true
+    },
+    {
+      "id": "C02-create-validation",
+      "pass": true
+    },
+    {
+      "id": "C03-capacity",
+      "pass": false,
+      "error": "该班次已关闭"
+    },
+    {
+      "id": "C04-closed",
+      "pass": true
+    },
+    {
+      "id": "C05-roundtrip",
+      "pass": false,
+      "error": "该班次已关闭"
+    },
+    {
+      "id": "V2-non-overlap",
+      "pass": false,
+      "error": "该班次已关闭"
+    },
+    {
+      "id": "V2-overlap-rejected",
+      "pass": false,
+      "error": "该班次已关闭"
+    },
+    {
+      "id": "V2-duplicate-rejected",
+      "pass": false,
+      "error": "该班次已关闭"
+    },
+    {
+      "id": "V2-migration",
+      "pass": false,
+      "error": "保存的数据版本或结构无效"
+    },
+    {
+      "id": "DOC-prd",
+      "pass": true
+    },
+    {
+      "id": "DOC-prototype",
+      "pass": false
+    },
+    {
+      "id": "DOC-review-boundary",
+      "pass": false
+    }
+  ]
+}

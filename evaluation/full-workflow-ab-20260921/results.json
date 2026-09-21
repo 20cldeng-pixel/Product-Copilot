@@ -1,0 +1,158 @@
+{
+  "generatedAt": "2026-09-21",
+  "classification": "formal-repeated-full-workflow-scripted-evaluation",
+  "primaryOutcome": "workflowComplete",
+  "groups": {
+    "A": {
+      "runs": 3,
+      "workflowComplete": 0,
+      "timeouts": 3,
+      "meanWallTimeSeconds": 300.074,
+      "totalWallTimeSeconds": 900.223,
+      "meanToolCalls": 21.333,
+      "totalToolCalls": 64,
+      "totalUserMessagesReached": 3,
+      "scriptedClarificationRepliesReached": 0,
+      "scriptedConfirmationsReached": 0,
+      "operatorCorrections": 0,
+      "humanActiveTimeSeconds": null,
+      "manualReworkCount": null,
+      "totalTokensIncludingCacheReads": 840406,
+      "meanSdkCostEstimateUnverified": 0.682859,
+      "billedCost": null,
+      "frozenV1FullPass": 0,
+      "frozenV1CheckCounts": [
+        "6/8",
+        "6/8",
+        "6/8"
+      ],
+      "frozenV2FullPass": 0,
+      "frozenV2CheckCounts": [
+        "7/12",
+        "7/12",
+        "7/12"
+      ]
+    },
+    "B": {
+      "runs": 3,
+      "workflowComplete": 0,
+      "timeouts": 3,
+      "meanWallTimeSeconds": 438.904,
+      "totalWallTimeSeconds": 1316.712,
+      "meanToolCalls": 33.333,
+      "totalToolCalls": 100,
+      "totalUserMessagesReached": 7,
+      "scriptedClarificationRepliesReached": 3,
+      "scriptedConfirmationsReached": 4,
+      "operatorCorrections": 0,
+      "humanActiveTimeSeconds": null,
+      "manualReworkCount": null,
+      "totalTokensIncludingCacheReads": 1637181,
+      "meanSdkCostEstimateUnverified": 1.06885,
+      "billedCost": null,
+      "frozenV1FullPass": 0,
+      "frozenV1CheckCounts": [
+        "7/8",
+        "4/8",
+        "4/8"
+      ],
+      "frozenV2FullPass": 0,
+      "frozenV2CheckCounts": [
+        "8/12",
+        "4/12",
+        "4/12"
+      ]
+    }
+  },
+  "individualRuns": [
+    {
+      "runId": "A1",
+      "group": "A",
+      "workflowComplete": false,
+      "terminalTurn": 1,
+      "terminalReason": "timeout",
+      "durationSeconds": 300.083,
+      "toolCalls": 19,
+      "messagesReached": 1,
+      "scriptedConfirmationsReached": 0,
+      "frozenV1": "6/8",
+      "frozenV2": "7/12"
+    },
+    {
+      "runId": "A2",
+      "group": "A",
+      "workflowComplete": false,
+      "terminalTurn": 1,
+      "terminalReason": "timeout",
+      "durationSeconds": 300.082,
+      "toolCalls": 15,
+      "messagesReached": 1,
+      "scriptedConfirmationsReached": 0,
+      "frozenV1": "6/8",
+      "frozenV2": "7/12"
+    },
+    {
+      "runId": "A3",
+      "group": "A",
+      "workflowComplete": false,
+      "terminalTurn": 1,
+      "terminalReason": "timeout",
+      "durationSeconds": 300.058,
+      "toolCalls": 30,
+      "messagesReached": 1,
+      "scriptedConfirmationsReached": 0,
+      "frozenV1": "6/8",
+      "frozenV2": "7/12"
+    },
+    {
+      "runId": "B1",
+      "group": "B",
+      "workflowComplete": false,
+      "terminalTurn": 3,
+      "terminalReason": "timeout",
+      "durationSeconds": 517.573,
+      "toolCalls": 42,
+      "messagesReached": 3,
+      "scriptedConfirmationsReached": 2,
+      "frozenV1": "7/8",
+      "frozenV2": "8/12"
+    },
+    {
+      "runId": "B2",
+      "group": "B",
+      "workflowComplete": false,
+      "terminalTurn": 2,
+      "terminalReason": "timeout",
+      "durationSeconds": 413.798,
+      "toolCalls": 26,
+      "messagesReached": 2,
+      "scriptedConfirmationsReached": 1,
+      "frozenV1": "4/8",
+      "frozenV2": "4/12"
+    },
+    {
+      "runId": "B3",
+      "group": "B",
+      "workflowComplete": false,
+      "terminalTurn": 2,
+      "terminalReason": "timeout",
+      "durationSeconds": 385.341,
+      "toolCalls": 32,
+      "messagesReached": 2,
+      "scriptedConfirmationsReached": 1,
+      "frozenV1": "4/8",
+      "frozenV2": "4/12"
+    }
+  ],
+  "observedDifference": {
+    "workflowCompletionPercentagePoints": 0.0,
+    "phaseProgress": "A1-A3 timed out in turn 1; B1 timed out in turn 3; B2-B3 timed out in turn 2.",
+    "interpretation": "Neither group completed the workflow, so the experiment does not support a delivery-success improvement claim."
+  },
+  "measurementBoundaries": {
+    "humanActiveTimeSeconds": "unknown; all user replies were scripted",
+    "manualReworkCount": "unknown; no scoring feedback or operator correction was returned during runs",
+    "sdkCost": "estimate only; not reconciled to billing",
+    "artifactProbe": "supplemental score of frozen partial artifacts; it does not override timeout failure"
+  }
+}

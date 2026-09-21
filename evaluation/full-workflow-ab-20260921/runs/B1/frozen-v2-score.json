@@ -1,0 +1,58 @@
+{
+  "stage": "v2",
+  "passed": 8,
+  "total": 12,
+  "pass": false,
+  "checks": [
+    {
+      "id": "C01-artifacts",
+      "pass": true
+    },
+    {
+      "id": "C02-create-validation",
+      "pass": true
+    },
+    {
+      "id": "C03-capacity",
+      "pass": true
+    },
+    {
+      "id": "C04-closed",
+      "pass": true
+    },
+    {
+      "id": "C05-roundtrip",
+      "pass": true
+    },
+    {
+      "id": "V2-non-overlap",
+      "pass": false,
+      "error": "每位成员最多认领一个班次"
+    },
+    {
+      "id": "V2-overlap-rejected",
+      "pass": true
+    },
+    {
+      "id": "V2-duplicate-rejected",
+      "pass": true
+    },
+    {
+      "id": "V2-migration",
+      "pass": false,
+      "error": "不支持的数据版本"
+    },
+    {
+      "id": "DOC-prd",
+      "pass": true
+    },
+    {
+      "id": "DOC-prototype",
+      "pass": false
+    },
+    {
+      "id": "DOC-review-boundary",
+      "pass": false
+    }
+  ]
+}

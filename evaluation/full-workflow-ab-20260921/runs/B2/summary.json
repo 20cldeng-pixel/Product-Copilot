@@ -1,0 +1,146 @@
+{
+  "run": "B2",
+  "group": "B",
+  "durationSeconds": 413.798,
+  "turns": [
+    {
+      "durationSeconds": 113.71,
+      "exitCode": 0,
+      "timedOut": false,
+      "turn": 1
+    },
+    {
+      "durationSeconds": 300.04,
+      "exitCode": -9,
+      "timedOut": true,
+      "turn": 2
+    }
+  ],
+  "userMessages": 2,
+  "scriptedClarificationReplies": 1,
+  "scriptedConfirmations": 1,
+  "operatorCorrections": 0,
+  "humanActiveTimeSeconds": null,
+  "assistantMessages": 22,
+  "toolCalls": 26,
+  "toolErrors": 1,
+  "input": 73701,
+  "output": 17004,
+  "cacheRead": 372352,
+  "reasoning": 1594,
+  "totalTokens": 463057,
+  "sdkEstimatedCost": 1.064801,
+  "testCommands": 1,
+  "billedCost": null,
+  "workflowComplete": false,
+  "terminalClassification": "turn_timeout",
+  "frozenArtifactV1": {
+    "stage": "v1",
+    "passed": 4,
+    "total": 8,
+    "pass": false,
+    "checks": [
+      {
+        "id": "C01-artifacts",
+        "pass": true
+      },
+      {
+        "id": "C02-create-validation",
+        "pass": true
+      },
+      {
+        "id": "C03-capacity",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "C04-closed",
+        "pass": true
+      },
+      {
+        "id": "C05-roundtrip",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "V1-global-unique",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "DOC-prd",
+        "pass": true
+      },
+      {
+        "id": "DOC-prototype",
+        "pass": false
+      }
+    ]
+  },
+  "frozenArtifactV2": {
+    "stage": "v2",
+    "passed": 4,
+    "total": 12,
+    "pass": false,
+    "checks": [
+      {
+        "id": "C01-artifacts",
+        "pass": true
+      },
+      {
+        "id": "C02-create-validation",
+        "pass": true
+      },
+      {
+        "id": "C03-capacity",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "C04-closed",
+        "pass": true
+      },
+      {
+        "id": "C05-roundtrip",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "V2-non-overlap",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "V2-overlap-rejected",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "V2-duplicate-rejected",
+        "pass": false,
+        "error": "该班次已关闭"
+      },
+      {
+        "id": "V2-migration",
+        "pass": false,
+        "error": "保存的数据版本或结构无效"
+      },
+      {
+        "id": "DOC-prd",
+        "pass": true
+      },
+      {
+        "id": "DOC-prototype",
+        "pass": false
+      },
+      {
+        "id": "DOC-review-boundary",
+        "pass": false
+      }
+    ]
+  },
+  "artifactDigestAtStop": {
+    "fileCount": 12,
+    "sha256": "6b150c65e9a74a79fdbfb264134e048c66e220da4a387126d9dc66291fe305fb"
+  }
+}

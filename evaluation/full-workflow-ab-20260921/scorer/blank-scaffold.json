@@ -1,0 +1,5 @@
+{
+  "pass": false,
+  "classification": "rejected_before_checks",
+  "reason": "The blank scaffold has no src/eval-api.mjs adapter; Node import failed with ERR_MODULE_NOT_FOUND."
+}

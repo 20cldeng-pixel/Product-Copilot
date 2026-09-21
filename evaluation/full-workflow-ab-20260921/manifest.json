@@ -1,0 +1,44 @@
+{
+  "case": "EVAL-03 ShiftLoop",
+  "classification": "formal-repeated-full-workflow-scripted-evaluation",
+  "runOrder": [
+    "A1",
+    "B1",
+    "B2",
+    "A2",
+    "A3",
+    "B3"
+  ],
+  "runsPerGroup": 3,
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol",
+  "thinking": "medium",
+  "tools": [
+    "read",
+    "bash",
+    "edit",
+    "write"
+  ],
+  "wallTimeSecondsPerTurn": 300,
+  "turnsMaximum": 5,
+  "tokenBudget": null,
+  "costBudget": null,
+  "groupA": "common constraints plus the same five scripted user messages",
+  "groupB": "same constraints and messages plus Product Copilot workflow protocol",
+  "primaryOutcome": "all five turns complete and independent V1/V2 probes pass",
+  "secondaryOutcomes": [
+    "turns reached",
+    "wall time",
+    "tool calls",
+    "scripted confirmations",
+    "frozen artifact probe"
+  ],
+  "limitations": [
+    "One authored case with three repetitions per group.",
+    "Scripted replies do not measure real human active time or usability.",
+    "No run completed, so success-rate improvement is not demonstrated.",
+    "The 300-second ceiling applies independently to each turn.",
+    "No token or monetary ceiling was enforced; B has a longer system prompt by design.",
+    "npm was unavailable inside the evaluation execution environment; agents could use the bundled node binary directly."
+  ]
+}

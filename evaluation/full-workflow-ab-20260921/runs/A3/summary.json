@@ -1,0 +1,133 @@
+{
+  "run": "A3",
+  "group": "A",
+  "durationSeconds": 300.058,
+  "turns": [
+    {
+      "durationSeconds": 300.022,
+      "exitCode": -9,
+      "timedOut": true,
+      "turn": 1
+    }
+  ],
+  "userMessages": 1,
+  "scriptedClarificationReplies": 0,
+  "scriptedConfirmations": 0,
+  "operatorCorrections": 0,
+  "humanActiveTimeSeconds": null,
+  "assistantMessages": 15,
+  "toolCalls": 30,
+  "toolErrors": 4,
+  "input": 33779,
+  "output": 13527,
+  "cacheRead": 319104,
+  "reasoning": 1643,
+  "totalTokens": 366410,
+  "sdkEstimatedCost": 0.734257,
+  "testCommands": 1,
+  "billedCost": null,
+  "workflowComplete": false,
+  "terminalClassification": "turn_timeout",
+  "frozenArtifactV1": {
+    "stage": "v1",
+    "passed": 6,
+    "total": 8,
+    "pass": false,
+    "checks": [
+      {
+        "id": "C01-artifacts",
+        "pass": true
+      },
+      {
+        "id": "C02-create-validation",
+        "pass": true
+      },
+      {
+        "id": "C03-capacity",
+        "pass": true
+      },
+      {
+        "id": "C04-closed",
+        "pass": true
+      },
+      {
+        "id": "C05-roundtrip",
+        "pass": true
+      },
+      {
+        "id": "V1-global-unique",
+        "pass": true
+      },
+      {
+        "id": "DOC-prd",
+        "pass": false
+      },
+      {
+        "id": "DOC-prototype",
+        "pass": false
+      }
+    ]
+  },
+  "frozenArtifactV2": {
+    "stage": "v2",
+    "passed": 7,
+    "total": 12,
+    "pass": false,
+    "checks": [
+      {
+        "id": "C01-artifacts",
+        "pass": true
+      },
+      {
+        "id": "C02-create-validation",
+        "pass": true
+      },
+      {
+        "id": "C03-capacity",
+        "pass": true
+      },
+      {
+        "id": "C04-closed",
+        "pass": true
+      },
+      {
+        "id": "C05-roundtrip",
+        "pass": true
+      },
+      {
+        "id": "V2-non-overlap",
+        "pass": false,
+        "error": "该成员已经认领了一个班次"
+      },
+      {
+        "id": "V2-overlap-rejected",
+        "pass": true
+      },
+      {
+        "id": "V2-duplicate-rejected",
+        "pass": true
+      },
+      {
+        "id": "V2-migration",
+        "pass": false,
+        "error": "不支持的状态版本"
+      },
+      {
+        "id": "DOC-prd",
+        "pass": false
+      },
+      {
+        "id": "DOC-prototype",
+        "pass": false
+      },
+      {
+        "id": "DOC-review-boundary",
+        "pass": false
+      }
+    ]
+  },
+  "artifactDigestAtStop": {
+    "fileCount": 9,
+    "sha256": "31b6b5c32ee70065805f9d5e392c10bb2cd3b733835fb0cbc1d5c92d859d96e8"
+  }
+}

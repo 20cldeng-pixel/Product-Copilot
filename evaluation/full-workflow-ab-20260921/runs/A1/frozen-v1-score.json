@@ -1,0 +1,40 @@
+{
+  "stage": "v1",
+  "passed": 6,
+  "total": 8,
+  "pass": false,
+  "checks": [
+    {
+      "id": "C01-artifacts",
+      "pass": true
+    },
+    {
+      "id": "C02-create-validation",
+      "pass": true
+    },
+    {
+      "id": "C03-capacity",
+      "pass": true
+    },
+    {
+      "id": "C04-closed",
+      "pass": true
+    },
+    {
+      "id": "C05-roundtrip",
+      "pass": true
+    },
+    {
+      "id": "V1-global-unique",
+      "pass": true
+    },
+    {
+      "id": "DOC-prd",
+      "pass": false
+    },
+    {
+      "id": "DOC-prototype",
+      "pass": false
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "stage": "v2",
+  "passed": 12,
+  "total": 12,
+  "pass": true,
+  "checks": [
+    {
+      "id": "C01-artifacts",
+      "pass": true
+    },
+    {
+      "id": "C02-create-validation",
+      "pass": true
+    },
+    {
+      "id": "C03-capacity",
+      "pass": true
+    },
+    {
+      "id": "C04-closed",
+      "pass": true
+    },
+    {
+      "id": "C05-roundtrip",
+      "pass": true
+    },
+    {
+      "id": "V2-non-overlap",
+      "pass": true
+    },
+    {
+      "id": "V2-overlap-rejected",
+      "pass": true
+    },
+    {
+      "id": "V2-duplicate-rejected",
+      "pass": true
+    },
+    {
+      "id": "V2-migration",
+      "pass": true
+    },
+    {
+      "id": "DOC-prd",
+      "pass": true
+    },
+    {
+      "id": "DOC-prototype",
+      "pass": true
+    },
+    {
+      "id": "DOC-review-boundary",
+      "pass": true
+    }
+  ]
+}

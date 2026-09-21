@@ -1,0 +1,43 @@
+{
+  "stage": "v1",
+  "passed": 4,
+  "total": 8,
+  "pass": false,
+  "checks": [
+    {
+      "id": "C01-artifacts",
+      "pass": true
+    },
+    {
+      "id": "C02-create-validation",
+      "pass": true
+    },
+    {
+      "id": "C03-capacity",
+      "pass": false,
+      "error": "班次已关闭，不能认领"
+    },
+    {
+      "id": "C04-closed",
+      "pass": true
+    },
+    {
+      "id": "C05-roundtrip",
+      "pass": false,
+      "error": "班次已关闭，不能认领"
+    },
+    {
+      "id": "V1-global-unique",
+      "pass": false,
+      "error": "班次已关闭，不能认领"
+    },
+    {
+      "id": "DOC-prd",
+      "pass": true
+    },
+    {
+      "id": "DOC-prototype",
+      "pass": false
+    }
+  ]
+}

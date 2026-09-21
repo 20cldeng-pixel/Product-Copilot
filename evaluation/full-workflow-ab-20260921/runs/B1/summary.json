@@ -1,0 +1,145 @@
+{
+  "run": "B1",
+  "group": "B",
+  "durationSeconds": 517.573,
+  "turns": [
+    {
+      "durationSeconds": 125.431,
+      "exitCode": 0,
+      "timedOut": false,
+      "turn": 1
+    },
+    {
+      "durationSeconds": 92.027,
+      "exitCode": 0,
+      "timedOut": false,
+      "turn": 2
+    },
+    {
+      "durationSeconds": 300.05,
+      "exitCode": -9,
+      "timedOut": true,
+      "turn": 3
+    }
+  ],
+  "userMessages": 3,
+  "scriptedClarificationReplies": 1,
+  "scriptedConfirmations": 2,
+  "operatorCorrections": 0,
+  "humanActiveTimeSeconds": null,
+  "assistantMessages": 33,
+  "toolCalls": 42,
+  "toolErrors": 2,
+  "input": 58263,
+  "output": 20089,
+  "cacheRead": 722688,
+  "reasoning": 2923,
+  "totalTokens": 801040,
+  "sdkEstimatedCost": 1.255329,
+  "testCommands": 1,
+  "billedCost": null,
+  "workflowComplete": false,
+  "terminalClassification": "turn_timeout",
+  "frozenArtifactV1": {
+    "stage": "v1",
+    "passed": 7,
+    "total": 8,
+    "pass": false,
+    "checks": [
+      {
+        "id": "C01-artifacts",
+        "pass": true
+      },
+      {
+        "id": "C02-create-validation",
+        "pass": true
+      },
+      {
+        "id": "C03-capacity",
+        "pass": true
+      },
+      {
+        "id": "C04-closed",
+        "pass": true
+      },
+      {
+        "id": "C05-roundtrip",
+        "pass": true
+      },
+      {
+        "id": "V1-global-unique",
+        "pass": true
+      },
+      {
+        "id": "DOC-prd",
+        "pass": true
+      },
+      {
+        "id": "DOC-prototype",
+        "pass": false
+      }
+    ]
+  },
+  "frozenArtifactV2": {
+    "stage": "v2",
+    "passed": 8,
+    "total": 12,
+    "pass": false,
+    "checks": [
+      {
+        "id": "C01-artifacts",
+        "pass": true
+      },
+      {
+        "id": "C02-create-validation",
+        "pass": true
+      },
+      {
+        "id": "C03-capacity",
+        "pass": true
+      },
+      {
+        "id": "C04-closed",
+        "pass": true
+      },
+      {
+        "id": "C05-roundtrip",
+        "pass": true
+      },
+      {
+        "id": "V2-non-overlap",
+        "pass": false,
+        "error": "每位成员最多认领一个班次"
+      },
+      {
+        "id": "V2-overlap-rejected",
+        "pass": true
+      },
+      {
+        "id": "V2-duplicate-rejected",
+        "pass": true
+      },
+      {
+        "id": "V2-migration",
+        "pass": false,
+        "error": "不支持的数据版本"
+      },
+      {
+        "id": "DOC-prd",
+        "pass": true
+      },
+      {
+        "id": "DOC-prototype",
+        "pass": false
+      },
+      {
+        "id": "DOC-review-boundary",
+        "pass": false
+      }
+    ]
+  },
+  "artifactDigestAtStop": {
+    "fileCount": 12,
+    "sha256": "abb425a44864fd9babcd5b29cf43c1a2c7ad966d36a7d602e957709288fd1c59"
+  }
+}

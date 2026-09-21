@@ -1,0 +1,15 @@
+{
+  "starterFileCount": 4,
+  "starterSha256": "c5632811ab168942500f2f818987c29382632e2dbb62bf3266b2268832aa663e",
+  "initialGitTree": "dcd8277d3a45797d6d0bbbc38586041013ebc96e",
+  "allRunsMatched": true,
+  "forbiddenParentOrEvaluatorReadsDetected": false,
+  "runs": {
+    "A1": "dcd8277d3a45797d6d0bbbc38586041013ebc96e",
+    "A2": "dcd8277d3a45797d6d0bbbc38586041013ebc96e",
+    "A3": "dcd8277d3a45797d6d0bbbc38586041013ebc96e",
+    "B1": "dcd8277d3a45797d6d0bbbc38586041013ebc96e",
+    "B2": "dcd8277d3a45797d6d0bbbc38586041013ebc96e",
+    "B3": "dcd8277d3a45797d6d0bbbc38586041013ebc96e"
+  }
+}
