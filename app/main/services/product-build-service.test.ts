@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -89,6 +89,27 @@ describe("Product Builder lifecycle service", () => {
     expect(f.service.get(f.projectId).runs.at(-1)?.executionStatus).toBe("cancelled");
   });
 
+  it("preserves files written before cancellation and records their final digest", async () => {
+    const f = fixture();
+    f.builder.mockImplementationOnce(async (root, _runId, _prompt, signal) => {
+      writeFileSync(path.join(root, "written-before-stop.ts"), "export const kept = true\n");
+      await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+      return { ...complete, summary: "stopped after writing" };
+    });
+    const started = f.start(); const runId = started.snapshot.runs.at(-1)!.id;
+    await vi.waitFor(() => expect(f.builder).toHaveBeenCalledOnce());
+    const before = started.snapshot.runs.at(-1)?.build?.artifactBefore;
+    f.service.stop(f.projectId, f.revision(), randomUUID(), runId);
+    await f.service.waitForIdle(f.projectId);
+
+    expect(readFileSync(path.join(f.root, "written-before-stop.ts"), "utf8")).toContain("kept = true");
+    const run = f.service.get(f.projectId).runs.at(-1)!;
+    expect(run.executionStatus).toBe("cancelled");
+    expect(run.verificationStatus).toBe("not_run");
+    expect(run.build?.artifactAfter).toBeTruthy();
+    expect(run.build?.artifactAfter).not.toBe(before);
+  });
+
   it("rejects stale approval and occupied projects before any model request", () => {
     const f = fixture(); f.busy.mockReturnValue(true); expect(() => f.start()).toThrow("仍有 Agent");
     f.busy.mockReturnValue(false); writeFileSync(f.prototype, "changed"); expect(() => f.start()).toThrow("确认");
@@ -112,6 +133,30 @@ describe("Product Builder lifecycle service", () => {
     expect(recovered.runs[0].executionStatus).toBe("interrupted");
     expect(f.builder).not.toHaveBeenCalled();
     expect(f.service.get(f.projectId).revision).toBe(recovered.revision);
+  });
+
+  it("keeps orphaned artifacts and allows an explicit retry after recovery", async () => {
+    const f = fixture();
+    const orphanId = randomUUID();
+    writeFileSync(path.join(f.root, "partial-from-interrupted-run.ts"), "export const partial = true\n");
+    f.store.transact(f.projectId, randomUUID(), f.revision(), "fixture_interrupted_process", null, (state) => {
+      state.runs.push({
+        id: orphanId, kind: "build", scopeDigest: state.approvals.scope!.contentDigest,
+        prototypeDigest: state.prototype!.contentDigest, executionStatus: "running",
+        verificationStatus: "not_run", createdAt: new Date().toISOString(),
+        build: { startedAt: new Date().toISOString(), artifactBefore: "before-crash" },
+      });
+    });
+
+    const restarted = new ProductBuildService(f.resolve, f.workflow, f.builder, f.busy, f.store);
+    const recovered = restarted.get(f.projectId);
+    expect(recovered.runs.find((run) => run.id === orphanId)).toMatchObject({
+      executionStatus: "interrupted", verificationStatus: "not_run",
+    });
+    expect(readFileSync(path.join(f.root, "partial-from-interrupted-run.ts"), "utf8")).toContain("partial = true");
+    restarted.start(f.projectId, recovered.revision, randomUUID());
+    await restarted.waitForIdle(f.projectId);
+    expect(restarted.get(f.projectId).runs.map((run) => run.executionStatus)).toEqual(["interrupted", "completed"]);
   });
 
   it("does not recover a still running build when another service reads the project", async () => {
