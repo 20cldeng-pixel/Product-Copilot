@@ -118,12 +118,12 @@ export function ProjectPage(): JSX.Element {
           setProjectExists(p.exists ?? false);
           if (!p.exists) {
             setProjectName(p.name + "（目录已删除）");
-            document.title = `项目已删除 — EasyMint`;
+            document.title = `项目已删除 — Product Copilot`;
             return;
           }
           setProjectPath(p.path);
           setProjectName(p.name);
-          document.title = `${p.name} — EasyMint`;
+          document.title = `${p.name} — Product Copilot`;
           window.electronAPI.settings.setLastProject(projectId);
           // 加载项目开发状态 + 同步任务（集中式 refreshAll）
           refreshAll(p.path);
@@ -140,7 +140,7 @@ export function ProjectPage(): JSX.Element {
         }
       });
     } else {
-      document.title = "EasyMint";
+      document.title = "Product Copilot";
     }
   }, [projectId]);
 
@@ -333,7 +333,7 @@ export function ProjectPage(): JSX.Element {
     }
     // 二次确认：提醒用户 EM 将关闭
     const ok = await confirmDialog({
-      title: "重命名将关闭 EasyMint？",
+      title: "重命名将关闭 Product Copilot？",
       message: `新名称: ${trimmed}\n新路径: ${projectPath.replace(/[^/]+$/, trimmed)}\n\n请确保所有工作已保存。`,
       confirmText: "重命名",
       danger: true,
@@ -448,7 +448,7 @@ export function ProjectPage(): JSX.Element {
             {renamePhase === "input" ? (
               <>
                 <p className="px-5 pb-3 text-xs text-text-secondary">
-                  重命名将关闭 EasyMint，把项目完整复制到新位置，验证通过后清理旧数据，然后自动重启。
+                  重命名将关闭 Product Copilot，把项目完整复制到新位置，验证通过后清理旧数据，然后自动重启。
                 </p>
                 <div className="px-5 pb-4">
                   <label className="block text-xs text-text-secondary mb-1.5">新名称</label>
@@ -489,7 +489,7 @@ export function ProjectPage(): JSX.Element {
                   {renamePhase === "copying" ? "正在复制项目文件…" : "正在收尾…"}
                 </p>
                 <p className="text-xs text-text-secondary">
-                  {renamePhase === "copying" ? "文件较多时可能需要一些时间" : "即将重启 EasyMint"}
+                  {renamePhase === "copying" ? "文件较多时可能需要一些时间" : "即将重启 Product Copilot"}
                 </p>
                 <div className="mt-4 w-full bg-surface-alt rounded-full h-1.5 overflow-hidden">
                   <div className="h-full bg-accent rounded-full animate-progress-indeterminate" style={{ width: "40%" }} />

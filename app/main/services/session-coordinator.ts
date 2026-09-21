@@ -84,7 +84,7 @@ export class SessionCoordinator {
 
   getOpenProject(projectId: string) {
     if (!listOpenProjectIds().includes(projectId)) {
-      throw new RemoteAccessError("PROJECT_NOT_OPEN", "项目当前未在 EasyMint 中打开");
+      throw new RemoteAccessError("PROJECT_NOT_OPEN", "项目当前未在 Product Copilot 中打开");
     }
     const project = this.projectService.get(projectId);
     if (!project?.exists) {

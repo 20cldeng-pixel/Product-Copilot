@@ -9,7 +9,7 @@ import { WindowControls } from "../components/WindowControls";
 import type { ProviderConfig, ApiProvidersData } from "@shared/platform-presets";
 
 const STEPS = [
-  { number: 1, title: "欢迎使用 EasyMint" },
+  { number: 1, title: "欢迎使用 Product Copilot" },
   // 依赖问题必须在"进入工作台之前"处理掉：放到对话中途才发现，用户已经聊了几轮、挫败感最强
   { number: 2, title: "准备运行环境" },
   { number: 3, title: "选择 AI 供应商" },
@@ -133,7 +133,7 @@ export function OnboardingPage(): JSX.Element {
               {/* Logo：直接用图标本身（素材自带圆角口径），不套卡片容器——容器形状会在图标四角外露（形状套两层）、
                   且图标本体只占图片 80.5%，套容器后可见图标更小。与关于页（无容器、图标直接 80px）一致。
                   图标跟随主题取亮/暗版（与关于页、Dock 同一套素材） */}
-              <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="EasyMint" className="w-24 h-24 mb-6" />
+              <img src={isDark ? "appicon-dark.png" : "appicon-light.png"} alt="Product Copilot" className="w-24 h-24 mb-6" />
 
               {/* 欢迎主文案（用户 2026-09-15 给的新文案，替换原来的标题 + 两段说明）。
                   **一排展示、不换行**（用户要求）：无头实测这行在 24px/600、PingFang SC 下宽 **681.0px**，
@@ -147,7 +147,7 @@ export function OnboardingPage(): JSX.Element {
                   若将来文案变长，会退化成内容区横向滚动（不裁字）。行高保持 tight，万一折行也不显散。
                   下方原有三张能力卡已按用户要求（2026-09-15）删除。 */}
               <h1 className="text-[length:var(--text-2xl)] leading-tight font-semibold text-text-primary whitespace-nowrap">
-                欢迎使用EasyMint，简单设置过后，进行开发你的第一个APP吧
+                欢迎使用 Product Copilot，完成简单设置后，把第一个产品想法推进到可验证交付
               </h1>
             </div>
           ) : currentStep === 1 ? (

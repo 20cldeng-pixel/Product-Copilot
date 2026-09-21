@@ -198,7 +198,7 @@ export function EditorPanel({ filePath, fileName }: EditorPanelProps): JSX.Eleme
     return (
       <div className="flex items-center justify-center h-full text-text-secondary">
         <div className="text-center -mt-10">
-          <p className="text-base font-medium text-text-primary mb-1">欢迎使用 EasyMint</p>
+          <p className="text-base font-medium text-text-primary mb-1">欢迎使用 Product Copilot</p>
           <p className="text-sm">点击按钮或者与 Mint 聊天开始创建项目</p>
         </div>
       </div>

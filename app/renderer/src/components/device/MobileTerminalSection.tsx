@@ -91,8 +91,8 @@ export function MobileTerminalSection(): JSX.Element {
 
       {offer && secondsLeft > 0 && (
         <div className="rounded-[var(--radius-lg)] border border-border bg-surface px-3 py-3 flex flex-col items-center">
-          {qrDataUrl && <img src={qrDataUrl} alt="EasyMint 手机配对二维码" className="w-[180px] h-[180px] rounded-md" />}
-          <div className="text-xs text-text-primary mt-2">使用 EasyMint 手机 App 扫描</div>
+          {qrDataUrl && <img src={qrDataUrl} alt="Product Copilot 手机配对二维码" className="w-[180px] h-[180px] rounded-md" />}
+          <div className="text-xs text-text-primary mt-2">使用 Product Copilot 手机 App 扫描</div>
           <div className="text-[length:var(--text-2xs)] text-text-muted mt-0.5">
             {offer.addresses.length > 0 ? `${offer.addresses[0]}:${offer.port}` : "未找到可用局域网地址"} · {secondsLeft}s 后失效
           </div>

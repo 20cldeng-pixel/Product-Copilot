@@ -333,7 +333,7 @@ app.whenReady().then(() => {
   if (process.platform === "darwin") {
     const template: Electron.MenuItemConstructorOptions[] = [
       {
-        label: "EasyMint",
+        label: "Product Copilot",
         submenu: [
           { role: "about" as const },
           { type: "separator" as const },

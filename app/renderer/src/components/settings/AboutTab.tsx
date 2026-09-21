@@ -65,8 +65,8 @@ export function AboutTab(): JSX.Element {
           形状口径一致（自带圆角）；不再固定用亮色版的 icon.png */}
       <img src={isDark ? "./appicon-dark.png" : "./appicon-light.png"} className="w-20 h-20 mb-2" />
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-text-primary">EasyMint</h2>
-        <p className="text-sm text-text-secondary mt-1">AI 驱动开发，简单的操作让想法变为现实</p>
+        <h2 className="text-2xl font-bold text-text-primary">Product Copilot</h2>
+        <p className="text-sm text-text-secondary mt-1">从产品想法到可验证交付</p>
       </div>
 
       {/* 版本号 + 更新检测 */}
@@ -139,12 +139,12 @@ export function AboutTab(): JSX.Element {
       <div className="flex items-center gap-2 text-sm">
         <span className="text-text-secondary">开源项目地址</span>
         <a
-          href="https://github.com/tianemon/EasyMint"
+          href="https://github.com/20cldeng-pixel/Product-Copilot"
           target="_blank"
           rel="noopener noreferrer"
           className="text-accent hover:underline"
         >
-          github.com/tianemon/EasyMint
+          github.com/20cldeng-pixel/Product-Copilot
         </a>
       </div>
       <div className="text-xs text-text-muted space-x-4">
