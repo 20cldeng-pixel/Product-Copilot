@@ -63,7 +63,7 @@ npm run build:main
 npm run build:preload
 ```
 
-本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。[最新公开 CI](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35574689708)已通过主项目质量门禁与 Gather 示例检查。本机已生成并校验 macOS arm64 开发 DMG；该包未签名、未公证且保留 EasyMint 兼容名称，详见[构建记录](evaluation/builds/20260921-macos-arm64.md)，不作为正式 Release。
+本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。[最新公开 CI](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35577506507)已通过主项目质量门禁与 Gather 示例检查。本机已生成并校验 macOS arm64 开发 DMG；该包未签名、未公证且保留 EasyMint 兼容名称，详见[构建记录](evaluation/builds/20260921-macos-arm64.md)，不作为正式 Release。
 
 ## 运行 Gather 示例
 
