@@ -1,0 +1,28 @@
+{
+  "run": "A1",
+  "group": "A",
+  "startedAtEpoch": 1789998030.038846,
+  "durationSeconds": 94.86,
+  "exitCode": 0,
+  "timedOut": false,
+  "extendedContractPass": false,
+  "coreRequestPass": true,
+  "probePassed": 7,
+  "probeTotal": 9,
+  "declaredIndependentPass": false,
+  "selfReportedImplementationComplete": true,
+  "toolCalls": 23,
+  "toolBudgetExceeded": false,
+  "sdkCostEstimate": 0.310973,
+  "usage": {
+    "input": 26565,
+    "output": 2926,
+    "cacheRead": 180736,
+    "cacheWrite": 0,
+    "reasoning": 506,
+    "totalTokens": 210227
+  },
+  "independentTestsPassed": 7,
+  "independentBuildPassed": true,
+  "finalResponse": "已完成工单 SLA 调整。\n\n### 已修改\n\n- 新建紧急工单：截止时间为创建后 **4 小时**\n- 新建普通工单：截止时间为创建后 **24 小时**\n- 已有工单的 `dueAt` 保持不变\n- 同步更新界面说明与 `README.md`\n- 新增紧急、普通及已有工单截止时间回归测试\n- 未变更数据结构或快照版本，无需迁移\n\n### 验证结果\n\n- 测试：**2 个测试文件、7 项测试全部通过**\n- 生产构建：**通过**\n- `git diff --check`：通过\n\n环境没有 `npm`，因此使用项目本地可执行文件运行了与 `npm test` 和 `npm run build` 等价的命令。未联网、推送或部署。"
+}

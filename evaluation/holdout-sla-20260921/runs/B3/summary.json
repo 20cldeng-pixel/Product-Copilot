@@ -1,0 +1,28 @@
+{
+  "run": "B3",
+  "group": "B",
+  "startedAtEpoch": 1789998773.3738298,
+  "durationSeconds": 221.471,
+  "exitCode": 0,
+  "timedOut": false,
+  "extendedContractPass": true,
+  "coreRequestPass": true,
+  "probePassed": 9,
+  "probeTotal": 9,
+  "declaredIndependentPass": false,
+  "selfReportedImplementationComplete": true,
+  "toolCalls": 30,
+  "toolBudgetExceeded": false,
+  "sdkCostEstimate": 0.471729,
+  "usage": {
+    "input": 34445,
+    "output": 6856,
+    "cacheRead": 187648,
+    "cacheWrite": 0,
+    "reasoning": 2286,
+    "totalTokens": 228949
+  },
+  "independentTestsPassed": 13,
+  "independentBuildPassed": true,
+  "finalResponse": "已按冻结合同完成 SLA 调整。\n\n### 已完成\n\n- 新建紧急工单：截止时间为规范化创建时间后 **4 个绝对小时**。\n- 新建普通工单：仍为 **24 个绝对小时**。\n- 快照版本升级至 `schemaVersion: 2`。\n- 合法 V1 快照迁移时保留所有工单字段及顺序，不重新计算截止时间。\n- 损坏、错误版本或结构无效的快照会回退并尝试修复存储。\n- 保持领域命令纯函数，非法创建仍返回原状态对象。\n- 更新 UI、README 和自动化测试。\n\n修改范围严格限于合同指定的 6 个文件。\n\n### 验证结果\n\n- 测试：**2 个测试文件，13 项测试全部通过**\n- TypeScript + Vite 生产构建：**通过**\n- `git diff --check`：**通过**\n- 旧 SLA/版本文案检查：**通过**\n\n环境没有 `npm` 命令，因此使用项目本地二进制执行了与脚本等价的 Vitest、TypeScript 和 Vite 检查。未进行独立业务验收。"
+}

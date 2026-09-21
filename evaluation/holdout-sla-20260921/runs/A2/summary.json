@@ -1,0 +1,28 @@
+{
+  "run": "A2",
+  "group": "A",
+  "startedAtEpoch": 1789998569.5985222,
+  "durationSeconds": 104.214,
+  "exitCode": 0,
+  "timedOut": false,
+  "extendedContractPass": false,
+  "coreRequestPass": true,
+  "probePassed": 7,
+  "probeTotal": 9,
+  "declaredIndependentPass": false,
+  "selfReportedImplementationComplete": true,
+  "toolCalls": 24,
+  "toolBudgetExceeded": false,
+  "sdkCostEstimate": 0.364128,
+  "usage": {
+    "input": 29384,
+    "output": 3076,
+    "cacheRead": 249856,
+    "cacheWrite": 0,
+    "reasoning": 677,
+    "totalTokens": 282316
+  },
+  "independentTestsPassed": 7,
+  "independentBuildPassed": true,
+  "finalResponse": "已完成工单 SLA 调整。\n\n### 已修改\n\n- 新紧急工单：截止时间为创建后 **4 小时**\n- 新普通工单：截止时间为创建后 **24 小时**\n- 旧快照继续使用原有 `dueAt`，不重算、不升版、不清空工单\n- 更新界面 SLA 说明与 README\n- 增加新旧工单截止时间回归测试\n- 领域命令仍为纯函数，失败仍返回原状态对象\n\n### 验证结果\n\n- 测试：**2 个测试文件、7 项测试全部通过**\n- 生产构建：**通过**\n- `git diff --check`：通过\n\n环境没有 `npm` 命令，因此使用项目本地等价命令执行了 Vitest、TypeScript 和 Vite 构建。未进行独立业务验收。"
+}

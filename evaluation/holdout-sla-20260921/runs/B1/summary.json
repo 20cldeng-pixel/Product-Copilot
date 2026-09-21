@@ -1,0 +1,28 @@
+{
+  "run": "B1",
+  "group": "B",
+  "startedAtEpoch": 1789998124.900075,
+  "durationSeconds": 210.363,
+  "exitCode": 0,
+  "timedOut": false,
+  "extendedContractPass": true,
+  "coreRequestPass": true,
+  "probePassed": 9,
+  "probeTotal": 9,
+  "declaredIndependentPass": false,
+  "selfReportedImplementationComplete": true,
+  "toolCalls": 28,
+  "toolBudgetExceeded": false,
+  "sdkCostEstimate": 0.497847,
+  "usage": {
+    "input": 33149,
+    "output": 6349,
+    "cacheRead": 283264,
+    "cacheWrite": 0,
+    "reasoning": 2019,
+    "totalTokens": 322762
+  },
+  "independentTestsPassed": 12,
+  "independentBuildPassed": true,
+  "finalResponse": "已按冻结合同完成 SLA 调整。\n\n### 已完成\n\n- 新建紧急工单：规范化 `openedAt` 后 **4 个绝对小时**\n- 新建普通工单：保持 **24 个绝对小时**\n- 快照升级为 `schemaVersion: 2`\n- 合法 V1 快照原样迁移，保留全部工单字段与顺序\n- 损坏 JSON、错误版本、无效结构会回退初始状态并尝试修复存储\n- 关闭工单仍只改变状态\n- 更新 UI、README 和自动化测试\n\n### 验证结果\n\n- 测试：**2 个测试文件、12 项测试全部通过**\n- TypeScript + Vite 生产构建：**通过**\n- `git diff --check`：**通过**\n\n环境没有 `npm` 命令，因此使用项目内 `vitest`、`tsc` 和 `vite` 执行了等价检查。未进行独立业务验收。"
+}

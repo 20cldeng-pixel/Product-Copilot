@@ -1,0 +1,99 @@
+{
+  "generatedAt": "2026-09-21T22:20:00+08:00",
+  "classification": "author-created-unseen-holdout-fixed-change-execution",
+  "primaryFrozenEndpoint": "extended contract: H-01 to H-09",
+  "postHocInterpretiveEndpoint": "raw-request core: all checks except H-04 and H-09",
+  "groups": {
+    "A": {
+      "runs": 3,
+      "coreRequestPass": 3,
+      "extendedContractPass": 0,
+      "declaredIndependentPass": 0,
+      "selfReportedImplementationComplete": 3,
+      "timeouts": 0,
+      "toolBudgetExceeded": 0,
+      "meanDurationSeconds": 99.544,
+      "meanToolCalls": 22.667,
+      "meanSdkCostEstimate": 0.326161,
+      "individualRuns": [
+        {
+          "run": "A1",
+          "coreRequestPass": true,
+          "extendedContractPass": false,
+          "durationSeconds": 94.86,
+          "toolCalls": 23,
+          "sdkCostEstimate": 0.310973,
+          "independentTestsPassed": 7
+        },
+        {
+          "run": "A2",
+          "coreRequestPass": true,
+          "extendedContractPass": false,
+          "durationSeconds": 104.214,
+          "toolCalls": 24,
+          "sdkCostEstimate": 0.364128,
+          "independentTestsPassed": 7
+        },
+        {
+          "run": "A3",
+          "coreRequestPass": true,
+          "extendedContractPass": false,
+          "durationSeconds": 99.559,
+          "toolCalls": 21,
+          "sdkCostEstimate": 0.303382,
+          "independentTestsPassed": 7
+        }
+      ]
+    },
+    "B": {
+      "runs": 3,
+      "coreRequestPass": 3,
+      "extendedContractPass": 3,
+      "declaredIndependentPass": 0,
+      "selfReportedImplementationComplete": 3,
+      "timeouts": 0,
+      "toolBudgetExceeded": 0,
+      "meanDurationSeconds": 222.056,
+      "meanToolCalls": 28.667,
+      "meanSdkCostEstimate": 0.498331,
+      "individualRuns": [
+        {
+          "run": "B1",
+          "coreRequestPass": true,
+          "extendedContractPass": true,
+          "durationSeconds": 210.363,
+          "toolCalls": 28,
+          "sdkCostEstimate": 0.497847,
+          "independentTestsPassed": 12
+        },
+        {
+          "run": "B2",
+          "coreRequestPass": true,
+          "extendedContractPass": true,
+          "durationSeconds": 234.334,
+          "toolCalls": 28,
+          "sdkCostEstimate": 0.525416,
+          "independentTestsPassed": 13
+        },
+        {
+          "run": "B3",
+          "coreRequestPass": true,
+          "extendedContractPass": true,
+          "durationSeconds": 221.471,
+          "toolCalls": 30,
+          "sdkCostEstimate": 0.471729,
+          "independentTestsPassed": 13
+        }
+      ]
+    }
+  },
+  "observedDifference": {
+    "coreRequestPassRatePercentagePoints": 0,
+    "extendedContractPassRatePercentagePoints": 100,
+    "meanDurationPercent": 123.1,
+    "meanToolCallsPercent": 26.5,
+    "meanSdkCostEstimatePercent": 52.8
+  },
+  "interpretation": "Both groups passed the seven checks directly implied by the raw request in all three runs. Only group B satisfied the two additional schema-governance checks. Because the data shape did not need to change, mandatory schema versioning was not a necessary consequence of the raw request; the 0/3 versus 3/3 extended result measures contract compliance and cannot establish improved development success on the same task.",
+  "budgetEquality": "Both groups shared a 600-second wall-time limit and 80-tool-call ceiling. No token or monetary cap was enforced; group B necessarily received a larger input context."
+}

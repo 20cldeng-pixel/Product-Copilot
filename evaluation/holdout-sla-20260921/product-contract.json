@@ -1,0 +1,31 @@
+{
+  "changeId": "DF-SLA-002",
+  "target": "新建紧急工单的 SLA 改为 4 小时；新建普通工单仍为 24 小时。",
+  "preserve": [
+    "所有合法 schemaVersion 1 快照中的已有工单必须原样保留，包括 id、标题、优先级、状态、openedAt、dueAt 和顺序。",
+    "初始 fixture 中 T1 与 T2 是已有用户数据；即使旧紧急工单的 dueAt 是 openedAt 后 24 小时，也不能按新规则回算。",
+    "关闭工单只能把状态改为 closed，不能改变 openedAt 或 dueAt。",
+    "ID 唯一、标题必填、优先级白名单、本地持久化与损坏快照安全回退继续有效。",
+    "领域命令保持纯函数；ID 重复、标题为空、优先级非法或创建时间非法时失败并返回同一个原状态对象。"
+  ],
+  "acceptance": [
+    "新 urgent 工单的 dueAt 等于规范化 openedAt 后 4 个绝对小时。",
+    "新 standard 工单的 dueAt 等于规范化 openedAt 后 24 个绝对小时。",
+    "合法 V1 快照迁移后全部字段与 ticketOrder 不变；保存并重载后仍不变。",
+    "快照 schemaVersion 必须升级，当前格式不可继续写成 1。",
+    "损坏 JSON、错误版本或结构无效的数据安全回退到有效初始状态并尝试修复存储。",
+    "UI 和 README 清楚说明新旧工单的规则差异，并更新自动化测试。"
+  ],
+  "impact": [
+    "src/domain/commands.ts",
+    "src/repository/index.ts",
+    "src/domain/domain.test.ts",
+    "src/repository/repository.test.ts",
+    "src/App.tsx",
+    "README.md"
+  ],
+  "excluded": [
+    "不增加服务端、账号、通知、工作时间日历、节假日、暂停 SLA、编辑工单或删除工单。",
+    "不批量重算任何已有工单截止时间。"
+  ]
+}

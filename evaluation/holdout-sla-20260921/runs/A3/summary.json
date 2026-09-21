@@ -1,0 +1,28 @@
+{
+  "run": "A3",
+  "group": "A",
+  "startedAtEpoch": 1789998673.813806,
+  "durationSeconds": 99.559,
+  "exitCode": 0,
+  "timedOut": false,
+  "extendedContractPass": false,
+  "coreRequestPass": true,
+  "probePassed": 7,
+  "probeTotal": 9,
+  "declaredIndependentPass": false,
+  "selfReportedImplementationComplete": true,
+  "toolCalls": 21,
+  "toolBudgetExceeded": false,
+  "sdkCostEstimate": 0.303382,
+  "usage": {
+    "input": 27120,
+    "output": 2781,
+    "cacheRead": 168704,
+    "cacheWrite": 0,
+    "reasoning": 596,
+    "totalTokens": 198605
+  },
+  "independentTestsPassed": 7,
+  "independentBuildPassed": true,
+  "finalResponse": "已完成 SLA 调整：\n\n- 新建紧急工单：**4 小时**\n- 新建普通工单：**24 小时**\n- 已有工单的 `dueAt` 保持不变\n- 更新界面说明、README 和领域测试\n- 领域命令仍为纯函数，失败仍返回原状态对象\n\n### 验证结果\n\n- 测试：**2 个测试文件、7 项测试全部通过**\n- 生产构建：**通过**\n- `git diff --check`：通过\n- 未变更快照结构，无需数据迁移\n\n环境中没有 `npm` 命令，因此使用项目本地 Vitest、TypeScript 和 Vite 入口执行了等效测试与生产构建。未进行独立业务验收。"
+}

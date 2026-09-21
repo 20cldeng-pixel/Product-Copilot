@@ -1,0 +1,53 @@
+{
+  "pass": true,
+  "passed": 9,
+  "total": 9,
+  "checks": [
+    {
+      "id": "H-01",
+      "title": "新紧急工单使用 4 个绝对小时",
+      "pass": true
+    },
+    {
+      "id": "H-02",
+      "title": "新普通工单保持 24 个绝对小时",
+      "pass": true
+    },
+    {
+      "id": "H-03",
+      "title": "合法 V1 迁移逐字段保留旧工单与顺序",
+      "pass": true
+    },
+    {
+      "id": "H-04",
+      "title": "迁移后保存重载仍保留且写入新版 schema",
+      "pass": true
+    },
+    {
+      "id": "H-05",
+      "title": "关闭工单保留截止时间且不改输入状态",
+      "pass": true
+    },
+    {
+      "id": "H-06",
+      "title": "非法优先级失败并返回同一状态对象",
+      "pass": true
+    },
+    {
+      "id": "H-07",
+      "title": "重复 ID 与非法时间均不产生修改",
+      "pass": true
+    },
+    {
+      "id": "H-08",
+      "title": "新旧工单持久化往返后语义不变",
+      "pass": true
+    },
+    {
+      "id": "H-09",
+      "title": "损坏快照回退并修复为新版有效快照",
+      "pass": true
+    }
+  ],
+  "subjectLabel": "known-correct-reference"
+}

@@ -1,0 +1,47 @@
+{
+  "classification": "author-created-unseen-holdout-fixed-change-execution",
+  "case": "EVAL-02",
+  "caseName": "DeskFlow SLA policy migration",
+  "frozenAt": "2026-09-21T21:40:00+08:00",
+  "runsPerGroup": 3,
+  "runOrder": [
+    "A1",
+    "B1",
+    "B2",
+    "A2",
+    "A3",
+    "B3"
+  ],
+  "userInput": "把工单 SLA 改成紧急工单 4 小时、普通工单 24 小时；已有工单的截止时间保持不变。",
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol",
+  "thinking": "medium",
+  "tools": [
+    "read",
+    "bash",
+    "edit",
+    "write"
+  ],
+  "wallTimeSeconds": 600,
+  "toolCallCeiling": 80,
+  "sourceRevision": "b46f25b3f35fbc75db6f73931f6046291550a0f6",
+  "sourceFixture": "DeskFlow V1",
+  "groupA": "common system instructions plus original user input",
+  "groupB": "same common instructions and input plus frozen Product Copilot contract",
+  "primaryScoring": "hidden domain and persistence probe frozen before evaluated sessions",
+  "holdoutStatement": "The case and scorer were created locally for this experiment and had not been shown to an evaluated session before freeze. Publication after execution makes it non-reusable as an unseen holdout.",
+  "limitations": [
+    "Author-created holdout, not a third-party benchmark.",
+    "This compares fixed change execution, not the full Idea-to-review workflow.",
+    "Time and tool ceilings are equal; no token or monetary cap is enforced, and group B has a larger input context because the contract is the treatment.",
+    "Tool-call ceiling is checked from the frozen trace; wall time is enforced during execution."
+  ],
+  "tokenBudget": null,
+  "costBudget": null,
+  "frozenDigests": {
+    "common-system.md": "9145707664c1a799c2ea95ca5db410e867dd949ebbccc3ea24641ed881613705",
+    "treatment-system.md": "1663dbce4969429148002324cb30dc994581b234a79d9193b612d3d52c9a391b",
+    "product-contract.json": "66ed87e0387d6280fc8dee1a31225a09046b739863b5bf49dd2f98881581a12d"
+  },
+  "scorerDigest": "bb08ff4b63e1f563aa650bbd3ab8e0f363e7219c55b9936294bdfbbe862f4447"
+}
