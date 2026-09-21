@@ -7,6 +7,7 @@ name: CI
 # 提交里只要有一个非 .md 文件即照常触发。docs/ 与 .easymint/ 已 gitignore、不进仓库，无需列出。
 
 on:
+  workflow_dispatch:
   push:
     branches: ['**']
     paths-ignore: ['**/*.md']
