@@ -8,6 +8,8 @@ Product Copilot 是一个本地桌面 AI 产品工作台。它面向需要把想
 
 ![Product Copilot 本地事件复盘与 Mint 解读](assets/screenshots/product-copilot-review.png)
 
+[查看 26 秒真实桌面交互演示](assets/demo/product-copilot-walkthrough.mp4)
+
 ## 核心体验
 
 `Idea → 需求分析与资料记录 → PRD / 优先级 → 原型确认 → Agent 开发 → 验收证据 → 数据复盘`
