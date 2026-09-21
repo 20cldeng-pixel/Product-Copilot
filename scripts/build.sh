@@ -85,38 +85,38 @@ for platform in "${SELECTED[@]}"; do
   case "$platform" in
     mac-arm64)
       npx electron-builder --mac --arm64
-      mv dist-electron/EasyMint-macOS-arm64.dmg dist-electron/EasyMint-macOS-AppleSilicon.dmg 2>/dev/null || true
-      echo -e "${GREEN}✓ dist-electron/EasyMint-macOS-AppleSilicon.dmg${NC}"
+      mv "dist-electron/Product Copilot-macOS-arm64.dmg" dist-electron/Product-Copilot-macOS-AppleSilicon.dmg 2>/dev/null || true
+      echo -e "${GREEN}✓ dist-electron/Product-Copilot-macOS-AppleSilicon.dmg${NC}"
       ;;
     mac-x64)
       npx electron-builder --mac --x64
-      mv dist-electron/EasyMint-macOS-x64.dmg dist-electron/EasyMint-macOS-Intel.dmg 2>/dev/null || true
-      echo -e "${GREEN}✓ dist-electron/EasyMint-macOS-Intel.dmg${NC}"
+      mv "dist-electron/Product Copilot-macOS-x64.dmg" dist-electron/Product-Copilot-macOS-Intel.dmg 2>/dev/null || true
+      echo -e "${GREEN}✓ dist-electron/Product-Copilot-macOS-Intel.dmg${NC}"
       ;;
     win-x64)
       npx electron-builder --win --x64
       echo -e "${GREEN}✓ Windows x64:${NC}"
-      echo "  dist-electron/EasyMint-windows-x64.exe"
-      echo "  dist-electron/EasyMint-windows-x64-portable.exe"
+      echo "  dist-electron/Product Copilot-windows-x64.exe"
+      echo "  dist-electron/Product Copilot-windows-x64-portable.exe"
       ;;
     win-arm64)
       npx electron-builder --win --arm64
       echo -e "${GREEN}✓ Windows ARM64:${NC}"
-      echo "  dist-electron/EasyMint-windows-arm64.exe"
-      echo "  dist-electron/EasyMint-windows-arm64-portable.exe"
+      echo "  dist-electron/Product Copilot-windows-arm64.exe"
+      echo "  dist-electron/Product Copilot-windows-arm64-portable.exe"
       ;;
     linux-x64)
       npx electron-builder --linux --x64
       echo -e "${GREEN}✓ Linux x64:${NC}"
-      echo "  dist-electron/EasyMint-linux-x86_64.AppImage"
-      echo "  dist-electron/EasyMint-linux-amd64.deb"
-      echo "  dist-electron/EasyMint-linux-x64.tar.gz"
+      echo "  dist-electron/Product Copilot-linux-x86_64.AppImage"
+      echo "  dist-electron/Product Copilot-linux-amd64.deb"
+      echo "  dist-electron/Product Copilot-linux-x64.tar.gz"
       ;;
     linux-arm64)
       npx electron-builder --linux --arm64
       echo -e "${GREEN}✓ Linux ARM64:${NC}"
-      echo "  dist-electron/EasyMint-linux-arm64.AppImage"
-      echo "  dist-electron/EasyMint-linux-arm64.tar.gz"
+      echo "  dist-electron/Product Copilot-linux-arm64.AppImage"
+      echo "  dist-electron/Product Copilot-linux-arm64.tar.gz"
       ;;
   esac
 

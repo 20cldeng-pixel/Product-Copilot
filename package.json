@@ -83,7 +83,7 @@
   },
   "build": {
     "appId": "com.easymint.app",
-    "productName": "EasyMint",
+    "productName": "Product Copilot",
     "icon": "assets/icon.icns",
     "directories": {
       "output": "dist-electron"

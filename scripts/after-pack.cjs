@@ -9,8 +9,10 @@ const path = require("node:path");
  */
 exports.default = async function (context) {
   const { appOutDir } = context;
+  const productFilename = context.packager?.appInfo?.productFilename || "Product Copilot";
   const candidates = [
     path.join(appOutDir, "resources", "app.asar.unpacked", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
+    path.join(appOutDir, `${productFilename}.app`, "Contents", "Resources", "app.asar.unpacked", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
     path.join(appOutDir, "EasyMint.app", "Contents", "Resources", "app.asar.unpacked", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
   ];
 

@@ -183,10 +183,14 @@ export function installUpdate(): void {
   const tmpExtract = "/tmp/em-update-extract";
   const script = [
     "#!/bin/bash",
+    "set -e",
     "sleep 2",
     `rm -rf "${tmpExtract}"`,
     `ditto -xk "${downloadedFile}" "${tmpExtract}"`,
-    `ditto "${tmpExtract}/EasyMint.app" "${appPath}"`,
+    `sourceApp="${tmpExtract}/Product Copilot.app"`,
+    `[ -d "$sourceApp" ] || sourceApp="${tmpExtract}/EasyMint.app"`,
+    `[ -d "$sourceApp" ]`,
+    `ditto "$sourceApp" "${appPath}"`,
     `rm -rf "${tmpExtract}" "${downloadedFile}"`,
     `open "${appPath}"`,
   ].join("\n");
