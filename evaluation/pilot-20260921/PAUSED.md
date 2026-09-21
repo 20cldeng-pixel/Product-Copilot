@@ -1,5 +1,7 @@
 # Paused at user request, 2026-09-21
 
+Resume note: B independent browser scoring was completed after this pause; IA-01 through IA-11 all passed. See B-score.json and the pilot README for the current result. The numbered notes below are retained as the historical pause checkpoint, not current status.
+
 - No model run remains active. B Builder completed: 52 tool calls, one error (missing docs/design search), 29 tests and build passed. Frozen HEAD 07dc444 plus uncommitted prototype are included in local temp/pilot-20260921/B/source.tar. Planning and Builder logs are frozen separately; public summaries are in this directory.
 - A independent browser scoring: IA-01 through IA-11 passed.
 - B independent browser scoring: IA-01 through IA-06 passed. Observed first registration, duplicate rejection, cross-event success, second user filling A1, and U3 full rejection. After refresh admin shows A1=2 with U1/U2, A2=1 with U1, A3=0 closed. IA-07 still needs selecting member view and U1 after that refresh. IA-08 through IA-11 have not run. Overall B result remains unknown.
