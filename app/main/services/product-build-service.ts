@@ -1,11 +1,27 @@
 import { randomUUID } from "node:crypto";
-import type { ProductBuildResult } from "../../shared/product-build";
+import type { ProductBuildBatch, ProductBuildResult } from "../../shared/product-build";
 import type { ProductWorkflowSnapshot } from "../../shared/product-workflow";
 import { ProductWorkflowService, ProductWorkflowStore } from "./product-workflow-service";
 import { productArtifactDigest } from "./product-verification-runner";
 import { productBuildRuntime } from "./product-build-runtime";
 
 type Builder = (root: string, runId: string, prompt: string, signal: AbortSignal) => Promise<ProductBuildResult>;
+const BUILD_BATCH_SIZE = 2;
+
+function nextBuildBatch(state: ProductWorkflowSnapshot): ProductBuildBatch {
+  const requirements = state.draft.requirements.filter((item) => item.priority === "P0");
+  const chunks = Array.from({ length: Math.ceil(requirements.length / BUILD_BATCH_SIZE) }, (_, index) =>
+    requirements.slice(index * BUILD_BATCH_SIZE, (index + 1) * BUILD_BATCH_SIZE).map((item) => item.id));
+  const attempted = new Set(state.runs.filter((run) => run.kind === "build"
+    && run.scopeDigest === state.approvals.scope?.contentDigest
+    && run.prototypeDigest === state.prototype?.contentDigest
+    && run.executionStatus === "completed"
+    && run.build?.batch?.kind === "requirements")
+    .flatMap((run) => run.build?.batch?.requirementIds ?? []));
+  const index = chunks.findIndex((ids) => ids.some((id) => !attempted.has(id)));
+  if (index >= 0) return { kind: "requirements", index: index + 1, total: chunks.length, requirementIds: chunks[index]! };
+  return { kind: "integration", requirementIds: requirements.map((item) => item.id) };
+}
 
 export class ProductBuildService {
   private readonly pending = new Map<string, Promise<void>>();
@@ -43,16 +59,17 @@ export class ProductBuildService {
       if (productBuildRuntime.get(projectId) || this.isBusy(root)) throw new Error("当前项目仍有 Agent 或开发任务，请等待结束");
       if (state.runs.some((run) => ["running", "queued"].includes(run.executionStatus))) throw new Error("项目已有待执行任务，请刷新核对状态");
       const runId = randomUUID();
+      const batch = nextBuildBatch(state);
       state.runs.push({
         id: runId, kind: "build", scopeDigest: state.approvals.scope!.contentDigest, prototypeDigest: state.prototype!.contentDigest,
         executionStatus: "running", verificationStatus: "not_run", createdAt: new Date().toISOString(),
-        build: { startedAt: new Date().toISOString(), artifactBefore: productArtifactDigest(root) },
+        build: { startedAt: new Date().toISOString(), artifactBefore: productArtifactDigest(root), batch },
       });
     });
     if (started.replayed) return started;
     const run = started.snapshot.runs.at(-1)!;
     const controller = productBuildRuntime.acquire(projectId, run.id);
-    const prompt = this.prompt(started.snapshot);
+    const prompt = this.prompt(started.snapshot, run.build?.batch ?? nextBuildBatch(started.snapshot));
     const execution = this.execute(projectId, root, run.id, prompt, controller.signal);
     this.pending.set(projectId, execution);
     void execution.finally(() => this.pending.delete(projectId));
@@ -74,15 +91,21 @@ export class ProductBuildService {
     return result;
   }
 
-  private prompt(state: ProductWorkflowSnapshot): string {
+  private prompt(state: ProductWorkflowSnapshot, batch: ProductBuildBatch): string {
     const change = [...state.proposals].reverse().find((entry) => entry.status === "confirmed"
       && entry.confirmation?.revision === state.approvals.scope?.revision);
+    const requirements = state.draft.requirements.filter((item) => item.priority === "P0"
+      && batch.requirementIds.includes(item.id));
+    const batchInstruction = batch.kind === "requirements"
+      ? `本轮是需求开发批次 ${batch.index}/${batch.total}，只实现列出的需求 ID。允许补必要的共享脚手架，但不要提前实现其他 P0。`
+      : "全部需求批次都已有一次正常结束的开发回合。本轮只做集成检查并修复仍缺失的 P0、接口不一致和回归，不扩展范围。";
     return [
       "按用户已经批准的范围和原型执行一次开发。先检查现有代码，只补齐 P0 缺口，保留已有功能与数据。",
+      batchInstruction,
       "不自行增加 P1/P2，不改原型或需求成功标准。遇到范围歧义或不可行项停止并说明。",
       "本轮只有基础编码工具，没有委派或用户问答工具。只用前台有限命令，不启动常驻服务，不使用后台进程，不推送或部署。",
       "完成后说明实际改动、实际检查、未完成项；不能把自己声明完成当成业务验收通过。限 10 分钟、80 次工具调用。",
-      JSON.stringify({ brief: state.draft.brief, requirements: state.draft.requirements.filter((r) => r.priority === "P0"),
+      JSON.stringify({ brief: state.draft.brief, buildBatch: batch, requirements,
         decisions: state.draft.questions.map((q) => ({ question: q.text, resolution: q.resolution })), prototype: state.prototype,
         change: change ? { target: change.target, preserve: change.preserve, impact: change.impact } : undefined }),
     ].join("\n\n");

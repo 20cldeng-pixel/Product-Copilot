@@ -19,7 +19,7 @@ afterEach(() => {
   }
 });
 const complete: ProductBuildResult = { status: "completed", sessionId: "sdk-session", summary: "implemented", toolCalls: 2, toolErrors: 0 };
-function fixture() {
+function fixture(p0Count = 1) {
   const dir = mkdtempSync(path.join(tmpdir(), "product-build-"));
   const root = path.join(dir, "project"); mkdirSync(root);
   const projectId = randomUUID(); fixtures.push({ dir, projectId });
@@ -29,8 +29,11 @@ function fixture() {
   workflow.saveDraft(projectId, 0, randomUUID(), {
     brief: { idea: "报名", targetUser: "成员", scenario: "活动", constraints: [] }, research: [], researchStatus: "insufficient_accepted", questions: [],
     requirements: [
-      { id: "R1", title: "报名", priority: "P0", behavior: "可以报名", acceptance: ["人数增加"] },
-      { id: "R2", title: "未来付费", priority: "P2", behavior: "P2 不应进入本次开发", acceptance: [] },
+      ...Array.from({ length: p0Count }, (_, index) => ({
+        id: `R${index + 1}`, title: `需求 ${index + 1}`, priority: "P0" as const,
+        behavior: `实现行为 ${index + 1}`, acceptance: [`验收 ${index + 1}`],
+      })),
+      { id: "R-FUTURE", title: "未来付费", priority: "P2", behavior: "P2 不应进入本次开发", acceptance: [] },
     ],
   });
   workflow.confirmScope(projectId, 1, randomUUID());
@@ -58,6 +61,36 @@ describe("Product Builder lifecycle service", () => {
     expect(f.builder.mock.calls[0]?.[2]).not.toContain("未来付费");
     expect(f.service.get(f.projectId).evidence).toEqual([]);
     expect(productBuildRuntime.get(f.projectId)).toBeUndefined();
+  });
+
+  it("runs approved P0 requirements in bounded batches and records the exact execution scope", async () => {
+    const f = fixture(5);
+    for (const expected of [
+      { index: 1, ids: ["R1", "R2"] },
+      { index: 2, ids: ["R3", "R4"] },
+      { index: 3, ids: ["R5"] },
+    ]) {
+      f.start(); await f.service.waitForIdle(f.projectId);
+      const run = f.service.get(f.projectId).runs.at(-1)!;
+      expect(run.build?.batch).toEqual({ kind: "requirements", index: expected.index, total: 3, requirementIds: expected.ids });
+      const prompt = f.builder.mock.calls.at(-1)?.[2] ?? "";
+      for (const id of expected.ids) expect(prompt).toContain(`\"id\":\"${id}\"`);
+      const nextId = `R${expected.index * 2 + 1}`;
+      if (expected.index < 3) expect(prompt).not.toContain(`\"id\":\"${nextId}\"`);
+    }
+    f.start(); await f.service.waitForIdle(f.projectId);
+    expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch).toEqual({
+      kind: "integration", requirementIds: ["R1", "R2", "R3", "R4", "R5"],
+    });
+  });
+
+  it("retries the same requirement batch after cancellation", async () => {
+    const f = fixture(3);
+    f.builder.mockResolvedValueOnce({ ...complete, status: "cancelled", summary: "stopped" });
+    f.start(); await f.service.waitForIdle(f.projectId);
+    expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch?.requirementIds).toEqual(["R1", "R2"]);
+    f.start(); await f.service.waitForIdle(f.projectId);
+    expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch?.requirementIds).toEqual(["R1", "R2"]);
   });
 
   it("deduplicates double clicks, rejects concurrent builds and blocks verification", async () => {

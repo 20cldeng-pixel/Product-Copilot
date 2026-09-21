@@ -17,6 +17,10 @@ export function ProductBuild({ snapshot, onChange }: {
   const running = latest?.executionStatus === "running" || latest?.executionStatus === "queued";
   const occupied = snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
   const api = window.electronAPI.productWorkflow;
+  const batchLabel = latest?.build?.batch?.kind === "requirements"
+    ? `需求批次 ${latest.build.batch.index}/${latest.build.batch.total} · ${latest.build.batch.requirementIds.join("、")}`
+    : latest?.build?.batch?.kind === "integration"
+      ? `集成补缺 · ${latest.build.batch.requirementIds.join("、")}` : undefined;
 
   useEffect(() => {
     if (!running) return;
@@ -48,7 +52,7 @@ export function ProductBuild({ snapshot, onChange }: {
 
   return <section className="rounded-[var(--radius-lg)] border border-border p-4 space-y-3">
     <h2 className="font-medium">按已确认范围开发</h2>
-    <p className="text-sm text-text-secondary">Builder 检查现有代码并补齐首版必做需求。运行满 10 分钟或调用 80 次工具后请求停止；退出前保持占用并保留改动，开发结束后仍需验收。</p>
+    <p className="text-sm text-text-secondary">Builder 每轮最多处理 2 项首版需求；失败或中断会重试同一批次。全部批次完成后进入集成补缺。运行满 10 分钟或调用 80 次工具后请求停止；开发回合结束仍需独立验收。</p>
     <div className="flex gap-2">
       <button className="rounded-[var(--radius-lg)] bg-accent px-4 py-2 text-sm text-white disabled:opacity-50" disabled={busy || occupied || snapshot.stage !== "development_authorized" || snapshot.developmentCurrent === false}
         onClick={() => void perform(false)}>{latest ? "继续开发未完成项" : "开始开发"}</button>
@@ -58,6 +62,7 @@ export function ProductBuild({ snapshot, onChange }: {
     {snapshot.stage === "development_authorized" && snapshot.developmentCurrent === false && <p role="status" className="text-sm text-amber-600">开发批准已失效，请重新登记原型并确认开发范围。</p>}
     {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
     {latest && <div className="space-y-2 text-sm">
+      {batchLabel && <p className="text-xs text-text-secondary">{batchLabel}</p>}
       <p role="status">{latest.build?.stopRequested && running ? "已请求停止，等待执行器退出" : labels[latest.executionStatus]}</p>
       {latest.build?.result && <>
         <p className="text-xs text-text-secondary">工具调用 {latest.build.result.toolCalls} 次，工具错误 {latest.build.result.toolErrors} 次 · {latest.build.result.model ?? "模型未启动"}</p>

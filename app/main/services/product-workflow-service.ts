@@ -78,6 +78,11 @@ const snapshotSchema = z.object({
     build: z.object({
       startedAt: z.iso.datetime(), finishedAt: z.iso.datetime().optional(), stopRequested: z.boolean().optional(),
       artifactBefore: text.optional(), artifactAfter: text.optional(),
+      batch: z.object({
+        kind: z.enum(["requirements", "integration"]),
+        index: z.number().int().positive().optional(), total: z.number().int().positive().optional(),
+        requirementIds: z.array(text),
+      }).strict().optional(),
       result: z.object({
         status: z.enum(["completed", "failed", "cancelled"]), sessionId: text.optional(), model: text.optional(), provider: text.optional(),
         summary: z.string(), error: z.string().optional(), toolCalls: z.number().int().nonnegative(), toolErrors: z.number().int().nonnegative(),
