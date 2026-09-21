@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { isPackaged: false } }));
@@ -29,4 +32,44 @@ describe("前台 bash 增量输出", () => {
     expect(updates.join("")).toContain("hello-em-live");
     expect(res.content[0]!.text).toContain("hello-em-live");
   }, 60_000);
+
+  it.skipIf(process.platform === "win32")("收到中止信号后终止真实命令进程组，并保留已写入文件", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "product-shell-cancel-"));
+    try {
+      const tool = await createEnhancedBashTool(root);
+      const context = createExecutionContext(root, "full");
+      const controller = new AbortController();
+      const execute = (tool as unknown as {
+        execute: (
+          id: string,
+          params: Record<string, unknown>,
+          signal: AbortSignal | undefined,
+          onUpdate: undefined,
+          ctx: unknown,
+        ) => Promise<{ content: Array<{ text: string }> }>;
+      }).execute(
+        "cancel-real-shell",
+        {
+          command: "touch written-before-stop; sleep 30; touch written-after-stop",
+          [EXECUTION_POLICY]: context,
+        },
+        controller.signal,
+        undefined,
+        {},
+      );
+
+      await vi.waitFor(() => expect(existsSync(path.join(root, "written-before-stop"))).toBe(true), {
+        timeout: 5_000,
+        interval: 25,
+      });
+      controller.abort();
+      const result = await execute;
+
+      expect(result.content[0]?.text).toContain("退出码");
+      expect(existsSync(path.join(root, "written-before-stop"))).toBe(true);
+      expect(existsSync(path.join(root, "written-after-stop"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 15_000);
 });

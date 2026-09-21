@@ -7,6 +7,7 @@ import { ProductWorkflowService, ProductWorkflowStore } from "./product-workflow
 import { ProductBuildService } from "./product-build-service";
 import { productBuildRuntime } from "./product-build-runtime";
 import { ProductVerificationService } from "./product-verification-service";
+import { executeForeground } from "./background-shell/tool";
 import type { ProductBuildResult } from "../../shared/product-build";
 
 const fixtures: Array<{ dir: string; projectId: string }> = [];
@@ -109,6 +110,35 @@ describe("Product Builder lifecycle service", () => {
     expect(run.build?.artifactAfter).toBeTruthy();
     expect(run.build?.artifactAfter).not.toBe(before);
   });
+
+  it.skipIf(process.platform === "win32")("propagates product stop into a real foreground shell process", async () => {
+    const f = fixture();
+    f.builder.mockImplementationOnce(async (root, _runId, _prompt, signal) => {
+      await executeForeground(
+        { command: "touch shell-write-kept; sleep 30; touch shell-write-after-stop", env: { ...process.env } },
+        root,
+        signal,
+      );
+      return { ...complete, summary: "real shell stopped" };
+    });
+
+    const started = f.start();
+    const runId = started.snapshot.runs.at(-1)!.id;
+    await vi.waitFor(() => expect(readFileSync(path.join(f.root, "shell-write-kept"), "utf8")).toBe(""), {
+      timeout: 5_000,
+      interval: 25,
+    });
+    f.service.stop(f.projectId, f.revision(), randomUUID(), runId);
+    await f.service.waitForIdle(f.projectId);
+
+    expect(f.service.get(f.projectId).runs.at(-1)).toMatchObject({
+      executionStatus: "cancelled",
+      verificationStatus: "not_run",
+      build: { result: { status: "cancelled" } },
+    });
+    expect(readFileSync(path.join(f.root, "shell-write-kept"), "utf8")).toBe("");
+    expect(() => readFileSync(path.join(f.root, "shell-write-after-stop"), "utf8")).toThrow();
+  }, 15_000);
 
   it("rejects stale approval and occupied projects before any model request", () => {
     const f = fixture(); f.busy.mockReturnValue(true); expect(() => f.start()).toThrow("仍有 Agent");
