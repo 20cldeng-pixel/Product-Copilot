@@ -82,6 +82,20 @@ describe("Product Builder lifecycle service", () => {
     expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch).toEqual({
       kind: "integration", requirementIds: ["R1", "R2", "R3", "R4", "R5"],
     });
+    expect(() => f.start()).toThrow("集成补缺已完成");
+    expect(f.builder).toHaveBeenCalledTimes(4);
+  });
+
+  it("retries integration when its previous run did not complete", async () => {
+    const f = fixture(1);
+    f.start(); await f.service.waitForIdle(f.projectId);
+    f.builder.mockResolvedValueOnce({ ...complete, status: "failed", error: "integration failed" });
+    f.start(); await f.service.waitForIdle(f.projectId);
+    expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch?.kind).toBe("integration");
+    expect(f.service.get(f.projectId).runs.at(-1)?.executionStatus).toBe("failed");
+    f.start(); await f.service.waitForIdle(f.projectId);
+    expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch?.kind).toBe("integration");
+    expect(f.service.get(f.projectId).runs.at(-1)?.executionStatus).toBe("completed");
   });
 
   it("retries the same requirement batch after cancellation", async () => {

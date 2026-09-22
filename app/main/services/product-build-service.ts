@@ -8,7 +8,7 @@ import { productBuildRuntime } from "./product-build-runtime";
 type Builder = (root: string, runId: string, prompt: string, signal: AbortSignal) => Promise<ProductBuildResult>;
 const BUILD_BATCH_SIZE = 2;
 
-function nextBuildBatch(state: ProductWorkflowSnapshot): ProductBuildBatch {
+function nextBuildBatch(state: ProductWorkflowSnapshot): ProductBuildBatch | undefined {
   const requirements = state.draft.requirements.filter((item) => item.priority === "P0");
   const chunks = Array.from({ length: Math.ceil(requirements.length / BUILD_BATCH_SIZE) }, (_, index) =>
     requirements.slice(index * BUILD_BATCH_SIZE, (index + 1) * BUILD_BATCH_SIZE).map((item) => item.id));
@@ -20,6 +20,12 @@ function nextBuildBatch(state: ProductWorkflowSnapshot): ProductBuildBatch {
     .flatMap((run) => run.build?.batch?.requirementIds ?? []));
   const index = chunks.findIndex((ids) => ids.some((id) => !attempted.has(id)));
   if (index >= 0) return { kind: "requirements", index: index + 1, total: chunks.length, requirementIds: chunks[index]! };
+  const integrationCompleted = state.runs.some((run) => run.kind === "build"
+    && run.scopeDigest === state.approvals.scope?.contentDigest
+    && run.prototypeDigest === state.prototype?.contentDigest
+    && run.executionStatus === "completed"
+    && run.build?.batch?.kind === "integration");
+  if (integrationCompleted) return undefined;
   return { kind: "integration", requirementIds: requirements.map((item) => item.id) };
 }
 
@@ -58,8 +64,9 @@ export class ProductBuildService {
       if (!this.workflow.isDevelopmentCurrent(projectId)) throw new Error("请先确认当前范围和原型");
       if (productBuildRuntime.get(projectId) || this.isBusy(root)) throw new Error("当前项目仍有 Agent 或开发任务，请等待结束");
       if (state.runs.some((run) => ["running", "queued"].includes(run.executionStatus))) throw new Error("项目已有待执行任务，请刷新核对状态");
-      const runId = randomUUID();
       const batch = nextBuildBatch(state);
+      if (!batch) throw new Error("当前范围的需求批次与集成补缺已完成，请运行独立验收");
+      const runId = randomUUID();
       state.runs.push({
         id: runId, kind: "build", scopeDigest: state.approvals.scope!.contentDigest, prototypeDigest: state.prototype!.contentDigest,
         executionStatus: "running", verificationStatus: "not_run", createdAt: new Date().toISOString(),
@@ -69,7 +76,7 @@ export class ProductBuildService {
     if (started.replayed) return started;
     const run = started.snapshot.runs.at(-1)!;
     const controller = productBuildRuntime.acquire(projectId, run.id);
-    const prompt = this.prompt(started.snapshot, run.build?.batch ?? nextBuildBatch(started.snapshot));
+    const prompt = this.prompt(started.snapshot, run.build!.batch!);
     const execution = this.execute(projectId, root, run.id, prompt, controller.signal);
     this.pending.set(projectId, execution);
     void execution.finally(() => this.pending.delete(projectId));

@@ -1,0 +1,149 @@
+{
+  "caseId": "BATCH-SMOKE-20260921",
+  "projectId": "b36be62e-777e-4a10-abd9-c74ad8a46d01",
+  "sourceCommit": "cf9581d6e19cf43e7f0c0221645025a13521e19a",
+  "entry": "Product Copilot desktop product plan",
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol",
+  "scopeApprovalRevision": 3,
+  "developmentApprovalRevision": 5,
+  "prototypeDigest": "7fef43b65e588bcaa2032a2921c3d70887794e04640cafc948d5b00c5a43d450",
+  "requirements": [
+    {
+      "id": "REQ-d1f384de-0424-4e26-8eb8-b3c848dd3c08",
+      "title": "创建任务",
+      "priority": "P0"
+    },
+    {
+      "id": "REQ-835cc003-ecaa-43db-a3d0-bbd114a56b10",
+      "title": "按状态筛选",
+      "priority": "P0"
+    },
+    {
+      "id": "REQ-c31ab81a-fab2-4b6b-90a1-d011c95230c6",
+      "title": "逾期提醒",
+      "priority": "P0"
+    }
+  ],
+  "observations": {
+    "beforeScopeApproval": "No Builder action was shown.",
+    "afterScopeBeforePrototypeApproval": "No Builder action was shown.",
+    "afterDevelopmentApproval": "Builder action became available.",
+    "afterCompletedIntegration": "Renderer showed disabled 开发已完成 and directed the user to independent verification."
+  },
+  "runs": [
+    {
+      "runId": "2e4e11a2-4e4c-4d77-ab46-8e15f6c6fc38",
+      "executionStatus": "completed",
+      "verificationStatus": "not_run",
+      "batch": {
+        "kind": "requirements",
+        "index": 1,
+        "total": 2,
+        "requirementIds": [
+          "REQ-d1f384de-0424-4e26-8eb8-b3c848dd3c08",
+          "REQ-835cc003-ecaa-43db-a3d0-bbd114a56b10"
+        ]
+      },
+      "startedAt": "2026-09-21T15:34:55.531Z",
+      "finishedAt": "2026-09-21T15:37:48.955Z",
+      "durationMs": 173424,
+      "artifactBefore": "d29923b01c015f7acd732228d61b6259db7cf20a3821597c9f0f88f8fee615a7",
+      "artifactAfter": "1f0d703fb53037cc5c51a6bb209d1f9e7fb0268ef886dfb4ada4a33d008cf828",
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "toolCalls": 25,
+      "toolErrors": 1
+    },
+    {
+      "runId": "64517d9f-b599-44bf-9896-cd267137f7a6",
+      "executionStatus": "completed",
+      "verificationStatus": "not_run",
+      "batch": {
+        "kind": "requirements",
+        "index": 2,
+        "total": 2,
+        "requirementIds": [
+          "REQ-c31ab81a-fab2-4b6b-90a1-d011c95230c6"
+        ]
+      },
+      "startedAt": "2026-09-21T15:38:04.897Z",
+      "finishedAt": "2026-09-21T15:41:15.339Z",
+      "durationMs": 190442,
+      "artifactBefore": "1f0d703fb53037cc5c51a6bb209d1f9e7fb0268ef886dfb4ada4a33d008cf828",
+      "artifactAfter": "e6562c1c7e9565011f7244ed636e839233fefb847db21d69cbf0fac4ed3edda5",
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "toolCalls": 31,
+      "toolErrors": 0
+    },
+    {
+      "runId": "61f53409-e33e-4c8d-82b6-fcc8d2f87cbf",
+      "executionStatus": "completed",
+      "verificationStatus": "not_run",
+      "batch": {
+        "kind": "integration",
+        "requirementIds": [
+          "REQ-d1f384de-0424-4e26-8eb8-b3c848dd3c08",
+          "REQ-835cc003-ecaa-43db-a3d0-bbd114a56b10",
+          "REQ-c31ab81a-fab2-4b6b-90a1-d011c95230c6"
+        ]
+      },
+      "startedAt": "2026-09-21T15:41:31.712Z",
+      "finishedAt": "2026-09-21T15:42:47.577Z",
+      "durationMs": 75865,
+      "artifactBefore": "e6562c1c7e9565011f7244ed636e839233fefb847db21d69cbf0fac4ed3edda5",
+      "artifactAfter": "d14f19a34123fdd9a5b35c8d35b6fa3c62c2e4af96686d77b3d9a393f64c1f04",
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "toolCalls": 17,
+      "toolErrors": 0
+    }
+  ],
+  "hostVerification": {
+    "node": "v24.19.0",
+    "tests": {
+      "passed": 9,
+      "failed": 0
+    },
+    "syntaxCheck": "passed",
+    "moduleLoad": "passed",
+    "operatorCorrection": "Replaced invalid assert.any(Number) in generated test with Node assert checks; application code was unchanged."
+  },
+  "finalFiles": {
+    "index.html": {
+      "sha256": "053e1bd95c338af227032c45aec6624ebc833a0a16195ba6b9008ba7b914c4be",
+      "bytes": 2845
+    },
+    "styles.css": {
+      "sha256": "10e3672b6efd17b9e170bceb690aeda31f54e31935561eec4a6eb97ad99ecd96",
+      "bytes": 5190
+    },
+    "app.js": {
+      "sha256": "ccbb2c5fff5ea0512e98f09a787ad23fb9ab92a96196c4ab187bc4031b2bf937",
+      "bytes": 4486
+    },
+    "package.json": {
+      "sha256": "d4ada35f0d91f82f121047b773e9250d9ca644a092d40f2b870c461224f16293",
+      "bytes": 225
+    },
+    "README.md": {
+      "sha256": "87c78fd0a1003bb6022363076b00748a2781739d9b795d40c176d77f2ccf8754",
+      "bytes": 412
+    },
+    "test/app.test.js": {
+      "sha256": "a5279063c22cbcb508085b6d694487be727e27321116e072782db5983949770f",
+      "bytes": 2211
+    },
+    "prototype/index.html": {
+      "sha256": "7fef43b65e588bcaa2032a2921c3d70887794e04640cafc948d5b00c5a43d450",
+      "bytes": 775
+    }
+  },
+  "limits": [
+    "Single prospective smoke case; no control group or repetitions.",
+    "Builder completion is not acceptance; the nine P0 criteria remain unverified in Product Copilot.",
+    "The Builder shell could not find node/npm, so its own automated test attempt failed; the host reran the generated tests with bundled Node.",
+    "No actual token count, billed cost, or operator active time was captured."
+  ]
+}

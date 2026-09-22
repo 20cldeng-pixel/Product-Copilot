@@ -16,6 +16,10 @@ export function ProductBuild({ snapshot, onChange }: {
   const latest = builds.at(-1);
   const running = latest?.executionStatus === "running" || latest?.executionStatus === "queued";
   const occupied = snapshot.runs.some((run) => ["running", "queued"].includes(run.executionStatus));
+  const developmentComplete = builds.some((run) => run.executionStatus === "completed"
+    && run.scopeDigest === snapshot.approvals.scope?.contentDigest
+    && run.prototypeDigest === snapshot.prototype?.contentDigest
+    && run.build?.batch?.kind === "integration");
   const api = window.electronAPI.productWorkflow;
   const batchLabel = latest?.build?.batch?.kind === "requirements"
     ? `需求批次 ${latest.build.batch.index}/${latest.build.batch.total} · ${latest.build.batch.requirementIds.join("、")}`
@@ -54,12 +58,13 @@ export function ProductBuild({ snapshot, onChange }: {
     <h2 className="font-medium">按已确认范围开发</h2>
     <p className="text-sm text-text-secondary">Builder 每轮最多处理 2 项首版需求；失败或中断会重试同一批次。全部批次完成后进入集成补缺。运行满 10 分钟或调用 80 次工具后请求停止；开发回合结束仍需独立验收。</p>
     <div className="flex gap-2">
-      <button className="rounded-[var(--radius-lg)] bg-accent px-4 py-2 text-sm text-white disabled:opacity-50" disabled={busy || occupied || snapshot.stage !== "development_authorized" || snapshot.developmentCurrent === false}
-        onClick={() => void perform(false)}>{latest ? "继续开发未完成项" : "开始开发"}</button>
+      <button className="rounded-[var(--radius-lg)] bg-accent px-4 py-2 text-sm text-white disabled:opacity-50" disabled={busy || occupied || developmentComplete || snapshot.stage !== "development_authorized" || snapshot.developmentCurrent === false}
+        onClick={() => void perform(false)}>{developmentComplete ? "开发已完成" : latest ? "继续开发未完成项" : "开始开发"}</button>
       {running && <button className="rounded-[var(--radius-lg)] border border-border px-4 py-2 text-sm disabled:opacity-50"
         disabled={busy || latest?.build?.stopRequested} onClick={() => void perform(true)}>{latest?.build?.stopRequested ? "正在停止…" : "停止本轮开发"}</button>}
     </div>
     {snapshot.stage === "development_authorized" && snapshot.developmentCurrent === false && <p role="status" className="text-sm text-amber-600">开发批准已失效，请重新登记原型并确认开发范围。</p>}
+    {developmentComplete && <p role="status" className="text-sm text-emerald-600">需求批次与集成补缺已完成，请运行独立验收。</p>}
     {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
     {latest && <div className="space-y-2 text-sm">
       {batchLabel && <p className="text-xs text-text-secondary">{batchLabel}</p>}
