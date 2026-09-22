@@ -41,7 +41,7 @@ Product Copilot 是一个本地桌面 AI 产品工作台。它面向需要把想
 
 - [项目案例与产品决策](PROJECT_STORY.md)
 - [产品规格与开发记录](docs/product/README.md)
-- [对照评测运行册](evaluation/T7_对照评测运行册.md)、[固定变更对照](evaluation/formal-ab-20260921/README.md)、[独立未见案例](evaluation/holdout-sla-20260921/README.md)、[完整工作流对照](evaluation/full-workflow-ab-20260921/README.md)与[真实批次 smoke](evaluation/batched-build-smoke-20260921/README.md)
+- [对照评测运行册](evaluation/T7_对照评测运行册.md)、[固定变更对照](evaluation/formal-ab-20260921/README.md)、[独立未见案例](evaluation/holdout-sla-20260921/README.md)、[脚本化完整工作流对照](evaluation/full-workflow-ab-20260921/README.md)、[正式桌面 A/B 预注册](evaluation/desktop-full-workflow-ab-20260922/README.md)与[真实批次 smoke](evaluation/batched-build-smoke-20260921/README.md)
 - [首轮预实验记录](evaluation/pilot-20260921/README.md)
 - [异常路径记录](evaluation/reliability/20260921.md)
 

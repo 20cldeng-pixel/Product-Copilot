@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EVAL-04 operator and system event",
+  "type": "object",
+  "required": ["run", "at", "actor", "event"],
+  "properties": {
+    "run": { "enum": ["A1", "B1", "B2", "A2", "A3", "B3"] },
+    "at": { "type": "string", "format": "date-time" },
+    "actor": { "enum": ["operator", "product", "model", "scorer"] },
+    "event": { "type": "string", "minLength": 1 },
+    "stage": { "enum": ["idea", "scope", "prototype", "v1_build", "v1_verify", "change", "v2_build", "v2_verify", "review"] },
+    "active": { "type": "boolean" },
+    "details": { "type": "object" }
+  },
+  "additionalProperties": false
+}

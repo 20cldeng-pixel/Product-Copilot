@@ -1,0 +1,56 @@
+{
+  "case": "EVAL-04 ShiftLoop desktop",
+  "classification": "preregistered-real-desktop-full-workflow-ab",
+  "status": "preregistered_not_run",
+  "frozenAt": "2026-09-22T03:00:00.000Z",
+  "productCommit": "6f07bed44909fdc19f55c1115e33b1b7ebe692f7",
+  "runOrder": ["A1", "B1", "B2", "A2", "A3", "B3"],
+  "runsPerGroup": 3,
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol",
+  "thinking": "medium",
+  "wallTimeSecondsPerRun": 2700,
+  "repairCyclesMaximumPerStage": 1,
+  "groupA": "regular Agent conversation in the Product Copilot desktop app",
+  "groupB": "formal Product Plan, approvals, batched Builder, verification and repair flow in the same desktop app",
+  "sourceMaterials": {
+    "messages": {
+      "path": "../full-workflow-ab-20260921/messages.json",
+      "sha256": "19953701825a4165a2bc811f6e5efbe1677074d866b3a9c64558747699ac6dd5"
+    },
+    "probe": {
+      "path": "../full-workflow-ab-20260921/scorer/probe.mjs",
+      "sha256": "b11243907f330d645858d51f6bab1847adc0b68dd5554f28f2537270585363b7"
+    },
+    "referenceV1": {
+      "path": "../full-workflow-ab-20260921/scorer/reference-v1.json",
+      "sha256": "eb567d3f41c61d9e2b987ff56544f749af2897a4ff435e4c68e0d7df069c80d5"
+    },
+    "referenceV2": {
+      "path": "../full-workflow-ab-20260921/scorer/reference-v2.json",
+      "sha256": "f020294f06396a9a923fb85e781441605dba03303c140ed57e8e3209eb00e7ac"
+    }
+  },
+  "primaryOutcome": "V1 and V2 independent probes pass and all frozen workflow artifacts exist within 45 minutes",
+  "metrics": [
+    "final_pass",
+    "false_pass",
+    "first_probe_result",
+    "post_repair_probe_result",
+    "model_execution_rounds",
+    "tool_calls",
+    "tool_errors",
+    "confirmation_count",
+    "operator_active_seconds",
+    "wall_time_seconds",
+    "rework_count",
+    "recovery_count"
+  ],
+  "limitations": [
+    "One authored business case with three repetitions per group.",
+    "The product workflow intentionally adds confirmations and may use more model rounds.",
+    "Operator active time is event-timed, not an eye-tracking or multi-user usability measure.",
+    "Token counts and billed cost remain unknown unless the provider exposes verifiable values.",
+    "Results cannot establish statistical significance or cross-domain generalization."
+  ]
+}
