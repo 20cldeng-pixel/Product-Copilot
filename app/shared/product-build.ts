@@ -10,10 +10,12 @@ export interface ProductBuildResult {
 }
 
 export interface ProductBuildBatch {
-  kind: "requirements" | "integration";
+  kind: "requirements" | "repair" | "integration";
   index?: number;
   total?: number;
   requirementIds: string[];
+  /** Failed verification that opened this repair cycle. */
+  sourceVerificationRunId?: string;
 }
 
 export interface ProductBuildRecord {

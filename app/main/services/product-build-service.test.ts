@@ -82,8 +82,41 @@ describe("Product Builder lifecycle service", () => {
     expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch).toEqual({
       kind: "integration", requirementIds: ["R1", "R2", "R3", "R4", "R5"],
     });
-    expect(() => f.start()).toThrow("集成补缺已完成");
+    expect(() => f.start()).toThrow("开发或修复批次已完成");
     expect(f.builder).toHaveBeenCalledTimes(4);
+  });
+
+  it("reopens only failed requirements, reintegrates, and then requires verification again", async () => {
+    const f = fixture(3);
+    for (let index = 0; index < 3; index += 1) { f.start(); await f.service.waitForIdle(f.projectId); }
+    const verificationId = randomUUID();
+    f.store.transact(f.projectId, randomUUID(), f.revision(), "failed_verification", null, (state) => {
+      state.runs.push({
+        id: verificationId, kind: "verification", scopeDigest: state.approvals.scope!.contentDigest,
+        prototypeDigest: state.prototype!.contentDigest, executionStatus: "completed", verificationStatus: "fail",
+        createdAt: new Date().toISOString(), criteria: [
+          { id: "C1", requirementId: "R1", title: "需求 1", text: "验收 1" },
+          { id: "C3", requirementId: "R3", title: "需求 3", text: "验收 3" },
+        ],
+      });
+      state.evidence.push(
+        { id: randomUUID(), runId: verificationId, criterionId: "C1", artifactDigest: "failed", outcome: "fail", observedAt: new Date().toISOString(), observation: "R1 failed" },
+        { id: randomUUID(), runId: verificationId, criterionId: "C3", artifactDigest: "failed", outcome: "fail", observedAt: new Date().toISOString(), observation: "R3 failed" },
+      );
+    });
+
+    f.start(); await f.service.waitForIdle(f.projectId);
+    const repair = f.service.get(f.projectId).runs.at(-1)!;
+    expect(repair.build?.batch).toEqual({ kind: "repair", index: 1, total: 1,
+      requirementIds: ["R1", "R3"], sourceVerificationRunId: verificationId });
+    expect(f.builder.mock.calls.at(-1)?.[2]).toContain("R1 failed");
+    expect(f.builder.mock.calls.at(-1)?.[2]).not.toContain('"id":"R2"');
+
+    f.start(); await f.service.waitForIdle(f.projectId);
+    expect(f.service.get(f.projectId).runs.at(-1)?.build?.batch).toEqual({
+      kind: "integration", requirementIds: ["R1", "R2", "R3"], sourceVerificationRunId: verificationId,
+    });
+    expect(() => f.start()).toThrow("开发或修复批次已完成");
   });
 
   it("retries integration when its previous run did not complete", async () => {
