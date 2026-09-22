@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-09-22",
+  "classification": "terminated-real-desktop-full-workflow-ab",
+  "plannedRunOrder": [
+    "A1",
+    "B1",
+    "B2",
+    "A2",
+    "A3",
+    "B3"
+  ],
+  "termination": {
+    "reason": "user_decided_to_stop_further_validation",
+    "remainingRunsNotStarted": [
+      "A2",
+      "A3",
+      "B3"
+    ],
+    "primaryComparisonAvailable": false
+  },
+  "runs": [
+    {
+      "runId": "A1",
+      "attempt": "A1R",
+      "group": "A",
+      "status": "timeout_failure",
+      "includedInPrimaryAnalysis": true,
+      "wallTimeSeconds": 2700,
+      "messagesSent": 5,
+      "confirmationCount": 3,
+      "operatorActiveSeconds": null,
+      "v1PostRepair": "3/8",
+      "v2AtDeadline": "3/12",
+      "v2LateDiagnostic": "12/12",
+      "primaryOutcomePass": false,
+      "falsePass": true,
+      "reworkCount": 4,
+      "recoveryCount": 0
+    },
+    {
+      "runId": "B1",
+      "attempt": "B1R",
+      "group": "B",
+      "status": "timeout_failure_protocol_contaminated",
+      "includedInPrimaryAnalysis": false,
+      "activeWallTimeSeconds": 2700,
+      "messagesSent": 4,
+      "confirmationCount": 6,
+      "operatorActiveSeconds": null,
+      "builderRuns": 4,
+      "toolCalls": 102,
+      "toolErrors": 0,
+      "v1PostRepair": "3/8",
+      "v2": "not_started_before_deadline",
+      "primaryOutcomePass": false,
+      "falsePass": false,
+      "reworkCount": 2,
+      "recoveryCount": 2,
+      "exclusionReason": "Agent read files from the A1 run during repair, violating cross-run isolation."
+    },
+    {
+      "runId": "B2",
+      "group": "B",
+      "status": "invalid_operator_input",
+      "includedInPrimaryAnalysis": false,
+      "primaryOutcomePass": null,
+      "formalAppFilesModified": false,
+      "exclusionReason": "The second operator input diverged from the frozen script and changed the core scope to allow cancellation."
+    },
+    {
+      "runId": "A2",
+      "group": "A",
+      "status": "not_started_user_terminated_evaluation",
+      "includedInPrimaryAnalysis": false
+    },
+    {
+      "runId": "A3",
+      "group": "A",
+      "status": "not_started_user_terminated_evaluation",
+      "includedInPrimaryAnalysis": false
+    },
+    {
+      "runId": "B3",
+      "group": "B",
+      "status": "not_started_user_terminated_evaluation",
+      "includedInPrimaryAnalysis": false
+    }
+  ],
+  "aggregate": {
+    "validGroupARuns": 1,
+    "validGroupBRuns": 0,
+    "groupComparison": "not_available",
+    "supportedConclusion": "The desktop experiment produced no valid paired A/B comparison and does not support a delivery-success, rework, time, or cost improvement claim."
+  },
+  "measurementBoundaries": {
+    "operatorActiveSeconds": "unknown; complete action timing was not captured",
+    "lateDiagnostics": "do not override deadline outcomes",
+    "protocolContaminatedRuns": "retained as process evidence and excluded from primary comparison",
+    "invalidOperatorRuns": "retained as execution evidence and excluded from analysis",
+    "mergeWithEval03": "prohibited because execution protocols and validity differ"
+  }
+}

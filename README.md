@@ -41,7 +41,7 @@ Product Copilot 是一个本地桌面 AI 产品工作台。它面向需要把想
 
 - [项目案例与产品决策](PROJECT_STORY.md)
 - [产品规格与开发记录](docs/product/README.md)
-- [对照评测运行册](evaluation/T7_对照评测运行册.md)、[固定变更对照](evaluation/formal-ab-20260921/README.md)、[独立未见案例](evaluation/holdout-sla-20260921/README.md)、[脚本化完整工作流对照](evaluation/full-workflow-ab-20260921/README.md)、[正式桌面 A/B 预注册](evaluation/desktop-full-workflow-ab-20260922/README.md)与[真实批次 smoke](evaluation/batched-build-smoke-20260921/README.md)
+- [对照评测运行册](evaluation/T7_对照评测运行册.md)、[固定变更对照](evaluation/formal-ab-20260921/README.md)、[独立未见案例](evaluation/holdout-sla-20260921/README.md)、[脚本化完整工作流对照](evaluation/full-workflow-ab-20260921/README.md)、[提前终止的真实桌面 A/B](evaluation/desktop-full-workflow-ab-20260922/README.md)与[真实批次 smoke](evaluation/batched-build-smoke-20260921/README.md)
 - [首轮预实验记录](evaluation/pilot-20260921/README.md)
 - [异常路径记录](evaluation/reliability/20260921.md)
 
@@ -94,7 +94,7 @@ npm run dev
 
 ## 当前边界
 
-正式重复固定变更执行对照已完成：公开 Gather 案例 A/B 均为 3/3。独立 DeskFlow 案例的原始需求核心也均为 3/3；扩展合同 A 为 0/3、B 为 3/3，但差异来自额外 schema 条款，不能解释为同一用户任务的成功率提升。完整 ShiftLoop 工作流 A/B 各运行 3 次，在 300 秒单轮上限下均为 0/3；A 都在首轮直接实现时超时，B 到达更多阶段，但两轮仍提前开发且全部未完成。分批改进已用真实桌面入口完成一个 3 P0 的前瞻 smoke：2/1 两个需求批次和一次集成补缺均正常结束。独立浏览器验收发现“有已完成筛选但无法标记完成”的自动测试遗漏，计 1 次宿主返工；修复后 10/10 测试和 9/9 P0 关联通过。这不是重复 A/B，真实操作者主动耗时仍未知，当前证据不支持成功率、耗时或成本改善。可靠性方面，已在真实产品页面中取消正在执行的前台 shell，并在 shell 分阶段写入中对 Electron 主进程执行 `SIGKILL`；守护进程清理了命令进程组，延迟写入未发生，重启后记录恢复为 `interrupted/not_run`。仍未进行真实外部供应商故障注入；这些结果不代表全部 UI 或生产环境正确。示例事件使用模拟身份，不支持真实业务转化率结论。
+正式重复固定变更执行对照已完成：公开 Gather 案例 A/B 均为 3/3。独立 DeskFlow 案例的原始需求核心也均为 3/3；扩展合同 A 为 0/3、B 为 3/3，但差异来自额外 schema 条款，不能解释为同一用户任务的成功率提升。完整 ShiftLoop 工作流 A/B 各运行 3 次，在 300 秒单轮上限下均为 0/3；A 都在首轮直接实现时超时，B 到达更多阶段，但两轮仍提前开发且全部未完成。后续真实桌面 A/B 按用户决定提前终止：A1 为 45 分钟超时失败，B1 因跨运行读取被排除，B2 因输入偏离冻结脚本作废，其余三轮未运行，因此不提供新的组间效果结论。分批改进已用真实桌面入口完成一个 3 P0 的前瞻 smoke：2/1 两个需求批次和一次集成补缺均正常结束。独立浏览器验收发现“有已完成筛选但无法标记完成”的自动测试遗漏，计 1 次宿主返工；修复后 10/10 测试和 9/9 P0 关联通过。这不是重复 A/B，真实操作者主动耗时仍未知，当前证据不支持成功率、耗时或成本改善。可靠性方面，已在真实产品页面中取消正在执行的前台 shell，并在 shell 分阶段写入中对 Electron 主进程执行 `SIGKILL`；守护进程清理了命令进程组，延迟写入未发生，重启后记录恢复为 `interrupted/not_run`。仍未进行真实外部供应商故障注入；这些结果不代表全部 UI 或生产环境正确。示例事件使用模拟身份，不支持真实业务转化率结论。
 
 ## License
 
