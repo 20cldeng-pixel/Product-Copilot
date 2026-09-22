@@ -1,0 +1,103 @@
+{
+  "caseId": "BATCH-SMOKE-20260921",
+  "acceptedAt": "2026-09-22T02:45:05.596Z",
+  "workflowRevision": 21,
+  "verificationRunId": "8c5cc808-2f56-4399-8067-0a7f9e40e44c",
+  "artifactDigest": "e93d29cc6d9d053fc4f7510bd8a11ac8cb1ed872893b907d9bb39eac9dd43e41",
+  "automatic": {
+    "runner": "Product Copilot verification service",
+    "framework": "Vitest 4.1.10",
+    "testCases": 10,
+    "testsPassed": 10,
+    "criteriaPassed": 9,
+    "criteriaFailed": 0,
+    "criteriaInconclusive": 0,
+    "bindings": {
+      "[\"REQ-d1f384de-0424-4e26-8eb8-b3c848dd3c08\",0]": [
+        "[\"test/app.test.mjs\",\"空标题不能创建\"]"
+      ],
+      "[\"REQ-d1f384de-0424-4e26-8eb8-b3c848dd3c08\",1]": [
+        "[\"test/app.test.mjs\",\"创建任务会清理标题并设为待办\"]"
+      ],
+      "[\"REQ-d1f384de-0424-4e26-8eb8-b3c848dd3c08\",2]": [
+        "[\"test/app.test.mjs\",\"任务保存后可以重新读取\"]"
+      ],
+      "[\"REQ-835cc003-ecaa-43db-a3d0-bbd114a56b10\",0]": [
+        "[\"test/app.test.mjs\",\"默认返回全部，并可按待办和已完成筛选\"]"
+      ],
+      "[\"REQ-835cc003-ecaa-43db-a3d0-bbd114a56b10\",1]": [
+        "[\"test/app.test.mjs\",\"默认返回全部，并可按待办和已完成筛选\"]"
+      ],
+      "[\"REQ-835cc003-ecaa-43db-a3d0-bbd114a56b10\",2]": [
+        "[\"test/app.test.mjs\",\"默认返回全部，并可按待办和已完成筛选\"]"
+      ],
+      "[\"REQ-c31ab81a-fab2-4b6b-90a1-d011c95230c6\",0]": [
+        "[\"test/app.test.mjs\",\"截止时间早于当前时间的未完成任务会逾期\"]"
+      ],
+      "[\"REQ-c31ab81a-fab2-4b6b-90a1-d011c95230c6\",1]": [
+        "[\"test/app.test.mjs\",\"已完成任务不逾期\"]"
+      ],
+      "[\"REQ-c31ab81a-fab2-4b6b-90a1-d011c95230c6\",2]": [
+        "[\"test/app.test.mjs\",\"无截止时间的任务不逾期\"]"
+      ]
+    }
+  },
+  "browserChecks": [
+    {
+      "criterion": "任务标题不能为空",
+      "outcome": "pass",
+      "observation": "空标题提交后页面显示“任务标题不能为空”。"
+    },
+    {
+      "criterion": "创建成功后立即显示",
+      "outcome": "pass",
+      "observation": "创建“无截止测试”和“逾期任务测试”后立即出现在当前列表。"
+    },
+    {
+      "criterion": "刷新后任务仍存在",
+      "outcome": "pass",
+      "observation": "浏览器刷新后两条任务仍存在；完成状态刷新后也保留。"
+    },
+    {
+      "criterion": "默认显示全部任务",
+      "outcome": "pass",
+      "observation": "初次加载和刷新后标题为“全部任务”，两条任务均可见。"
+    },
+    {
+      "criterion": "筛选结果与状态一致",
+      "outcome": "pass",
+      "observation": "待办筛选仅出现 todo；标记完成后，已完成筛选仅出现该 completed 任务。"
+    },
+    {
+      "criterion": "切回全部恢复完整列表",
+      "outcome": "pass",
+      "observation": "从待办/已完成切回全部后恢复两条任务。"
+    },
+    {
+      "criterion": "逾期未完成任务显示红色标记",
+      "outcome": "pass",
+      "observation": "过去截止时间的待办任务 data-overdue=true，红色“已逾期”徽标可见。"
+    },
+    {
+      "criterion": "已完成任务不显示逾期",
+      "outcome": "pass_after_rework",
+      "observation": "初次验收发现页面无法产生 completed 状态；补充“标记完成/恢复待办”后，完成任务 data-overdue=false，徽标不可见，并经刷新保持。"
+    },
+    {
+      "criterion": "无截止时间的任务不显示逾期",
+      "outcome": "pass",
+      "observation": "无截止时间任务 data-overdue=false，逾期徽标不可见。"
+    }
+  ],
+  "rework": {
+    "count": 1,
+    "trigger": "独立浏览器验收发现“已完成”筛选存在但没有完成任务的用户入口，原 9/9 单元测试会形成假阳性。",
+    "change": "新增任务状态切换、持久化和 1 项测试；应用代码由宿主在验收后修正，不计为 Builder 首轮自主成功。",
+    "verification": "最终 10/10 测试通过，9/9 P0 条件关联通过，浏览器完成状态路径通过。"
+  },
+  "boundaries": [
+    "本记录是一个前瞻案例的独立验收，不是 A/B。",
+    "自动关联通过不能替代浏览器观察；本次正是浏览器观察发现了自动测试遗漏。",
+    "没有采集 Token、实际费用或操作者主动计时。"
+  ]
+}

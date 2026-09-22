@@ -112,28 +112,32 @@
   },
   "finalFiles": {
     "index.html": {
-      "sha256": "053e1bd95c338af227032c45aec6624ebc833a0a16195ba6b9008ba7b914c4be",
-      "bytes": 2845
+      "sha256": "125b99b2d4554313d3fa86a39927df62964dd65baf5ef470fdb73eb40fec8925",
+      "bytes": 2913
     },
     "styles.css": {
-      "sha256": "10e3672b6efd17b9e170bceb690aeda31f54e31935561eec4a6eb97ad99ecd96",
-      "bytes": 5190
+      "sha256": "1578383e6927af89686f729d17f220875e6b0e3ac5b4c220f81742bd2b6e4702",
+      "bytes": 5425
     },
     "app.js": {
-      "sha256": "ccbb2c5fff5ea0512e98f09a787ad23fb9ab92a96196c4ab187bc4031b2bf937",
-      "bytes": 4486
+      "sha256": "5aecb142f3cdf0880c9c2284841bab25c6e32cf8b73b20d0f1b6c81e7417032a",
+      "bytes": 5072
     },
     "package.json": {
-      "sha256": "d4ada35f0d91f82f121047b773e9250d9ca644a092d40f2b870c461224f16293",
-      "bytes": 225
+      "sha256": "f1e4438efac9a367f6acad19c4e737c1f4d7c938368b1452ec38ca000d21fa0b",
+      "bytes": 275
+    },
+    "package-lock.json": {
+      "sha256": "45bb5610d9893d19c036017b03406284de9ae9c85bef5d4d9359f26e43101a11",
+      "bytes": 39296
     },
     "README.md": {
       "sha256": "87c78fd0a1003bb6022363076b00748a2781739d9b795d40c176d77f2ccf8754",
       "bytes": 412
     },
-    "test/app.test.js": {
-      "sha256": "a5279063c22cbcb508085b6d694487be727e27321116e072782db5983949770f",
-      "bytes": 2211
+    "test/app.test.mjs": {
+      "sha256": "f8aec4aa1b1656c842694c85b4ba6454efa036ffa5cab5e74367397b3744c14c",
+      "bytes": 2570
     },
     "prototype/index.html": {
       "sha256": "7fef43b65e588bcaa2032a2921c3d70887794e04640cafc948d5b00c5a43d450",
@@ -142,8 +146,18 @@
   },
   "limits": [
     "Single prospective smoke case; no control group or repetitions.",
-    "Builder completion is not acceptance; the nine P0 criteria remain unverified in Product Copilot.",
-    "The Builder shell could not find node/npm, so its own automated test attempt failed; the host reran the generated tests with bundled Node.",
+    "Independent browser acceptance found one workflow gap after the Builder rounds; the final pass includes one host rework.",
     "No actual token count, billed cost, or operator active time was captured."
-  ]
+  ],
+  "acceptance": {
+    "status": "pass_after_rework",
+    "workflowRevision": 21,
+    "verificationRunId": "8c5cc808-2f56-4399-8067-0a7f9e40e44c",
+    "artifactDigest": "e93d29cc6d9d053fc4f7510bd8a11ac8cb1ed872893b907d9bb39eac9dd43e41",
+    "automaticTests": "10/10 passed",
+    "p0Criteria": "9/9 linked checks passed",
+    "browserChecks": "9/9 passed after one host rework",
+    "operatorReworkCount": 1,
+    "record": "acceptance.json"
+  }
 }
