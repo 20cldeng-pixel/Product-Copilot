@@ -14,6 +14,16 @@
   "groupA": "regular Agent conversation in the Product Copilot desktop app",
   "groupB": "formal Product Plan, approvals, batched Builder, verification and repair flow in the same desktop app",
   "sourceMaterials": {
+    "starter": {
+      "path": "starter",
+      "artifactDigest": "a4b2dd00427900c32f18cca6abe01456bd7fdd26b69041f193d4f549edd1e95d",
+      "files": {
+        "app.js": "b73f5744388c1ba2603bef12a78d49a9dd716dc1f7bb736b9c005982b1763c65",
+        "index.html": "8cbaf2d33530599875ef14d171ef8dce74a96c66e342c8752010961bf453c494",
+        "package.json": "f46ce91336ec1b96d61cda52cb7adaba9de6f2be2fc1bd1342774125650d3599",
+        "styles.css": "98a67338f3da099efa6823cd6952eefa2842b7a382f5149babb79ef196bb8691"
+      }
+    },
     "messages": {
       "path": "../full-workflow-ab-20260921/messages.json",
       "sha256": "19953701825a4165a2bc811f6e5efbe1677074d866b3a9c64558747699ac6dd5"
