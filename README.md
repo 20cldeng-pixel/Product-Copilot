@@ -67,7 +67,7 @@ npm run build:main
 npm run build:preload
 ```
 
-本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。作品版通过公开 CI 后会以 [`v0.2.0-dev`](https://github.com/20cldeng-pixel/Product-Copilot/releases/tag/v0.2.0-dev) 发布 macOS、Windows 和 Linux 开发预览包。macOS 本地包会额外执行镜像校验和启动检查；开发预览包未签名、未公证，不当作生产发行版。
+本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。[`v0.2.0-dev`](https://github.com/20cldeng-pixel/Product-Copilot/releases/tag/v0.2.0-dev) 已作为 prerelease 发布 macOS、Windows 和 Linux 开发预览包，[公开主 CI](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35845410273) 和[多平台发布构建](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35845433189) 均通过。macOS 本地包还执行了镜像校验和实际启动检查；开发预览包未签名、未公证，不当作生产发行版。
 
 ## 运行 Gather 示例
 
