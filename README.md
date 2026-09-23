@@ -8,7 +8,7 @@ Product Copilot 是一个本地桌面 AI 产品工作台。它面向需要把想
 
 ![Product Copilot 本地事件复盘与 Mint 解读](assets/screenshots/product-copilot-review.png)
 
-[查看 26 秒真实桌面交互演示](assets/demo/product-copilot-walkthrough.mp4)
+[查看 1 分 54 秒产品演示](assets/demo/product-copilot-walkthrough.mp4)：前段为真实桌面操作，后段用实际产品截图串联 PRD、变更、开发、验收和复盘。
 
 ## 核心体验
 
@@ -56,7 +56,7 @@ npm ci
 npm run dev
 ```
 
-在设置中配置供应商并完成登录或密钥配置，打开项目后点击“产品计划”。本项目验证使用了 OpenAI Codex 供应商；模型可用性以实际账户为准。`.easymint` 数据目录、npm 包名和当前开发安装包名称继续保留兼容标识。
+在设置中配置供应商并完成登录或密钥配置，打开项目后点击“产品计划”。本项目验证使用了 OpenAI Codex 供应商；模型可用性以实际账户为准。当前作品版包名与版本为 `product-copilot@0.2.0-dev`；为了读取已有项目和设置，桌面应用仍使用 `.easymint` 数据目录与既有 `appId`。
 
 ```sh
 npm run lint
@@ -67,7 +67,7 @@ npm run build:main
 npm run build:preload
 ```
 
-本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。[桌面包提交的公开 CI](https://github.com/20cldeng-pixel/Product-Copilot/actions/runs/35579961623)已通过主项目质量门禁与 Gather 示例检查。本机已从提交 `18bfba8` 生成、校验并实际启动 macOS arm64 开发 DMG；镜像、Finder 应用和窗口均显示 Product Copilot，并能读取旧版数据。该包未签名、未公证，作为[开发预览版下载](https://github.com/20cldeng-pixel/Product-Copilot/releases/tag/product-copilot-v0.1.0-dev)发布，详见[构建记录](evaluation/builds/20260921-macos-arm64.md)。
+本地开发验证使用 Node.js 24；CI 配置使用 Node.js 22。作品版通过公开 CI 后会以 [`v0.2.0-dev`](https://github.com/20cldeng-pixel/Product-Copilot/releases/tag/v0.2.0-dev) 发布 macOS、Windows 和 Linux 开发预览包。macOS 本地包会额外执行镜像校验和启动检查；开发预览包未签名、未公证，不当作生产发行版。
 
 ## 运行 Gather 示例
 

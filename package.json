@@ -1,7 +1,7 @@
 {
-  "name": "easymint",
-  "version": "0.27.1",
-  "description": "AI 项目工作台 — 基于 Pi Agent Core 的智能编程助手，让不懂技术的人也能构建软件",
+  "name": "product-copilot",
+  "version": "0.2.0-dev",
+  "description": "本地 AI 产品工作台：需求分析、原型确认、Agent 开发、需求变更与证据验收",
   "private": true,
   "license": "MIT",
   "repository": "https://github.com/20cldeng-pixel/Product-Copilot",

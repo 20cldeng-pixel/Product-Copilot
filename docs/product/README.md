@@ -1,6 +1,6 @@
 # EasyMint Product Copilot 产品设计入口
 
-更新：2026-09-21。当前整体范围以 **v0.3** 为准：同时支持从 Idea 创建项目，以及在已确认内容上做可验证的需求变更。
+更新：2026-09-23。当前整体范围以 **v0.3** 为准：同时支持从 Idea 创建项目，以及在已确认内容上做可验证的需求变更。
 
 | 文档 | 当前用途 |
 |---|---|
@@ -13,7 +13,8 @@
 | [EVAL-01](../../evaluation/author-only/EVAL-01_独立评测案例.md) | 公开开发校准；不能称为未见评测 |
 | [EVAL-02](../../evaluation/holdout-sla-20260921/README.md) | 作者自建独立未见案例；发布后不可复用为 holdout |
 | [EVAL-03](../../evaluation/full-workflow-ab-20260921/README.md) | 从 Idea、V1 到必需迁移的 V2 及复盘的重复完整工作流 A/B |
+| [EVAL-04](../../evaluation/desktop-full-workflow-ab-20260922/README.md) | 真实桌面入口实验；提前终止并冻结结果，不提供组间效果结论 |
 
-当前状态：产品计划、PRD、范围/原型/开发确认、变更提案、真实测试与证据关联、失效判断、人工核验和本地复盘均已接入。正式 Builder 由主进程检查当前范围与原型批准，并把 P0 按每批最多 2 项执行；正常结束推进下一批，失败或取消重试原批次，全部批次后进入一次集成补缺，完成后转向独立验收。CHG-001 通过真实 Builder 完成 V2 与旧数据迁移；Runner 的 36 项测试及 26 条 P0 关联检查通过，独立公开探针 7 项通过，隔离浏览器完成固定页面序列。Builder 生命周期已覆盖正常结束、页面点击取消真实前台 shell、供应商/预算异常终态、孤儿运行恢复，以及 Electron 在 shell 分阶段写入中被 `SIGKILL` 后清理命令进程组并恢复为 `interrupted/not_run`。新的 3 P0 案例又从真实桌面入口完成 2/1 两批和一次集成补缺；集成后重复启动缺陷在该次验证中被发现并修复。真实外部供应商故障注入仍未执行。T6 的聚合解读提示词有边界测试，并分别完成空事件与 10 条 `local_trial` 事件的真实模型调用；模型保持模拟身份、零分母、独立评测和异常路径的证据边界。实际账单、人工耗时和解释质量评分仍未采集。T7 已完成单次页面预实验、公开固定变更、独立 DeskFlow 及完整 ShiftLoop 工作流的重复对照。公开固定变更 A/B 均 3/3；DeskFlow 原始需求核心也均 3/3；完整工作流在 300 秒单轮上限下两组均 0/3。真实批次 smoke 没有对照组或重复样本，不能称为成功率、耗时或返工改善。运行和验证细节见 [开发进度与验证记录](./05_开发进度与验证记录.md)、[真实批次 smoke](../../evaluation/batched-build-smoke-20260921/README.md)、[固定变更对照](../../evaluation/formal-ab-20260921/README.md)、[独立未见案例](../../evaluation/holdout-sla-20260921/README.md)、[完整工作流对照](../../evaluation/full-workflow-ab-20260921/README.md)、[可靠性记录](../../evaluation/reliability/20260921.md)和[V2 验收记录](../../evaluation/gather/v2-run-20260920/acceptance.md)。这些结果不代表生产系统、跨案例泛化或统计显著性。
+当前状态：产品计划、PRD、范围/原型/开发确认、变更提案、真实测试与证据关联、失效判断、人工核验和本地复盘均已接入。正式 Builder 由主进程检查当前范围与原型批准，并把 P0 按每批最多 2 项执行；正常结束推进下一批，失败或取消重试原批次，全部批次后进入一次集成补缺，完成后转向独立验收。CHG-001 通过真实 Builder 完成 V2 与旧数据迁移；Runner 的 36 项测试及 26 条 P0 关联检查通过，独立公开探针 7 项通过，隔离浏览器完成固定页面序列。Builder 生命周期已覆盖正常结束、页面点击取消真实前台 shell、供应商/预算异常终态、孤儿运行恢复，以及 Electron 在 shell 分阶段写入中被 `SIGKILL` 后清理命令进程组并恢复为 `interrupted/not_run`。新的 3 P0 案例又从真实桌面入口完成 2/1 两批、一次集成补缺和一次验收失败返工。真实外部供应商故障注入仍未执行。T6 已完成空事件与 10 条 `local_trial` 事件的真实模型解读，实际账单、人工耗时和解释质量评分仍未知。T7 已完成公开固定变更、独立 DeskFlow 和脚本化完整工作流的重复对照；真实桌面 EVAL-04 在 A1 超时、B1 隔离污染和 B2 输入偏离后按决定提前终止，没有有效的组间比较。现有证据不支持成功率、耗时、成本或返工改善。运行和验证细节见 [开发进度与验证记录](./05_开发进度与验证记录.md)、[真实批次 smoke](../../evaluation/batched-build-smoke-20260921/README.md)、[固定变更对照](../../evaluation/formal-ab-20260921/README.md)、[独立未见案例](../../evaluation/holdout-sla-20260921/README.md)、[完整工作流对照](../../evaluation/full-workflow-ab-20260921/README.md)、[真实桌面实验](../../evaluation/desktop-full-workflow-ab-20260922/README.md)、[可靠性记录](../../evaluation/reliability/20260921.md)和[V2 验收记录](../../evaluation/gather/v2-run-20260920/acceptance.md)。这些结果不代表生产系统、跨案例泛化或统计显著性。
 
 作品展示入口：[演示与面试说明](./06_作品演示与面试说明.md)。
